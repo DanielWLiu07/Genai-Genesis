@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, BookOpen } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import Image from 'next/image';
 import { api } from '@/lib/api';
@@ -18,12 +18,6 @@ export default function NewProject() {
 
   useEffect(() => {
     const ctx = gsap.context(() => {
-      // Chapter marker drop-in
-      gsap.fromTo(
-        '.chapter-marker',
-        { y: -40, opacity: 0, skewX: -8 },
-        { y: 0, opacity: 1, skewX: 0, duration: 0.5, ease: 'back.out(2)' }
-      );
       // Title slam
       gsap.fromTo(
         '.new-project-title',
@@ -56,18 +50,25 @@ export default function NewProject() {
       );
     }, mainRef);
 
-    // Decorative elements
+    // Decorative elements — fade in to final opacity
     gsap.fromTo('.decor-item',
-      { opacity: 0, scale: 0.6, rotation: 'random(-20, 20)' },
-      { opacity: 0.55, scale: 1, duration: 1.1, stagger: 0.15, delay: 0.2, ease: 'power2.out' }
+      { opacity: 0, scale: 0.85 },
+      { opacity: 0.5, scale: 1, duration: 1, stagger: 0.12, delay: 0.3, ease: 'power2.out' }
     );
     gsap.fromTo('.decor-oni',
-      { opacity: 0, y: 40 },
-      { opacity: 0.1, y: 0, duration: 1.5, delay: 0.4, ease: 'power2.out' }
+      { opacity: 0, y: 30 },
+      { opacity: 0.22, y: 0, duration: 1.5, delay: 0.5, ease: 'power2.out' }
     );
-    // Float animations
+    // Gentle flowing float — y only, very subtle rotation
+    const floatParams = [
+      { y: 10, rot: 2, dur: 3.2 },
+      { y: 8,  rot: -2, dur: 3.8 },
+      { y: 12, rot: 1.5, dur: 2.9 },
+      { y: 9,  rot: -1.5, dur: 3.5 },
+    ];
     document.querySelectorAll('.decor-item').forEach((el, i) => {
-      gsap.to(el, { y: '+=8', rotation: '+=5', duration: 3 + i * 0.7, delay: 1.5 + i * 0.3, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      const p = floatParams[i % floatParams.length];
+      gsap.to(el, { y: `+=${p.y}`, rotation: `+=${p.rot}`, duration: p.dur, delay: 1.2 + i * 0.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
     });
 
     return () => ctx.revert();
@@ -103,34 +104,28 @@ export default function NewProject() {
     <main
       ref={mainRef}
       className="min-h-screen relative flex items-center justify-center"
-      style={{ backgroundImage: 'url(/hero-bg.png)', backgroundSize: 'cover', backgroundPosition: 'center top' }}
+      style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      {/* Overlay for readability */}
-      <div className="absolute inset-0 bg-black/30 z-[1]" />
-
-      {/* Decorative elements — different set from other pages */}
-      <Image src="/stylized_imgs/flowers.png" alt="" width={200} height={180} className="decor-item fixed -top-4 -left-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.3))', transform: 'rotate(-18deg)' }} />
-      <Image src="/stylized_imgs/leaf3.png" alt="" width={130} height={160} className="decor-item fixed top-8 -right-4 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 3px 5px rgba(0,0,0,0.25))', transform: 'rotate(22deg)' }} />
-      <Image src="/stylized_imgs/stone1.png" alt="" width={150} height={130} className="decor-item fixed -bottom-6 -left-4 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))', transform: 'rotate(8deg)' }} />
-      <Image src="/stylized_imgs/leaf2.png" alt="" width={110} height={180} className="decor-item fixed -bottom-8 -right-2 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 3px 5px rgba(0,0,0,0.25))', transform: 'rotate(-12deg)' }} />
-      <Image src="/stylized_imgs/flower3.png" alt="" width={120} height={120} className="decor-item fixed bottom-32 left-8 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 4px rgba(0,0,0,0.2))', transform: 'rotate(30deg)' }} />
+      {/* One decorative element per corner, upright */}
+      {/* top-left */}
+      <Image src="/stylized_imgs/leaf5.png" alt="" width={220} height={195} className="decor-item fixed -top-6 -left-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 4px rgba(0,0,0,0.15))' }} />
+      {/* top-right */}
+      <Image src="/stylized_imgs/leaf6.png" alt="" width={200} height={170} className="decor-item fixed -top-6 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 4px rgba(0,0,0,0.15))', transform: 'scaleX(-1)' }} />
+      {/* bottom-left */}
+      <Image src="/stylized_imgs/stone3.png" alt="" width={220} height={195} className="decor-item fixed -bottom-8 -left-8 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 5px rgba(0,0,0,0.2))' }} />
+      {/* bottom-right */}
+      <Image src="/stylized_imgs/pine.png" alt="" width={155} height={265} className="decor-item fixed -bottom-10 -right-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 5px rgba(0,0,0,0.2))' }} />
 
       {/* Ghost oni */}
-      <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 right-[10%] w-[600px] pointer-events-none select-none z-[3] opacity-0" />
+      <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 left-[53%] -translate-x-1/2 w-[900px] pointer-events-none select-none z-[3] opacity-0" />
 
       {/* Back link */}
-      <Link href="/dashboard" className="fixed top-6 left-6 z-20 text-white/80 hover:text-white flex items-center gap-2 text-sm transition-colors bg-black/30 backdrop-blur-sm px-3 py-2 border border-white/20">
+      <Link href="/dashboard" className="fixed top-6 left-6 z-20 text-[#555] hover:text-[#111] flex items-center gap-2 text-sm transition-colors bg-white/70 backdrop-blur-sm px-3 py-2 border border-[#ddd]">
         <ArrowLeft size={14} /> Dashboard
       </Link>
 
       {/* Card */}
       <div className="relative z-10 w-full max-w-lg mx-6">
-        {/* Chapter marker */}
-        <div className="chapter-marker inline-flex items-center gap-2 bg-[#111] text-white px-4 py-1.5 mb-0 text-xs tracking-widest uppercase font-mono">
-          <BookOpen size={12} />
-          Chapter 01 — Begin
-        </div>
-
         <div className="bg-white/92 backdrop-blur-md border-4 border-[#111] shadow-[8px_8px_0px_rgba(0,0,0,0.85)]">
           {/* Header with speedlines */}
           <div className="manga-speedlines p-8 pb-6 border-b-4 border-[#111]">

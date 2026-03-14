@@ -54,18 +54,29 @@ export default function Dashboard() {
       gsap.fromTo('.hero-title', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: 'power3.out' });
       gsap.fromTo('.hero-cta', { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.4, delay: 0.2, ease: 'power2.out' });
 
-      // Decorative elements float in from edges
+      // Decorative elements fade in
       gsap.fromTo('.decor-item',
         { opacity: 0, scale: 0.7 },
-        { opacity: 0.55, scale: 1, duration: 1, stagger: 0.12, delay: 0.3, ease: 'power2.out' }
+        { opacity: 0.5, scale: 1, duration: 1, stagger: 0.12, delay: 0.3, ease: 'power2.out' }
       );
-      // Gentle idle float on decorations
+      // Sun fades in and rotates slowly forever
+      gsap.fromTo('.decor-sun',
+        { opacity: 0, scale: 0.5 },
+        { opacity: 0.6, scale: 1, duration: 1.2, delay: 0.5, ease: 'power2.out' }
+      );
+      gsap.to('.decor-sun', {
+        rotation: 360,
+        duration: 60,
+        delay: 1,
+        repeat: -1,
+        ease: 'none',
+      });
+      // Gentle idle sway on corner decorations
       document.querySelectorAll('.decor-item').forEach((el, i) => {
         gsap.to(el, {
-          y: -6 + (i % 2 === 0 ? -4 : 4),
-          rotation: i % 2 === 0 ? 3 : -3,
-          duration: 3 + i * 0.5,
-          delay: 1.5 + i * 0.2,
+          y: i % 2 === 0 ? -5 : 5,
+          duration: 3 + i * 0.7,
+          delay: 1.5 + i * 0.3,
           repeat: -1,
           yoyo: true,
           ease: 'sine.inOut',
@@ -129,16 +140,16 @@ export default function Dashboard() {
       {/* Scrollable shelf area */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
         {/* Decorative elements — clipped to edges, pointing inward */}
-        {/* Top-right corner: flower leaning inward */}
-        <Image src="/stylized_imgs/flower3.png" alt="" width={160} height={300} className="decor-item absolute -top-4 -right-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.2))', transform: 'rotate(-15deg)' }} />
-        {/* Bottom-left corner: leaves pointing inward */}
-        <Image src="/stylized_imgs/leaf5.png" alt="" width={140} height={140} className="decor-item absolute -bottom-6 -left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(20deg)' }} />
-        {/* Bottom-right corner: stone clipped to edge */}
-        <Image src="/stylized_imgs/stone1.png" alt="" width={160} height={220} className="decor-item absolute -bottom-10 -right-8 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(-5deg)' }} />
-        {/* Top-left corner: pine branch reaching in */}
-        <Image src="/stylized_imgs/leaf7.png" alt="" width={130} height={130} className="decor-item absolute -top-4 -left-4 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(25deg) scaleX(-1)' }} />
-        {/* Sun: larger, top center with warm glow */}
-        <Image src="/stylized_imgs/sun.png" alt="" width={180} height={171} className="decor-item absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(0 0 20px rgba(255,200,50,0.4)) drop-shadow(0 0 40px rgba(255,180,30,0.2))' }} />
+        {/* Top-right: flower hanging down from top-right corner, leaning left */}
+        <Image src="/stylized_imgs/flower3.png" alt="" width={140} height={260} className="decor-item absolute -top-8 -right-4 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.2))', transform: 'rotate(-25deg) scaleX(-1)' }} />
+        {/* Top-left: leaf branch coming from left edge, pointing right */}
+        <Image src="/stylized_imgs/leaf7.png" alt="" width={150} height={134} className="decor-item absolute top-8 -left-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-10deg)' }} />
+        {/* Bottom-left: flowers reaching up-right from corner */}
+        <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item absolute -bottom-8 -left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(15deg) scaleX(-1)' }} />
+        {/* Bottom-right: stone anchoring the corner */}
+        <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item absolute -bottom-14 -right-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
+        {/* Sun: top center, lower, with warm glow, slowly rotating */}
+        <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun absolute top-16 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
 
         <div className="max-w-6xl mx-auto px-6 pt-8 pb-12 relative z-[1]">
           {loading ? (

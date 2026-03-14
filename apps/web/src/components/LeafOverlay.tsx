@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 
-const TOTAL_FRAMES = 84;
-const FPS = 8;
+const TOTAL_FRAMES = 250;
+const FPS = 24;
 
 const LeafOverlay = forwardRef<HTMLDivElement>((_, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);

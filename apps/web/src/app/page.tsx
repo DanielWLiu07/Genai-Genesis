@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import gsap from 'gsap';
 import { ArrowRight } from 'lucide-react';
+import { usePageTransition } from '@/components/PageTransition';
 
-const NOISE_DUR = '6s';
+const NOISE_DUR = '3.5s';
 const NOISE_SPLINE = '0.1 0.6 0.3 1';
 
 function NoiseMask({
@@ -18,8 +18,6 @@ function NoiseMask({
   children: React.ReactNode;
   mode?: 'reveal' | 'cover';
 }) {
-  // reveal: base=black (hidden), animated rect=white (shows content)
-  // cover:  base=white (visible), animated rect=black (hides content)
   const baseFill = mode === 'reveal' ? 'black' : 'white';
   const animFill = mode === 'reveal' ? 'white' : 'black';
 
@@ -71,47 +69,62 @@ export default function LandingPage() {
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const ctaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const leavesRef = useRef<HTMLDivElement>(null);
+  const { navigate } = usePageTransition();
 
   useEffect(() => {
-    // Trigger the video reveal noise animation on mount
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
-      // Logo fades in smoothly (while noise is still revealing)
+      // Leaves drop down after bg reveals
+      gsap.fromTo(leavesRef.current,
+        { y: '-100%', opacity: 0 },
+        { y: '0%', opacity: 1, duration: 1.5, delay: 2.5, ease: 'power2.out' }
+      );
+
+      // Logo — much sooner
       gsap.fromTo(logoRef.current,
         { scale: 0.6, opacity: 0, rotation: -30 },
-        { scale: 1, opacity: 1, rotation: 0, duration: 1.2, delay: 2.0, ease: 'power3.out' }
+        { scale: 1, opacity: 1, rotation: 0, duration: 1.0, delay: 0.4, ease: 'power3.out' }
       );
-      // Title slides in from right, smooth
+      // Title
       gsap.fromTo(titleRef.current,
         { opacity: 0, x: 40 },
-        { opacity: 1, x: 0, duration: 1.0, delay: 2.4, ease: 'power2.out' }
+        { opacity: 1, x: 0, duration: 0.9, delay: 0.7, ease: 'power2.out' }
       );
-      // Line draws in
+      // Line
       gsap.fromTo(lineRef.current,
         { scaleX: 0, transformOrigin: 'right center' },
-        { scaleX: 1, duration: 0.8, delay: 3.0, ease: 'power2.out' }
+        { scaleX: 1, duration: 0.7, delay: 1.1, ease: 'power2.out' }
       );
-      // Subtitle fades up gently
+      // Subtitle
       gsap.fromTo(subtitleRef.current,
         { opacity: 0, y: 12 },
-        { opacity: 1, y: 0, duration: 0.8, delay: 3.4, ease: 'power2.out' }
+        { opacity: 1, y: 0, duration: 0.7, delay: 1.3, ease: 'power2.out' }
       );
-      // CTA fades in
+      // CTA
       gsap.fromTo(ctaRef.current,
         { opacity: 0, y: 10 },
-        { opacity: 1, y: 0, duration: 0.7, delay: 3.8, ease: 'power2.out' }
+        { opacity: 1, y: 0, duration: 0.6, delay: 1.6, ease: 'power2.out' }
       );
-      // Gentle idle float on logo
-      gsap.to(logoRef.current, { y: -5, duration: 3, delay: 5.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
-      gsap.to(logoRef.current, { rotation: 3, duration: 5, delay: 5.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      // Idle float
+      gsap.to(logoRef.current, { y: -5, duration: 3, delay: 3.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to(logoRef.current, { rotation: 3, duration: 5, delay: 3.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
     });
     return () => ctx.revert();
   }, []);
 
+  const handleGetStarted = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((rect.left + rect.width / 2) / window.innerWidth) * 100;
+    const y = ((rect.top + rect.height / 2) / window.innerHeight) * 100;
+    navigate('/dashboard', `${x}%`, `${y}%`);
+  };
+
   return (
     <div ref={containerRef} className="min-h-screen flex items-center justify-end overflow-hidden relative" style={{ background: `url('/hero-bg.png') center/cover no-repeat` }}>
-      {/* Video overlay revealed through noise mask — bg.png shows until reveal */}
+      {/* Video overlay revealed through noise mask */}
       <div className="absolute inset-0 pointer-events-none">
         <NoiseMask id="video-reveal" mode="reveal">
           <div className="w-full h-full">
@@ -126,6 +139,24 @@ export default function LandingPage() {
             </video>
           </div>
         </NoiseMask>
+      </div>
+
+      {/* Leaves overlay */}
+      <div
+        ref={leavesRef}
+        className="absolute inset-0 pointer-events-none z-[5]"
+        style={{ opacity: 0 }}
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+          style={{ background: 'transparent' }}
+        >
+          <source src="/leaves-overlay.webm" type="video/webm" />
+        </video>
       </div>
 
       {/* Content — right-aligned */}
@@ -150,7 +181,7 @@ export default function LandingPage() {
               opacity: 0,
               fontFamily: 'var(--font-manga)',
               letterSpacing: '0.05em',
-              textTransform: 'uppercase' as const,
+              textTransform: 'uppercase',
               color: '#fff',
               WebkitTextStroke: '3px #111',
               paintOrder: 'stroke fill',
@@ -176,7 +207,7 @@ export default function LandingPage() {
             opacity: 0,
             fontFamily: 'var(--font-manga)',
             letterSpacing: '0.04em',
-            textTransform: 'uppercase' as const,
+            textTransform: 'uppercase',
             color: '#fff',
             WebkitTextStroke: '1.5px #111',
             paintOrder: 'stroke fill',
@@ -188,13 +219,13 @@ export default function LandingPage() {
 
         {/* CTA */}
         <div ref={ctaRef} className="mt-8" style={{ opacity: 0 }}>
-          <Link
-            href="/dashboard"
+          <button
+            onClick={handleGetStarted}
             className="manga-btn bg-white text-[#111] border-white px-7 py-3 text-base flex items-center gap-2"
           >
             Get Started
             <ArrowRight size={18} />
-          </Link>
+          </button>
         </div>
       </div>
     </div>

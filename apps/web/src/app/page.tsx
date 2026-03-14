@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import gsap from 'gsap';
 import { ArrowRight } from 'lucide-react';
 import { usePageTransition } from '@/components/PageTransition';
+import { usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 const LeafOverlay = dynamic(() => import('@/components/LeafOverlay'), { ssr: false });
@@ -78,8 +79,15 @@ export default function LandingPage() {
   const holyRef = useRef<HTMLDivElement>(null);
   const vignetteRef = useRef<HTMLDivElement>(null);
   const { navigate } = usePageTransition();
+  const pathname = usePathname();
 
   useEffect(() => {
+    // Reset all elements to hidden state before animating in
+    gsap.set([logoRef.current, titleRef.current, subtitleRef.current, ctaRef.current], { opacity: 0 });
+    gsap.set(lineRef.current, { scaleX: 0 });
+    gsap.set(treeRef.current, { x: '-100%', opacity: 0 });
+    gsap.set(rightTreeRef.current, { x: '100%', opacity: 0 });
+
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
@@ -151,7 +159,7 @@ export default function LandingPage() {
       gsap.to(logoRef.current, { scale: 1.08, duration: 3, delay: 2.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
     });
     return () => ctx.revert();
-  }, []);
+  }, [pathname]);
 
   const handleGetStarted = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();

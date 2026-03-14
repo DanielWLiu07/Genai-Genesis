@@ -78,10 +78,10 @@ export default function LandingPage() {
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
-      // Tree slides in from left
+      // Tree starts extremely big and shrinks to correct size
       gsap.fromTo(treeRef.current,
-        { x: '-100%', opacity: 0 },
-        { x: '0%', opacity: 1, duration: 1.8, delay: 0.4, ease: 'power2.out' }
+        { scale: 5, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 2, delay: 0.4, ease: 'power3.out' }
       );
 
       // Holy glow — subtle white breathing in and out
@@ -193,6 +193,14 @@ export default function LandingPage() {
           <source src="/leaves-overlay.webm" type="video/webm" />
         </video>
       </div>
+
+      {/* White vignette — soft edges */}
+      <div
+        className="absolute inset-0 pointer-events-none z-[7]"
+        style={{
+          boxShadow: 'inset 0 0 150px 60px rgba(255,255,255,0.7)',
+        }}
+      />
 
       {/* Holy white overlay — ethereal light wash */}
       <div

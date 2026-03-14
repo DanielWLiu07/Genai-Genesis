@@ -20,7 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
 import { SceneNode } from './SceneNode';
-import { ChevronLeft, ChevronRight, Lock, Unlock, Maximize2, LayoutGrid, CloudOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Unlock, Maximize2, LayoutGrid, CloudOff, Plus } from 'lucide-react';
 
 const nodeTypes: NodeTypes = {
   scene: SceneNode,
@@ -68,6 +68,7 @@ interface FlowEditorInnerProps {
 
 function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
   const clips = useTimelineStore((s) => s.clips);
+  const addClip = useTimelineStore((s) => s.addClip);
   const prevClipIds = useRef<string>('');
   const containerRef = useRef<HTMLDivElement>(null);
   const { fitView, setCenter, getNodes } = useReactFlow();
@@ -295,6 +296,22 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
           >
             <Maximize2 size={16} />
           </button>
+
+          {/* Add frame */}
+          <button
+            onClick={() => {
+              const maxOrder = sortedClips.length > 0 ? Math.max(...sortedClips.map(c => c.order)) + 1 : 0;
+              addClip({ type: 'image', duration_ms: 3000, prompt: '', gen_status: 'pending' });
+              setFocusedIdx(sortedClips.length); // jump to new clip
+            }}
+            className="manga-btn bg-[#111] text-white px-2 py-2"
+            title="Add new frame"
+          >
+            <Plus size={16} />
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-6 bg-[#ccc] mx-1" />
 
           {/* Cleanup layout */}
           <button

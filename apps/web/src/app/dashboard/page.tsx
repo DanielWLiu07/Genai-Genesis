@@ -54,10 +54,10 @@ export default function Dashboard() {
       gsap.fromTo('.hero-title', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: 'power3.out' });
       gsap.fromTo('.hero-cta', { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.4, delay: 0.2, ease: 'power2.out' });
 
-      // Decorative elements float in
+      // Decorative elements float in from edges
       gsap.fromTo('.decor-item',
-        { opacity: 0, scale: 0.6, y: 20 },
-        { opacity: 0.7, scale: 1, y: 0, duration: 0.8, stagger: 0.15, delay: 0.4, ease: 'back.out(1.5)' }
+        { opacity: 0, scale: 0.7 },
+        { opacity: 0.55, scale: 1, duration: 1, stagger: 0.12, delay: 0.3, ease: 'power2.out' }
       );
       // Gentle idle float on decorations
       document.querySelectorAll('.decor-item').forEach((el, i) => {
@@ -127,13 +127,18 @@ export default function Dashboard() {
       </div>
 
       {/* Scrollable shelf area */}
-      <div className="flex-1 overflow-y-auto relative" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-        {/* Decorative elements */}
-        <Image src="/stylized_imgs/flower3.png" alt="" width={120} height={224} className="decor-item absolute top-6 right-8 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 4px 3px rgba(0,0,0,0.15))' }} />
-        <Image src="/stylized_imgs/leaf5.png" alt="" width={80} height={80} className="decor-item absolute bottom-12 left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 2px rgba(0,0,0,0.1))' }} />
-        <Image src="/stylized_imgs/stone2.png" alt="" width={100} height={100} className="decor-item absolute bottom-4 right-16 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 3px 2px rgba(0,0,0,0.15))' }} />
-        <Image src="/stylized_imgs/pine.png" alt="" width={60} height={48} className="decor-item absolute top-20 left-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 2px rgba(0,0,0,0.1))' }} />
-        <Image src="/stylized_imgs/sun.png" alt="" width={70} height={67} className="decor-item absolute top-4 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(0 0 8px rgba(255,200,50,0.3))' }} />
+      <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        {/* Decorative elements — clipped to edges, pointing inward */}
+        {/* Top-right corner: flower leaning inward */}
+        <Image src="/stylized_imgs/flower3.png" alt="" width={160} height={300} className="decor-item absolute -top-4 -right-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.2))', transform: 'rotate(-15deg)' }} />
+        {/* Bottom-left corner: leaves pointing inward */}
+        <Image src="/stylized_imgs/leaf5.png" alt="" width={140} height={140} className="decor-item absolute -bottom-6 -left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(20deg)' }} />
+        {/* Bottom-right corner: stone clipped to edge */}
+        <Image src="/stylized_imgs/stone1.png" alt="" width={160} height={220} className="decor-item absolute -bottom-10 -right-8 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(-5deg)' }} />
+        {/* Top-left corner: pine branch reaching in */}
+        <Image src="/stylized_imgs/leaf7.png" alt="" width={130} height={130} className="decor-item absolute -top-4 -left-4 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(25deg) scaleX(-1)' }} />
+        {/* Sun: larger, top center with warm glow */}
+        <Image src="/stylized_imgs/sun.png" alt="" width={180} height={171} className="decor-item absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(0 0 20px rgba(255,200,50,0.4)) drop-shadow(0 0 40px rgba(255,180,30,0.2))' }} />
 
         <div className="max-w-6xl mx-auto px-6 pt-8 pb-12 relative z-[1]">
           {loading ? (

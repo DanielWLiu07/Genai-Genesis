@@ -1,124 +1,128 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Plus, Film, BookOpen, Sparkles, Clock, Loader2 } from 'lucide-react';
-import { useProjectStore, type Project } from '@/stores/project-store';
-import { api } from '@/lib/api';
+import Image from 'next/image';
+import gsap from 'gsap';
+import { ArrowRight } from 'lucide-react';
 
-const STATUS_COLORS: Record<Project['status'], string> = {
-  uploading: 'text-yellow-400 bg-yellow-400/10',
-  uploaded: 'text-yellow-400 bg-yellow-400/10',
-  analyzing: 'text-blue-400 bg-blue-400/10',
-  planning: 'text-purple-400 bg-purple-400/10',
-  editing: 'text-green-400 bg-green-400/10',
-  rendering: 'text-orange-400 bg-orange-400/10',
-  done: 'text-zinc-400 bg-zinc-400/10',
-};
-
-export default function Dashboard() {
-  const { projects, loading, setProjects, setLoading } = useProjectStore();
+export default function LandingPage() {
+  const logoRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const lineRef = useRef<HTMLDivElement>(null);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  const ctaRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const bgFlashRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setLoading(true);
-    api.getProjects()
-      .then((data: any) => setProjects(Array.isArray(data) ? data : data.projects || []))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [setProjects, setLoading]);
+    const ctx = gsap.context(() => {
+      gsap.fromTo(logoRef.current,
+        { scale: 0, opacity: 0, rotation: -360 },
+        { scale: 1, opacity: 1, rotation: 0, duration: 0.7, ease: 'back.out(1.2)' }
+      );
+      gsap.fromTo(titleRef.current,
+        { scale: 3, opacity: 0, y: -200, rotateZ: -5 },
+        { scale: 1, opacity: 1, y: 0, rotateZ: 0, duration: 0.5, delay: 0.3, ease: 'power4.out' }
+      );
+      gsap.fromTo(bgFlashRef.current,
+        { opacity: 0 },
+        { opacity: 0.3, duration: 0.06, delay: 0.6, yoyo: true, repeat: 1, ease: 'none' }
+      );
+      gsap.fromTo(containerRef.current,
+        { x: 0, y: 0 },
+        { x: 4, y: -2, duration: 0.03, delay: 0.65, yoyo: true, repeat: 5, ease: 'power2.inOut' }
+      );
+      gsap.fromTo(lineRef.current,
+        { scaleX: 0, transformOrigin: 'center' },
+        { scaleX: 1, duration: 0.4, delay: 0.7, ease: 'power3.out' }
+      );
+      gsap.fromTo(subtitleRef.current,
+        { opacity: 0, y: 30 },
+        { opacity: 1, y: 0, duration: 0.6, delay: 0.9, ease: 'power2.out' }
+      );
+      gsap.fromTo(ctaRef.current,
+        { opacity: 0, y: 20 },
+        { opacity: 1, y: 0, duration: 0.5, delay: 1.1, ease: 'back.out(1.5)' }
+      );
+      gsap.to(logoRef.current, { y: -8, duration: 2.5, delay: 1.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to(logoRef.current, { rotation: 5, duration: 4, delay: 1.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+    });
+    return () => ctx.revert();
+  }, []);
 
   return (
-    <main className="min-h-screen">
-      {/* Hero */}
-      <div className="border-b border-zinc-800 bg-gradient-to-b from-violet-950/20 to-zinc-950">
-        <div className="max-w-6xl mx-auto px-6 py-16">
-          <div className="flex items-center gap-3 mb-4">
-            <Film className="text-violet-400" size={32} />
-            <h1 className="text-4xl font-bold">FrameFlow</h1>
-          </div>
-          <p className="text-xl text-zinc-400 max-w-2xl">
-            Transform written stories into cinematic book trailers using AI narrative analysis
-            and interactive visual editing.
-          </p>
-          <div className="flex gap-3 mt-8">
-            <Link
-              href="/project/new"
-              className="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2 transition-colors"
-            >
-              <Plus size={20} />
-              New Project
-            </Link>
-          </div>
-        </div>
-      </div>
+    <div ref={containerRef} className="min-h-screen flex items-center justify-end overflow-hidden relative bg-white">
+      {/* Speed lines — manga page feel */}
+      <div className="absolute inset-0 manga-speedlines opacity-40 pointer-events-none" />
 
-      {/* Features */}
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-            <BookOpen className="text-violet-400 mb-3" size={24} />
-            <h3 className="font-semibold mb-2">Upload Your Story</h3>
-            <p className="text-sm text-zinc-400">
-              Drop in your book text, chapters, or manga panels. FrameFlow analyzes narrative structure automatically.
-            </p>
+      {/* Impact flash (black ink splash) */}
+      <div ref={bgFlashRef} className="absolute inset-0 bg-black pointer-events-none z-30" style={{ opacity: 0 }} />
+
+      {/* Halftone */}
+      <div className="absolute inset-0 manga-halftone opacity-15 pointer-events-none" />
+
+      {/* Content — right-aligned */}
+      <div className="relative z-10 flex flex-col items-end text-right pr-[8vw]" style={{ marginTop: '-4vh' }}>
+        {/* Logo + Title */}
+        <div className="flex items-center gap-5 mb-4">
+          <div ref={logoRef} style={{ opacity: 0 }}>
+            <Image
+              src="/logo.png"
+              alt="MangaMate"
+              width={140}
+              height={140}
+              className="drop-shadow-[0_0_20px_rgba(0,0,0,0.3)]"
+              priority
+            />
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-            <Sparkles className="text-violet-400 mb-3" size={24} />
-            <h3 className="font-semibold mb-2">AI Trailer Planning</h3>
-            <p className="text-sm text-zinc-400">
-              AI extracts key scenes, builds emotional arcs, and generates a cinematic trailer timeline.
-            </p>
-          </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-            <Film className="text-violet-400 mb-3" size={24} />
-            <h3 className="font-semibold mb-2">Visual Editor + Copilot</h3>
-            <p className="text-sm text-zinc-400">
-              Edit your trailer with a visual flowchart editor or chat with the AI copilot to refine it.
-            </p>
-          </div>
+          <h1
+            ref={titleRef}
+            className="select-none leading-[0.9]"
+            style={{
+              fontSize: 'clamp(3rem, 9vw, 7rem)',
+              opacity: 0,
+              fontFamily: 'var(--font-manga)',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              color: '#fff',
+              WebkitTextStroke: '3px #111',
+              paintOrder: 'stroke fill',
+              textShadow: '4px 4px 0px #000',
+            }}
+          >
+            MangaMate
+          </h1>
         </div>
 
-        {/* Projects List */}
-        <h2 className="text-xl font-semibold mb-4">Your Projects</h2>
-        {loading ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
-            <Loader2 size={32} className="mx-auto mb-3 text-zinc-600 animate-spin" />
-            <p>Loading projects...</p>
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
-            <Film size={48} className="mx-auto mb-3 text-zinc-700" />
-            <p>No projects yet. Create your first book trailer!</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project) => (
-              <Link
-                key={project.id}
-                href={`/project/${project.id}`}
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-violet-700 transition-colors group"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <Film size={20} className="text-violet-400 mt-0.5" />
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[project.status] || 'text-zinc-400 bg-zinc-400/10'}`}>
-                    {project.status}
-                  </span>
-                </div>
-                <h3 className="font-semibold text-zinc-200 group-hover:text-violet-300 transition-colors mb-1">
-                  {project.title}
-                </h3>
-                {project.description && (
-                  <p className="text-sm text-zinc-500 line-clamp-2 mb-3">{project.description}</p>
-                )}
-                <div className="flex items-center gap-1 text-xs text-zinc-600">
-                  <Clock size={12} />
-                  {new Date(project.created_at).toLocaleDateString()}
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+        {/* Ink line */}
+        <div
+          ref={lineRef}
+          className="h-[3px] w-56"
+          style={{ background: 'linear-gradient(to left, #111, transparent)' }}
+        />
+
+        {/* Subtitle */}
+        <p
+          ref={subtitleRef}
+          className="text-[#666] text-base md:text-lg mt-5 max-w-md leading-relaxed"
+          style={{ opacity: 0 }}
+        >
+          Transform your stories into{' '}
+          <span className="text-[#111] manga-title text-xl md:text-2xl">cinematic trailers</span>
+        </p>
+
+        {/* CTA */}
+        <div ref={ctaRef} className="mt-8" style={{ opacity: 0 }}>
+          <Link
+            href="/dashboard"
+            className="manga-btn bg-[#111] text-white px-7 py-3 text-base flex items-center gap-2"
+          >
+            Get Started
+            <ArrowRight size={18} />
+          </Link>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

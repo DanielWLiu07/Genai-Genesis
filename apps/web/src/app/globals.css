@@ -8,3 +8,147 @@
 body {
   font-family: var(--font-sans);
 }
+
+/* ═══════════════════════════════════════
+   MANGA THEME — White paper, black ink
+   ═══════════════════════════════════════ */
+
+/* ─── Manga Panel Borders ─── */
+.manga-panel {
+  border: 3px solid #111;
+  border-radius: 0;
+  box-shadow: 4px 4px 0px #000;
+  background: #fff;
+}
+
+.manga-panel-accent {
+  border: 3px solid #111;
+  border-radius: 0;
+  box-shadow: 4px 4px 0px rgba(168, 85, 247, 0.4);
+  background: #fff;
+}
+
+/* ─── Speed Lines Background ─── */
+.manga-speedlines {
+  background-image: repeating-conic-gradient(
+    #e8e8e8 0deg 2deg,
+    transparent 2deg 10deg
+  );
+  background-position: center;
+}
+
+/* ─── Halftone Dot Pattern ─── */
+.manga-halftone {
+  background-image: radial-gradient(circle, #ccc 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+/* ─── Manga Title ─── */
+.manga-title {
+  font-family: var(--font-manga), 'Bangers', cursive;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #111;
+}
+
+/* ─── Manga Button ─── */
+.manga-btn {
+  font-family: var(--font-manga), 'Bangers', cursive;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 3px solid #111;
+  box-shadow: 4px 4px 0px #000;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.manga-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px #000;
+}
+.manga-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #000;
+}
+.manga-btn:disabled {
+  opacity: 0.4;
+  transform: none;
+  box-shadow: 4px 4px 0px #000;
+}
+
+/* ─── Skewed Accent Bar ─── */
+.manga-accent-bar {
+  display: inline-block;
+  background: #111;
+  padding: 2px 14px;
+  transform: skewX(-6deg);
+  font-family: var(--font-manga), 'Bangers', cursive;
+  letter-spacing: 0.05em;
+  color: #fff;
+}
+
+/* ─── Manga Input ─── */
+.manga-input {
+  background: #fafafa;
+  border: 2px solid #ccc;
+  border-radius: 0;
+  padding: 0.75rem 1rem;
+  color: #111;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.manga-input:focus {
+  border-color: #111;
+  box-shadow: 0 0 0 1px #111;
+}
+.manga-input::placeholder {
+  color: #999;
+}
+
+/* ─── Manga Drop Zone ─── */
+.manga-dropzone {
+  border: 3px dashed #bbb;
+  border-radius: 0;
+  background: #f8f8f8;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.manga-dropzone:hover {
+  border-color: #111;
+  background: #eee;
+}
+
+/* ─── Manga Tab ─── */
+.manga-tab {
+  font-family: var(--font-manga), 'Bangers', cursive;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.5rem 1.25rem;
+  border: 2px solid #ccc;
+  border-bottom: none;
+  background: #f5f5f5;
+  color: #999;
+  transition: all 0.15s;
+}
+.manga-tab[data-state="active"] {
+  background: #fff;
+  color: #111;
+  border-color: #111;
+  border-bottom: 2px solid #fff;
+  margin-bottom: -2px;
+}
+
+/* ─── Manga Badge ─── */
+.manga-badge {
+  display: inline-block;
+  font-family: var(--font-manga), 'Bangers', cursive;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 1px 8px;
+  transform: skewX(-3deg);
+}
+
+/* ─── Ink Splash Divider ─── */
+.ink-divider {
+  height: 3px;
+  background: linear-gradient(to right, transparent, #111, transparent);
+  opacity: 0.3;
+}

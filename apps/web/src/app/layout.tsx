@@ -8,15 +8,15 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const bangers = Bangers({ weight: '400', subsets: ['latin'], variable: '--font-manga' });
 
 export const metadata: Metadata = {
-  title: 'FrameFlow - AI Book Trailer Generator',
+  title: 'MangaMate - AI Book Trailer Generator',
   description: 'Transform written stories into cinematic book trailers using AI',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.variable} ${bangers.variable} font-sans bg-zinc-950 text-zinc-100 min-h-screen`}>
-        <Theme appearance="dark" accentColor="violet" radius="medium">
+    <html lang="en">
+      <body className={`${inter.variable} ${bangers.variable} font-sans bg-[#f5f5f5] text-[#111] min-h-screen`}>
+        <Theme appearance="light" accentColor="gray" radius="none" scaling="100%">
           {children}
         </Theme>
       </body>

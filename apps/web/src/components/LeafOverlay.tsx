@@ -74,7 +74,7 @@ const LeafOverlay = forwardRef<HTMLDivElement>((_, ref) => {
   }, []);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 pointer-events-none z-[8]">
+    <div ref={containerRef} className="absolute inset-0 pointer-events-none z-[8]" style={{ opacity: 0, transform: 'translateY(-100%)' }}>
       <canvas
         ref={canvasRef}
         className="w-full h-full"

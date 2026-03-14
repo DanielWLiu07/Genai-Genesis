@@ -34,7 +34,8 @@ async def root():
         "endpoints": [
             "POST /ai/analyze - Analyze story text",
             "POST /ai/plan-trailer - Generate trailer timeline",
-            "POST /ai/chat - Chat with copilot (tool calling)",
+            "POST /ai/pipeline - Full Railtracks multi-agent pipeline (analyze+plan+quality)",
+            "POST /ai/chat - Chat with Railtracks copilot (tool calling)",
             "POST /ai/suggest - Get timeline improvement suggestions",
             "GET /ai/presets - List available style presets",
         ],

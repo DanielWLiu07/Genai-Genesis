@@ -11,6 +11,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["chat"])
 
+# Railtracks copilot — imported lazily so startup doesn't fail if railtracks
+# is missing; falls back to direct Gemini call in that case.
+try:
+    from app.agents.copilot import run_copilot as _rt_run_copilot
+    _RAILTRACKS_CHAT = True
+except Exception as _rt_e:
+    _RAILTRACKS_CHAT = False
+    logger.warning(f"Railtracks chat unavailable, using direct Gemini: {_rt_e}")
+
 
 class ChatRequest(BaseModel):
     project_id: str
@@ -73,21 +82,30 @@ Write detailed cinematic prompts:
 
 @router.post("/chat")
 async def chat(data: ChatRequest):
+    analysis = data.analysis or (data.timeline or {}).get("analysis")
+    timeline_context = _build_timeline_context(data.timeline, analysis)
+    user_message = data.message
+    if timeline_context:
+        user_message = f"{timeline_context}\n\nUser request: {data.message}"
+
+    # ── Railtracks path ──────────────────────────────────────────────────────
+    if _RAILTRACKS_CHAT:
+        try:
+            content, tool_calls = await _rt_run_copilot(user_message)
+            if not content and tool_calls:
+                actions = [tc["tool_name"] for tc in tool_calls]
+                content = f"Done! Applied: {', '.join(actions)}"
+            return {"role": "assistant", "content": content, "tool_calls": tool_calls}
+        except Exception as rt_err:
+            logger.warning(f"Railtracks copilot failed, falling back to Gemini: {rt_err}")
+
+    # ── Direct Gemini fallback ───────────────────────────────────────────────
     try:
         tools = get_gemini_tools()
         model = get_model(system_instruction=COPILOT_SYSTEM, tools=tools)
     except RuntimeError as e:
-        return {
-            "role": "assistant",
-            "content": str(e),
-            "tool_calls": [],
-        }
+        return {"role": "assistant", "content": str(e), "tool_calls": []}
 
-    # Build timeline context
-    analysis = data.analysis or (data.timeline or {}).get("analysis")
-    timeline_context = _build_timeline_context(data.timeline, analysis)
-
-    # Build Gemini chat history from our message history
     gemini_history = []
     for msg in data.history[-10:]:
         role = msg.get("role", "user")
@@ -99,72 +117,43 @@ async def chat(data: ChatRequest):
         if content:
             gemini_history.append({"role": role, "parts": [content]})
 
-    # Start chat with history
     chat_session = model.start_chat(history=gemini_history)
-
-    # Build the user message with context
-    user_message = data.message
-    if timeline_context:
-        user_message = f"{timeline_context}\n\nUser request: {data.message}"
 
     try:
         response = chat_session.send_message(user_message)
 
-        # Extract text and tool calls from response
         tool_calls = []
         text_parts = []
-
         for part in response.parts:
             if part.function_call:
                 fc = part.function_call
-                # Convert MapComposite args to regular dict
-                args = {}
-                for key, value in fc.args.items():
-                    args[key] = _convert_proto_value(value)
-
-                tool_calls.append({
-                    "tool_name": fc.name,
-                    "arguments": args,
-                })
+                args = {key: _convert_proto_value(value) for key, value in fc.args.items()}
+                tool_calls.append({"tool_name": fc.name, "arguments": args})
             elif part.text:
                 text_parts.append(part.text)
 
         content = " ".join(text_parts) if text_parts else ""
 
-        # If we got tool calls, send dummy tool responses back to get the model's explanation
         if tool_calls and not content:
-            # Send function responses so model can explain what it did
-            func_responses = []
-            for tc in tool_calls:
-                func_responses.append(
-                    genai.protos.Part(
-                        function_response=genai.protos.FunctionResponse(
-                            name=tc["tool_name"],
-                            response={"result": "success", "applied": True},
-                        )
+            func_responses = [
+                genai.protos.Part(
+                    function_response=genai.protos.FunctionResponse(
+                        name=tc["tool_name"],
+                        response={"result": "success", "applied": True},
                     )
                 )
+                for tc in tool_calls
+            ]
             try:
-                followup = chat_session.send_message(func_responses)
-                content = followup.text
+                content = chat_session.send_message(func_responses).text
             except Exception:
-                # Generate a default explanation
-                actions = [f"{tc['tool_name']}()" for tc in tool_calls]
-                content = f"Done! Applied: {', '.join(actions)}"
+                content = f"Done! Applied: {', '.join(tc['tool_name'] for tc in tool_calls)}"
 
-        return {
-            "role": "assistant",
-            "content": content,
-            "tool_calls": tool_calls,
-        }
+        return {"role": "assistant", "content": content, "tool_calls": tool_calls}
 
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
-        return {
-            "role": "assistant",
-            "content": f"Something went wrong: {str(e)}",
-            "tool_calls": [],
-        }
+        return {"role": "assistant", "content": f"Something went wrong: {str(e)}", "tool_calls": []}
 
 
 def _build_timeline_context(timeline: dict | None, analysis: dict | None = None) -> str:

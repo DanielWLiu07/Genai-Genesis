@@ -2,6 +2,9 @@
 
 **AI Book Trailer Generator** - Transform written stories into cinematic book trailers using AI narrative analysis and interactive visual editing.
 
+> Built with [Railtracks](https://github.com/RailtownAI/railtracks) — a lightweight Canadian agentic framework for composing modular AI agents.
+> MangaMate uses Railtracks to orchestrate a multi-agent pipeline (`StoryAnalysisAgent → TrailerPlannerAgent → QualityReviewAgent`) and a `CopilotAgent` with 16 timeline-editing tools for natural-language trailer editing.
+
 ## Quick Start
 
 ```bash

@@ -84,7 +84,7 @@ export default function NewProject() {
   return (
     <main ref={mainRef} className="min-h-screen bg-[#f5f5f5]">
       <div className="max-w-2xl mx-auto px-6 py-12">
-        <Link href="/" className="text-[#888] hover:text-[#111] flex items-center gap-2 mb-8 text-sm transition-colors">
+        <Link href="/dashboard" className="text-[#888] hover:text-[#111] flex items-center gap-2 mb-8 text-sm transition-colors">
           <ArrowLeft size={16} /> Back to Dashboard
         </Link>
 

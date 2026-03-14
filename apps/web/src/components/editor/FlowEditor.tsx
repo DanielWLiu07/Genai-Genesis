@@ -18,6 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
 import { SceneNode } from './SceneNode';
+import gsap from 'gsap';
 
 const nodeTypes: NodeTypes = {
   scene: SceneNode,
@@ -52,6 +53,8 @@ export function FlowEditor() {
   const clips = useTimelineStore((s) => s.clips);
   const initialNodes = useMemo(() => clipsToNodes(clips), [clips]);
   const initialEdges = useMemo(() => clipsToEdges(clips), [clips]);
+  const prevClipCount = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -66,6 +69,44 @@ export function FlowEditor() {
     setNodes(clipsToNodes(clips));
     setEdges(clipsToEdges(clips));
   }, [clips, setNodes, setEdges]);
+
+  // Animate nodes staggering in when clips first appear or new ones are added
+  useEffect(() => {
+    if (clips.length > 0 && clips.length > prevClipCount.current) {
+      // Small delay to let React Flow render the DOM nodes
+      requestAnimationFrame(() => {
+        const nodeElements = containerRef.current?.querySelectorAll('.react-flow__node');
+        if (nodeElements && nodeElements.length > 0) {
+          // Only animate new nodes
+          const startIdx = prevClipCount.current;
+          const newNodes = Array.from(nodeElements).slice(startIdx);
+          if (newNodes.length > 0) {
+            gsap.fromTo(newNodes,
+              { opacity: 0, scale: 0.8, y: 20 },
+              { opacity: 1, scale: 1, y: 0, duration: 0.4, stagger: 0.06, ease: 'back.out(1.3)' }
+            );
+          }
+        }
+      });
+    }
+    prevClipCount.current = clips.length;
+  }, [clips.length]);
+
+  // Animate controls and minimap on mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!containerRef.current) return;
+      const controls = containerRef.current.querySelector('.react-flow__controls');
+      const minimap = containerRef.current.querySelector('.react-flow__minimap');
+      if (controls) {
+        gsap.fromTo(controls, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.4, ease: 'power2.out' });
+      }
+      if (minimap) {
+        gsap.fromTo(minimap, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, delay: 0.1, ease: 'power2.out' });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Debounced auto-save when clips change
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,7 +127,7 @@ export function FlowEditor() {
   }, [clips]);
 
   return (
-    <div className="w-full h-full">
+    <div ref={containerRef} className="w-full h-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}

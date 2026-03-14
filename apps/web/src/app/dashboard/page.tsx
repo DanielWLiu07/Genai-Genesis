@@ -41,6 +41,18 @@ export default function Dashboard() {
   useEffect(() => {
     if (projects.length > 0) {
       gsap.fromTo('.project-card', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.3, stagger: 0.06, ease: 'power2.out' });
+
+      // Add hover lift animations to project cards
+      const cards = document.querySelectorAll('.project-card');
+      cards.forEach((card) => {
+        const el = card as HTMLElement;
+        el.addEventListener('mouseenter', () => {
+          gsap.to(el.querySelector('.book-card'), { y: -4, boxShadow: '6px 8px 0px #000', duration: 0.2, ease: 'power2.out' });
+        });
+        el.addEventListener('mouseleave', () => {
+          gsap.to(el.querySelector('.book-card'), { y: 0, boxShadow: '4px 4px 0px #000', duration: 0.2, ease: 'power2.out' });
+        });
+      });
     }
   }, [projects]);
 
@@ -94,7 +106,7 @@ export default function Dashboard() {
                   className="project-card group"
                 >
                   {/* Book-like card */}
-                  <div className="relative aspect-[2/3] bg-white border-2 border-[#111] overflow-hidden transition-all duration-200 group-hover:border-[#111] group-hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]"
+                  <div className="book-card relative aspect-[2/3] bg-white border-2 border-[#111] overflow-hidden"
                     style={{ boxShadow: '4px 4px 0px #000' }}
                   >
                     {/* Spine accent */}

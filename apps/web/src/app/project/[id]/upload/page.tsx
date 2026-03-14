@@ -147,15 +147,23 @@ export default function UploadPage() {
   }, [id, storyText]);
 
   // ── Image Handlers ──
-  const handleImageUpload = useCallback((files: FileList | null) => {
-    if (!files) return;
-    const newImages = Array.from(files).map((file) => ({
+  const handleImageUpload = useCallback((files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return;
+    const fileArray = Array.from(files);
+    // Filter to only image files
+    const imageFiles = fileArray.filter((f) => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    const newImages = imageFiles.map((file) => ({
       id: crypto.randomUUID(),
       file,
       url: URL.createObjectURL(file),
       description: '',
     }));
     setImages((prev) => [...prev, ...newImages]);
+    // Reset the file input so the same file can be re-selected
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
   }, []);
 
   const removeImage = useCallback((imgId: string) => {
@@ -190,7 +198,24 @@ export default function UploadPage() {
   }, []);
 
   // ── Continue to Editor ──
-  const handleContinue = useCallback(() => {
+  const handleContinue = useCallback(async () => {
+    // If text was pasted but not uploaded via file, persist it to the backend now
+    const text = storyText.trim();
+    if (text && !storyFile) {
+      try {
+        // Create a text file from pasted content and upload it
+        const blob = new Blob([text], { type: 'text/plain' });
+        const file = new File([blob], 'pasted-story.txt', { type: 'text/plain' });
+        const uploadResult: any = await api.uploadBook(id, file);
+        const bookText = uploadResult.book_text || uploadResult.text_preview || text;
+        sessionStorage.setItem(`book_text_${id}`, bookText);
+      } catch (err) {
+        console.error('Failed to persist text:', err);
+        // Still continue — sessionStorage has the text
+        sessionStorage.setItem(`book_text_${id}`, text);
+      }
+    }
+
     // Save characters to store
     characters.forEach((c) => {
       if (c.name.trim()) {
@@ -202,8 +227,8 @@ export default function UploadPage() {
       addUploadedImage({ url: img.url, file_name: img.file.name, description: img.description });
     });
     // Save characters to sessionStorage for editor
-    const charData = characters.filter((c) => c.name.trim()).map(({ id, name, description, reference_image_url }) => ({
-      id, name, description, reference_image_url,
+    const charData = characters.filter((c) => c.name.trim()).map(({ id: cid, name, description, reference_image_url }) => ({
+      id: cid, name, description, reference_image_url,
     }));
     sessionStorage.setItem(`characters_${id}`, JSON.stringify(charData));
     sessionStorage.setItem(`uploaded_images_${id}`, JSON.stringify(images.map((i) => ({
@@ -211,7 +236,7 @@ export default function UploadPage() {
     }))));
 
     router.push(`/project/${id}`);
-  }, [id, characters, images, addCharacter, addUploadedImage, router]);
+  }, [id, characters, images, storyText, storyFile, addCharacter, addUploadedImage, router]);
 
   const hasStoryContent = textUploaded || storyText.trim().length > 0;
 
@@ -220,7 +245,7 @@ export default function UploadPage() {
       <div className="max-w-3xl mx-auto px-6 py-12">
         {/* Header */}
         <div ref={headerRef}>
-          <Link href="/" className="text-[#888] hover:text-[#111] flex items-center gap-2 mb-8 text-sm transition-colors">
+          <Link href="/dashboard" className="text-[#888] hover:text-[#111] flex items-center gap-2 mb-8 text-sm transition-colors">
             <ArrowLeft size={16} /> Back to Dashboard
           </Link>
 
@@ -333,46 +358,68 @@ export default function UploadPage() {
                 <h3 className="text-[#111] font-medium mb-1">Reference Images</h3>
                 <p className="text-[#888] text-sm mb-4">Optional — upload scene images, artwork, or visual references. Leave empty for fully AI-generated scenes.</p>
 
+                {/* Hidden file input — always available */}
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/svg+xml,image/*"
+                  multiple
+                  onChange={(e) => {
+                    handleImageUpload(e.target.files);
+                  }}
+                  className="hidden"
+                />
+
                 <div
                   ref={imageDropzoneRef}
                   className="manga-dropzone p-8 text-center cursor-pointer"
                   onClick={() => imageInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('border-[#111]', 'bg-[#eee]'); }}
+                  onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('border-[#111]', 'bg-[#eee]'); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.currentTarget.classList.remove('border-[#111]', 'bg-[#eee]');
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) handleImageUpload(files);
+                  }}
                 >
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => handleImageUpload(e.target.files)}
-                    className="hidden"
-                  />
                   <ImageIcon size={32} className="mx-auto mb-3 text-[#555]" />
                   <p className="text-[#888]">Drop images here or click to browse</p>
-                  <p className="text-xs text-[#555] mt-1">Upload one by one or multiple at once</p>
+                  <p className="text-xs text-[#555] mt-1">PNG, JPG, GIF, WebP — upload one or many at once</p>
                 </div>
               </div>
 
               {/* Image Grid */}
               {images.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {images.map((img) => (
-                    <div key={img.id} className="image-card manga-panel p-2 relative group">
-                      <button
-                        onClick={() => removeImage(img.id)}
-                        className="absolute top-1 right-1 bg-red-600 text-white p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                      >
-                        <X size={14} />
-                      </button>
-                      <img src={img.url} alt={img.file.name} className="w-full h-32 object-cover" />
-                      <input
-                        value={img.description}
-                        onChange={(e) => setImages((prev) => prev.map((i) => i.id === img.id ? { ...i, description: e.target.value } : i))}
-                        placeholder="Description (optional)"
-                        className="manga-input w-full text-xs mt-2 py-1 px-2"
-                      />
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {images.map((img) => (
+                      <div key={img.id} className="image-card manga-panel p-2 relative group">
+                        <button
+                          onClick={() => removeImage(img.id)}
+                          className="absolute top-1 right-1 bg-red-600 text-white p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        >
+                          <X size={14} />
+                        </button>
+                        <img src={img.url} alt={img.file.name} className="w-full h-32 object-cover" />
+                        <input
+                          value={img.description}
+                          onChange={(e) => setImages((prev) => prev.map((i) => i.id === img.id ? { ...i, description: e.target.value } : i))}
+                          placeholder="Description (optional)"
+                          className="manga-input w-full text-xs mt-2 py-1 px-2"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {/* Add more button */}
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    className="manga-btn border-dashed border-[#555] text-[#888] hover:text-[#111] w-full py-3 flex items-center justify-center gap-2"
+                  >
+                    <Plus size={16} /> Add More Images
+                  </button>
+                </>
               )}
             </div>
           </Tabs.Content>

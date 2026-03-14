@@ -171,7 +171,6 @@ export default function LandingPage() {
               playsInline
               className="w-full h-full object-cover"
             >
-              <source src="/hero-bg.webm" type="video/webm" />
               <source src="/hero-bg.mp4" type="video/mp4" />
             </video>
           </div>
@@ -214,7 +213,7 @@ export default function LandingPage() {
         </video>
       </div>
 
-      {/* Leaves overlay — canvas-based PNG sequence with real transparency */}
+      {/* Layer 3: Leaves overlay — canvas PNG sequence with real transparency */}
       <LeafOverlay ref={leavesRef} />
 
       {/* White vignette — soft edges, slowly pulsing */}

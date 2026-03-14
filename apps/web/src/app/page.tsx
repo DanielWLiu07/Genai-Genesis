@@ -160,7 +160,7 @@ export default function LandingPage() {
 
   return (
     <div ref={containerRef} className="min-h-screen flex items-center justify-end overflow-hidden relative" style={{ background: `url('/hero-bg.png') center/cover no-repeat` }}>
-      {/* Layer 1: Hero video (behind everything) */}
+      {/* Layer 1: Hero video — transparent VP9 WebM from main seq frames */}
       <div className="absolute inset-0 pointer-events-none z-[1]">
         <NoiseMask id="video-reveal" mode="reveal">
           <div className="w-full h-full">
@@ -170,8 +170,9 @@ export default function LandingPage() {
               muted
               playsInline
               className="w-full h-full object-cover"
+              style={{ background: 'transparent' }}
             >
-              <source src="/hero-bg.mp4" type="video/mp4" />
+              <source src="/hero-bg.webm" type="video/webm" />
             </video>
           </div>
         </NoiseMask>
@@ -213,7 +214,7 @@ export default function LandingPage() {
         </video>
       </div>
 
-      {/* Layer 3: Leaves overlay — canvas PNG sequence with real transparency */}
+      {/* Layer 3: Leaves on top of everything — drops from top */}
       <LeafOverlay ref={leavesRef} />
 
       {/* White vignette — soft edges, slowly pulsing */}

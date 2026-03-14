@@ -1,8 +1,4 @@
-"""Gemini image generation fallback when Kling is not configured.
-
-Uses gemini-2.0-flash-exp-image-generation to generate images from prompts.
-Saves the result to /tmp and returns a file:// URL (or base64 data URL).
-"""
+"""Image generation using Imagen 4 (google-genai SDK)."""
 import base64
 import logging
 import os
@@ -16,7 +12,7 @@ _cache: dict[str, dict] = {}
 
 
 async def generate_image_gemini(prompt: str, aspect_ratio: str = "16:9") -> dict:
-    """Generate an image using Gemini Flash image generation.
+    """Generate an image using Imagen 4 Fast.
 
     Returns dict with keys: status, url, thumbnail_url, message
     """
@@ -26,62 +22,49 @@ async def generate_image_gemini(prompt: str, aspect_ratio: str = "16:9") -> dict
 
     cache_key = hashlib.sha256(f"{prompt}|{aspect_ratio}".encode()).hexdigest()
     if cache_key in _cache:
-        logger.info("Gemini image cache hit")
+        logger.info("Image cache hit")
         return _cache[cache_key]
 
     try:
-        import google.generativeai as genai
-        from google.generativeai import types as genai_types
+        from google import genai
+        from google.genai import types
 
-        genai.configure(api_key=settings.gemini_api_key)
+        client = genai.Client(api_key=settings.gemini_api_key)
 
-        # gemini-2.0-flash-exp-image-generation supports text+image output
-        model = genai.GenerativeModel("gemini-2.0-flash-exp-image-generation")
-
-        # Enhance prompt for cinematic quality
         enhanced = (
-            f"{prompt}. Cinematic, high quality, detailed, professional photography style."
+            f"{prompt}. Cinematic, high quality, detailed, manga illustration style, "
+            "bold ink lines, dramatic shading, professional quality."
         )
+
+        # Map aspect ratio string to Imagen-supported value
+        ar_map = {"16:9": "16:9", "9:16": "9:16", "1:1": "1:1", "4:3": "4:3", "3:4": "3:4"}
+        ar = ar_map.get(aspect_ratio, "16:9")
 
         response = await asyncio.to_thread(
-            model.generate_content,
-            enhanced,
-            generation_config=genai_types.GenerationConfig(
-                response_modalities=["image", "text"],
-            ),
+            client.models.generate_images,
+            model="imagen-4.0-fast-generate-001",
+            prompt=enhanced,
+            config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio=ar),
         )
 
-        # Extract image bytes from response
-        image_data = None
-        for part in response.parts:
-            if hasattr(part, "inline_data") and part.inline_data:
-                image_data = part.inline_data.data
-                mime_type = part.inline_data.mime_type or "image/png"
-                break
+        raw = response.generated_images[0].image.image_bytes
+        if not raw:
+            return {"status": "error", "message": "No image bytes returned"}
 
-        if not image_data:
-            return {"status": "error", "message": "Gemini returned no image data"}
-
-        # Save to /tmp
         output_dir = settings.render_output_dir
         os.makedirs(output_dir, exist_ok=True)
-        filename = f"gemini_{cache_key[:16]}.png"
-        filepath = os.path.join(output_dir, filename)
-
+        filepath = os.path.join(output_dir, f"imagen_{cache_key[:16]}.png")
         with open(filepath, "wb") as f:
-            f.write(image_data if isinstance(image_data, bytes) else base64.b64decode(image_data))
+            f.write(raw)
 
-        # Return as data URL so frontend can display without a file server
-        b64 = base64.b64encode(
-            image_data if isinstance(image_data, bytes) else base64.b64decode(image_data)
-        ).decode()
-        data_url = f"data:{mime_type};base64,{b64}"
+        b64 = base64.b64encode(raw).decode()
+        data_url = f"data:image/png;base64,{b64}"
 
         result = {"status": "done", "url": data_url, "thumbnail_url": data_url}
         _cache[cache_key] = result
-        logger.info(f"Gemini image generated: {len(b64)} chars")
+        logger.info("Imagen image generated: %d bytes", len(raw))
         return result
 
     except Exception as e:
-        logger.error(f"Gemini image generation failed: {e}")
+        logger.error("Image generation failed: %s", e)
         return {"status": "error", "message": str(e)}

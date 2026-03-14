@@ -106,6 +106,10 @@ async def _generate_and_callback(data: GenerateRequest):
                 aspect_ratio=data.aspect_ratio,
                 negative_prompt=neg,
             )
+            # Kling failed (e.g. insufficient balance) — fall back to Gemini
+            if result.get("status") != "done":
+                logger.warning("Kling image failed (%s), falling back to Gemini", result.get("message"))
+                result = await generate_image_gemini(prompt, data.aspect_ratio)
 
         if result.get("status") == "done":
             media_url = result.get("url", "")
@@ -138,19 +142,19 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
     settings = get_settings()
     chars = [c.model_dump() for c in (data.characters or [])]
 
-    if not settings.kling_api_key or settings.kling_api_key in ("your-kling-key", ""):
-        # Gemini fallback — build enhanced image prompt
+    # Images: always use Gemini (synchronous, returns URL immediately)
+    if data.type != "video":
         prompt = build_image_prompt(data.prompt, characters=chars, mood=data.mood)
         result = await generate_image_gemini(prompt, data.aspect_ratio)
         return GenerateResponse(
             clip_id=data.clip_id,
             media_url=result.get("url"),
-            thumbnail_url=result.get("thumbnail_url"),
+            thumbnail_url=result.get("thumbnail_url") or result.get("url"),
             status=result.get("status", "error"),
             message=result.get("message") or "",
         )
 
-    # Kling: run in background, notify via WebSocket
+    # Videos: use Kling async (runs in background, notifies via WebSocket)
     background_tasks.add_task(_generate_and_callback, data)
     return GenerateResponse(
         clip_id=data.clip_id,

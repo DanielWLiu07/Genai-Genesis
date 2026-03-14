@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { TransitionLink as Link } from '@/components/PageTransition';
 import { ArrowLeft, Users } from 'lucide-react';
 import gsap from 'gsap';
 

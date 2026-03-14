@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Upload, FileText, Image as ImageIcon, Users, X, Plus, Trash2 } from 'lucide-react';
-import Link from 'next/link';
+import { TransitionLink as Link } from '@/components/PageTransition';
 import * as Tabs from '@radix-ui/react-tabs';
 import { useProjectStore, type CharacterEntry } from '@/stores/project-store';
 import { api } from '@/lib/api';

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Sparkles } from 'lucide-react';
-import Link from 'next/link';
+import { TransitionLink as Link } from '@/components/PageTransition';
 import { api } from '@/lib/api';
 import gsap from 'gsap';
 

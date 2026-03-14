@@ -53,13 +53,31 @@ export default function Dashboard() {
     const ctx = gsap.context(() => {
       gsap.fromTo('.hero-title', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: 'power3.out' });
       gsap.fromTo('.hero-cta', { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.4, delay: 0.2, ease: 'power2.out' });
+
+      // Decorative elements float in
+      gsap.fromTo('.decor-item',
+        { opacity: 0, scale: 0.6, y: 20 },
+        { opacity: 0.7, scale: 1, y: 0, duration: 0.8, stagger: 0.15, delay: 0.4, ease: 'back.out(1.5)' }
+      );
+      // Gentle idle float on decorations
+      document.querySelectorAll('.decor-item').forEach((el, i) => {
+        gsap.to(el, {
+          y: -6 + (i % 2 === 0 ? -4 : 4),
+          rotation: i % 2 === 0 ? 3 : -3,
+          duration: 3 + i * 0.5,
+          delay: 1.5 + i * 0.2,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+        });
+      });
     }, mainRef);
     return () => ctx.revert();
   }, []);
 
   useEffect(() => {
-    if (projects.length > 0) {
-      // Delay matches page-transition reveal (~1s) so books animate in after overlay sweeps away
+    if (!loading && projects.length > 0) {
+      // Run after loading=false so .project-card elements are in the DOM
       gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
       gsap.fromTo('.shelf-line', { opacity: 0, scaleX: 0, transformOrigin: 'left' }, { opacity: 1, scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.65, ease: 'power2.out' });
 
@@ -76,7 +94,7 @@ export default function Dashboard() {
         });
       });
     }
-  }, [projects]);
+  }, [projects, loading]);
 
   const shelfRows = chunkArray(projects, 5);
 
@@ -109,8 +127,15 @@ export default function Dashboard() {
       </div>
 
       {/* Scrollable shelf area */}
-      <div className="flex-1 overflow-y-auto" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-        <div className="max-w-6xl mx-auto px-6 pt-8 pb-12">
+      <div className="flex-1 overflow-y-auto relative" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        {/* Decorative elements */}
+        <Image src="/stylized_imgs/flower3.png" alt="" width={120} height={224} className="decor-item absolute top-6 right-8 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 4px 3px rgba(0,0,0,0.15))' }} />
+        <Image src="/stylized_imgs/leaf5.png" alt="" width={80} height={80} className="decor-item absolute bottom-12 left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 2px rgba(0,0,0,0.1))' }} />
+        <Image src="/stylized_imgs/stone2.png" alt="" width={100} height={100} className="decor-item absolute bottom-4 right-16 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 3px 2px rgba(0,0,0,0.15))' }} />
+        <Image src="/stylized_imgs/pine.png" alt="" width={60} height={48} className="decor-item absolute top-20 left-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 2px rgba(0,0,0,0.1))' }} />
+        <Image src="/stylized_imgs/sun.png" alt="" width={70} height={67} className="decor-item absolute top-4 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(0 0 8px rgba(255,200,50,0.3))' }} />
+
+        <div className="max-w-6xl mx-auto px-6 pt-8 pb-12 relative z-[1]">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 size={24} className="text-[#444] animate-spin" />

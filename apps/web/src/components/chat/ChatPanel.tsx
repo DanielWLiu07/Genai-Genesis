@@ -11,12 +11,18 @@ interface Message {
   tool_calls?: { tool_name: string; arguments: Record<string, any> }[];
 }
 
-export function ChatPanel() {
+interface ChatPanelProps {
+  projectId: string;
+}
+
+export function ChatPanel({ projectId }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const clips = useTimelineStore((s) => s.clips);
+  const musicTrack = useTimelineStore((s) => s.musicTrack);
+  const settings = useTimelineStore((s) => s.settings);
   const addClip = useTimelineStore((s) => s.addClip);
   const removeClip = useTimelineStore((s) => s.removeClip);
   const updateClip = useTimelineStore((s) => s.updateClip);
@@ -54,17 +60,54 @@ export function ChatPanel() {
     setInput('');
     setLoading(true);
 
+    const timeline = { project_id: projectId, clips, music_track: musicTrack, settings };
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+
     try {
-      // For now, show a placeholder response
-      // In production, this streams from the AI service
-      const assistantMsg: Message = {
-        role: 'assistant',
-        content: 'I understand your request. This will be connected to the AI service.',
-      };
+      const res = await api.chat(projectId, userMsg.content, timeline, history);
+      if (!res.ok) throw new Error(`Chat error: ${res.status}`);
+
+      const assistantMsg: Message = { role: 'assistant', content: '', tool_calls: [] };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      if (assistantMsg.tool_calls) {
-        assistantMsg.tool_calls.forEach(handleToolCall);
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw || raw === '[DONE]') continue;
+
+          let event: any;
+          try { event = JSON.parse(raw); } catch { continue; }
+
+          if (event.type === 'content' && event.content) {
+            assistantMsg.content += event.content;
+            setMessages((prev) => {
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...assistantMsg };
+              return updated;
+            });
+          } else if (event.type === 'tool_call') {
+            const tc = { tool_name: event.tool_name, arguments: event.arguments || {} };
+            assistantMsg.tool_calls = [...(assistantMsg.tool_calls ?? []), tc];
+            handleToolCall(tc);
+            setMessages((prev) => {
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...assistantMsg };
+              return updated;
+            });
+          }
+        }
       }
     } catch {
       setMessages((prev) => [...prev, { role: 'assistant', content: 'Error processing request.' }]);
@@ -101,7 +144,7 @@ export function ChatPanel() {
               }`}
             >
               {msg.content}
-              {msg.tool_calls && (
+              {msg.tool_calls && msg.tool_calls.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {msg.tool_calls.map((tc, j) => (
                     <div key={j} className="text-xs bg-zinc-700 rounded px-2 py-1 font-mono">

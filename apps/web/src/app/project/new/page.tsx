@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, FileText } from 'lucide-react';
 import Link from 'next/link';
+import { api } from '@/lib/api';
 
 export default function NewProject() {
   const router = useRouter();
@@ -16,9 +17,11 @@ export default function NewProject() {
     if (!title.trim()) return;
     setLoading(true);
     try {
-      // TODO: Call api.createProject then api.uploadBook
-      // For now navigate to a placeholder
-      router.push('/project/demo');
+      const project: any = await api.createProject({ title: title.trim(), description: description.trim() || undefined });
+      if (file) {
+        await api.uploadBook(project.id, file);
+      }
+      router.push(`/project/${project.id}`);
     } catch (err) {
       console.error(err);
     } finally {

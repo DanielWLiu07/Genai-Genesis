@@ -1,9 +1,31 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Film, BookOpen, Sparkles } from 'lucide-react';
+import { Plus, Film, BookOpen, Sparkles, Clock } from 'lucide-react';
+import { useProjectStore, type Project } from '@/stores/project-store';
+import { api } from '@/lib/api';
+
+const STATUS_COLORS: Record<Project['status'], string> = {
+  uploading: 'text-yellow-400 bg-yellow-400/10',
+  analyzing: 'text-blue-400 bg-blue-400/10',
+  planning: 'text-purple-400 bg-purple-400/10',
+  editing: 'text-green-400 bg-green-400/10',
+  rendering: 'text-orange-400 bg-orange-400/10',
+  done: 'text-zinc-400 bg-zinc-400/10',
+};
 
 export default function Dashboard() {
+  const { projects, loading, setProjects, setLoading } = useProjectStore();
+
+  useEffect(() => {
+    setLoading(true);
+    api.getProjects()
+      .then((data: any) => setProjects(data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [setProjects, setLoading]);
+
   return (
     <main className="min-h-screen">
       {/* Hero */}
@@ -57,10 +79,43 @@ export default function Dashboard() {
 
         {/* Projects List */}
         <h2 className="text-xl font-semibold mb-4">Your Projects</h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
-          <Film size={48} className="mx-auto mb-3 text-zinc-700" />
-          <p>No projects yet. Create your first book trailer!</p>
-        </div>
+        {loading ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
+            <div className="animate-pulse">Loading projects...</div>
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
+            <Film size={48} className="mx-auto mb-3 text-zinc-700" />
+            <p>No projects yet. Create your first book trailer!</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((project) => (
+              <Link
+                key={project.id}
+                href={`/project/${project.id}`}
+                className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-violet-700 transition-colors group"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <Film size={20} className="text-violet-400 mt-0.5" />
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[project.status]}`}>
+                    {project.status}
+                  </span>
+                </div>
+                <h3 className="font-semibold text-zinc-200 group-hover:text-violet-300 transition-colors mb-1">
+                  {project.title}
+                </h3>
+                {project.description && (
+                  <p className="text-sm text-zinc-500 line-clamp-2 mb-3">{project.description}</p>
+                )}
+                <div className="flex items-center gap-1 text-xs text-zinc-600">
+                  <Clock size={12} />
+                  {new Date(project.created_at).toLocaleDateString()}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     render_service_url: str = "http://localhost:8002"
 
     class Config:
-        env_file = "../../.env"
+        env_file = ("../../.env", ".env")  # root .env or local .env
+        extra = "ignore"
 
 @lru_cache()
 def get_settings():

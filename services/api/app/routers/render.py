@@ -50,10 +50,13 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
             })
             return _render_unavailable()
 
-    # Persist generated_media_url into timeline clip if DB available
+    # Extract URLs from render result
     generated_url = result.get("output_url") or result.get("media_url")
+    thumbnail_url = result.get("thumbnail_url") or result.get("thumbnail")
+
     db = get_supabase()
-    if db is not None and generated_url:
+    if db is not None:
+        # Persist generated_media_url + thumbnail_url into the timeline clip
         try:
             tl_row = db.table("timelines").select("clips").eq("project_id", project_id).execute()
             if tl_row.data:
@@ -61,18 +64,31 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
                 for clip in clips:
                     if clip.get("id") == data.clip_id:
                         clip["gen_status"] = "done"
-                        clip["generated_media_url"] = generated_url
+                        if generated_url:
+                            clip["generated_media_url"] = generated_url
+                        if thumbnail_url:
+                            clip["thumbnail_url"] = thumbnail_url
                         break
                 db.table("timelines").update({"clips": clips}).eq("project_id", project_id).execute()
         except Exception:
             pass
 
-    # Broadcast completion
+        # Auto-set project cover_image_url from first generated thumbnail
+        if thumbnail_url:
+            try:
+                proj_row = db.table("projects").select("cover_image_url").eq("id", project_id).execute()
+                if proj_row.data and not proj_row.data[0].get("cover_image_url"):
+                    db.table("projects").update({"cover_image_url": thumbnail_url}).eq("id", project_id).execute()
+            except Exception:
+                pass
+
+    # Broadcast completion with thumbnail
     await manager.broadcast(project_id, {
         "type": "clip_updated",
         "clip_id": data.clip_id,
         "gen_status": "done",
         "generated_media_url": generated_url,
+        "thumbnail_url": thumbnail_url,
     })
 
     return result

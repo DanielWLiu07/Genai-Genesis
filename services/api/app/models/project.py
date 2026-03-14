@@ -12,6 +12,8 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     author: Optional[str] = None
     status: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    book_text: Optional[str] = None
 
 class ProjectResponse(BaseModel):
     id: str

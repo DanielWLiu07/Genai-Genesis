@@ -32,6 +32,8 @@ You MUST return a JSON object with this structure:
         "animation": "fade_in"
       },
       "transition_type": "dissolve",
+      "shot_type": "cut",
+      "scene_group": 1,
       "gen_status": "pending",
       "position": {"x": 0, "y": 100}
     }
@@ -50,7 +52,14 @@ RULES:
 - Each visual prompt MUST be 2-3 sentences with specific cinematic details
 - Think about PACING: fast cuts for action, longer holds for emotion
 - For manga/anime style books, use anime-style visual prompts
-- text_style.animation can be: fade_in, typewriter, slide_up, or null"""
+- text_style.animation can be: fade_in, typewriter, slide_up, or null
+
+SHOT CONTINUITY (critical for AI video generation):
+- shot_type: "continuous" means this clip flows directly from the previous one (same scene, camera moves, no cut). The AI will use the previous frame as a start frame.
+- shot_type: "cut" means a new scene entirely — different location, time jump, or hard edit.
+- scene_group: integer grouping clips that belong to the same continuous sequence. Clips in the same group share visual context. Start a new group number for each new scene/location.
+- Example: establishing shot + two reaction shots of same character = same scene_group, shot_type="continuous" after first. A jump cut to a new location = new scene_group, shot_type="cut".
+- text_overlay clips should have shot_type="cut" and their own scene_group."""
 
 
 STYLE_MODIFIERS = {
@@ -116,6 +125,14 @@ The trailer should make someone want to read this book immediately."""
                 clip["prompt"] = ""
             if "transition_type" not in clip:
                 clip["transition_type"] = preset["transitions"][0] if preset["transitions"] else "dissolve"
+            # Default shot continuity fields if AI didn't set them
+            if "shot_type" not in clip:
+                clip["shot_type"] = "cut"
+            if "scene_group" not in clip:
+                clip["scene_group"] = i  # each clip in its own group by default
+            # text_overlay always a hard cut
+            if clip.get("type") == "text_overlay":
+                clip["shot_type"] = "cut"
             # Apply preset text_style to text overlays that don't have one
             if clip.get("type") == "text_overlay" and not clip.get("text_style"):
                 clip["text_style"] = preset["text_style"]

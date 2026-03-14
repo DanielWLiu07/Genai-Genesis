@@ -153,9 +153,14 @@ async def generate_video(
     duration_sec: float = 5.0,
     aspect_ratio: str = "16:9",
     negative_prompt: str = "",
+    start_frame_url: Optional[str] = None,
+    reference_image_urls: Optional[list[str]] = None,
     callback_url: Optional[str] = None,
 ) -> dict:
     """Generate a video clip using Kling 3.0 API.
+
+    When start_frame_url is provided, uses image-to-video endpoint for
+    frame-consistent generation. Reference images anchor character appearance.
 
     Returns: {status, url, thumbnail_url, message}
     """
@@ -163,8 +168,8 @@ async def generate_video(
     if not settings.kling_api_key:
         return {"status": "error", "message": "Kling API key not configured"}
 
-    # Check cache
-    key = _cache_key(prompt, "video", aspect_ratio)
+    cache_parts = f"{prompt}|{start_frame_url or ''}|{','.join(reference_image_urls or [])}"
+    key = _cache_key(cache_parts, "video", aspect_ratio)
     if key in _generation_cache:
         logger.info("Cache hit for video generation")
         return _generation_cache[key]
@@ -172,22 +177,44 @@ async def generate_video(
     # Kling supports 5s and 10s durations
     duration = "10" if duration_sec > 5 else "5"
 
-    body = {
-        "model_name": "kling-v1",
-        "prompt": prompt,
-        "duration": duration,
-        "aspect_ratio": aspect_ratio,
-        "mode": "std",
-    }
-    if negative_prompt:
-        body["negative_prompt"] = negative_prompt
+    use_img2vid = bool(start_frame_url and not start_frame_url.startswith("data:"))
+
+    if use_img2vid:
+        # image-to-video: much better temporal consistency
+        body: dict = {
+            "model_name": "kling-v1-6",  # latest model with img2vid
+            "image_url": start_frame_url,
+            "prompt": prompt,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "mode": "pro",  # pro mode = higher quality motion
+            "cfg_scale": 0.5,
+        }
+        if negative_prompt:
+            body["negative_prompt"] = negative_prompt
+        endpoint = f"{KLING_BASE_URL}/videos/image2video"
+        poll_base = f"{KLING_BASE_URL}/videos/image2video"
+    else:
+        # text-to-video fallback
+        body = {
+            "model_name": "kling-v1-6",
+            "prompt": prompt,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "mode": "std",
+        }
+        if negative_prompt:
+            body["negative_prompt"] = negative_prompt
+        endpoint = f"{KLING_BASE_URL}/videos/text2video"
+        poll_base = f"{KLING_BASE_URL}/videos/text2video"
+
     if callback_url:
         body["callback_url"] = callback_url
 
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"{KLING_BASE_URL}/videos/text2video",
+                endpoint,
                 json=body,
                 headers=_get_headers(),
                 timeout=30,
@@ -199,8 +226,7 @@ async def generate_video(
             if not task_id:
                 return {"status": "error", "message": "No task_id returned from Kling API"}
 
-            # Poll for completion
-            task_url = f"{KLING_BASE_URL}/videos/text2video/{task_id}"
+            task_url = f"{poll_base}/{task_id}"
             result = await _poll_task(client, task_url)
 
             if result["status"] == "done":

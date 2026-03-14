@@ -71,19 +71,12 @@ export default function LandingPage() {
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const ctaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const leavesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Trigger the video reveal noise animation on mount
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
-      // Leaves drop down from top after SVG noise animation settles
-      gsap.fromTo(leavesRef.current,
-        { y: '-100%', opacity: 0 },
-        { y: '0%', opacity: 1, duration: 1.5, delay: 4.5, ease: 'power2.out' }
-      );
-
       // Logo fades in smoothly (while noise is still revealing)
       gsap.fromTo(logoRef.current,
         { scale: 0.6, opacity: 0, rotation: -30 },
@@ -133,24 +126,6 @@ export default function LandingPage() {
             </video>
           </div>
         </NoiseMask>
-      </div>
-
-      {/* Leaves overlay — drops down from top after SVG animation */}
-      <div
-        ref={leavesRef}
-        className="absolute inset-0 pointer-events-none z-[5]"
-        style={{ opacity: 0 }}
-      >
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-full object-cover"
-          style={{ background: 'transparent' }}
-        >
-          <source src="/leaves-overlay.webm" type="video/webm" />
-        </video>
       </div>
 
       {/* Content — right-aligned */}

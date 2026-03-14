@@ -93,6 +93,9 @@ export default function EditorPage() {
   const [rightOpen, setRightOpen] = useState(true);
   const [generatingVideos, setGeneratingVideos] = useState(false);
   const [videoGenProgress, setVideoGenProgress] = useState({ done: 0, total: 0 });
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const cancelImagesRef = useRef(false);
+  const cancelExportRef = useRef(false);
   const [selectedStyle, setSelectedStyle] = useState('cinematic');
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -299,6 +302,7 @@ export default function EditorPage() {
 
   const handleExport = useCallback(async () => {
     if (!id || exporting) return;
+    cancelExportRef.current = false;
     setExporting(true);
     setExportStatus('Saving timeline...');
     try {
@@ -319,6 +323,7 @@ export default function EditorPage() {
       let attempts = 0;
       while (attempts < 120) {
         await new Promise((r) => setTimeout(r, 5000));
+        if (cancelExportRef.current) { setExportStatus(null); break; }
         attempts++;
         try {
           const status: any = await api.getRenderStatus(id, jobId);
@@ -474,6 +479,8 @@ export default function EditorPage() {
   // Batch generate scene images sequentially for visual cohesion
   const handleGenerateAllImages = useCallback(async () => {
     if (!id) return;
+    cancelImagesRef.current = false;
+    setBatchGenerating(true);
     const analysis = currentProject?.analysis;
     const chars = (analysis?.characters as any[] || []).map((c: any) => ({
       name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
@@ -508,11 +515,31 @@ export default function EditorPage() {
     const existingThumb = currentProject?.cover_image_url;
     let prevUrl: string | undefined = (existingThumb && !existingThumb.startsWith('data:')) ? existingThumb : undefined;
 
-    // Generate one at a time sequentially — each clip builds on the previous for visual consistency
+    // Generate one at a time sequentially — each clip uses the previous as a reference frame
+    const { beatMap } = useTimelineStore.getState();
     let prevPrompt: string | undefined;
+    let clipTimestampMs = 0;
     for (const clip of pending) {
+      if (cancelImagesRef.current) {
+        updateClip(clip.id, { gen_status: 'pending' });
+        break;
+      }
       const order = sorted.findIndex(c => c.id === clip.id);
-      // Find nearest already-done clip before this one for scene_image_url chain
+
+      // Compute clip's start timestamp in the music timeline
+      const clipStart = sorted.slice(0, order).reduce((sum, c) => sum + (c.duration_ms || 0), 0);
+      clipTimestampMs = clipStart;
+
+      // Music energy at this timestamp: fraction of beats that land within ±500ms
+      let musicEnergy: number | undefined;
+      if (beatMap?.beats?.length) {
+        const nearbyBeats = beatMap.beats.filter(b => Math.abs(b - clipStart) < 500).length;
+        const windowBeats = beatMap.beats.filter(b => b >= clipStart - 2000 && b <= clipStart + 2000).length;
+        musicEnergy = Math.min(1, windowBeats / 8); // normalise
+        if (nearbyBeats > 0) musicEnergy = Math.min(1, musicEnergy + 0.3); // boost if on a beat
+      }
+
+      // Find nearest already-done clip before this one for reference image chain
       if (!prevUrl) {
         const prevDone = sorted.slice(0, order).reverse().find(
           c => c.type !== 'text_overlay' && c.type !== 'transition' && c.generated_media_url && !c.generated_media_url.startsWith('data:')
@@ -531,19 +558,23 @@ export default function EditorPage() {
       // Try up to 2 times (once retry on failure) with 1.5s gap between clips for rate limits
       let result: any = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        if (attempt > 0) await new Promise(r => setTimeout(r, 3000)); // longer wait on retry
+        if (attempt > 0) await new Promise(r => setTimeout(r, 3000));
         try {
           const clipType = clip.type === 'text_overlay' ? 'text_overlay' : 'image';
           result = await api.generateClip(id, clip.id, clip.prompt, clipType, {
             clip_order: order,
             clip_total: playable.length,
             scene_image_url: clip.type !== 'text_overlay' ? prevUrl : undefined,
+            // Pass previous panel as reference so Gemini matches style/palette exactly
+            reference_image_url: prevUrl && clip.type !== 'text_overlay' ? prevUrl : undefined,
             characters: chars.length > 0 ? chars : undefined,
             mood: analysis?.mood,
             genre: analysis?.genre,
             style_seed: styleSeed,
             prev_scene_prompt: clip.type !== 'text_overlay' ? prevPrompt : undefined,
             text: (clip as any).text || undefined,
+            music_timestamp_ms: clipTimestampMs,
+            music_energy: musicEnergy,
           });
           if (result.status === 'done' || result.media_url) break;
         } catch (err: any) {
@@ -562,8 +593,9 @@ export default function EditorPage() {
       }
 
       // Rate limit buffer between clips (Imagen QPM limit)
-      await new Promise(r => setTimeout(r, 1500));
+      if (!cancelImagesRef.current) await new Promise(r => setTimeout(r, 1500));
     }
+    setBatchGenerating(false);
   }, [id, clips, currentProject, updateClip]);
 
   // Compile all scene images → Veo videos (fires requests, WebSocket callbacks update each clip)
@@ -800,13 +832,16 @@ export default function EditorPage() {
             </button>
           )}
           {/* Phase-aware primary CTA */}
-          {workflowPhase === 'images' && anyGenerating && (
-            <div className="manga-btn bg-purple-600/20 text-purple-700 px-3 py-1.5 text-sm flex items-center gap-2 border-purple-300 cursor-default select-none">
+          {workflowPhase === 'images' && batchGenerating && (
+            <button
+              onClick={() => { cancelImagesRef.current = true; setBatchGenerating(false); playableClips.filter(c => c.gen_status === 'generating').forEach(c => updateClip(c.id, { gen_status: 'pending' })); }}
+              className="manga-btn bg-purple-600/20 text-purple-700 px-3 py-1.5 text-sm flex items-center gap-2 border-purple-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
+            >
               <Loader2 size={14} className="animate-spin" />
-              {playableClips.filter(c => c.gen_status === 'done' && c.generated_media_url).length}/{playableClips.length} Generating...
-            </div>
+              {playableClips.filter(c => c.gen_status === 'done' && c.generated_media_url).length}/{playableClips.length} Generating… <X size={12} />
+            </button>
           )}
-          {workflowPhase === 'images' && !anyGenerating && playableClips.some(c => c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.generated_media_url)) && (
+          {workflowPhase === 'images' && !batchGenerating && playableClips.some(c => c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.generated_media_url)) && (
             <button onClick={handleGenerateAllImages} className="manga-btn bg-purple-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-purple-600">
               <Sparkles size={14} /> {playableClips.some(c => c.gen_status === 'error') ? 'Retry Failed' : 'Generate All Images'}
             </button>
@@ -827,17 +862,18 @@ export default function EditorPage() {
           )}
           {imagesAllDone && (
             <button
-              onClick={handleExport}
-              disabled={exporting}
-              className={`manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 disabled:opacity-60 ${
-                allVideosGenerated
-                  ? 'bg-[#111] text-white border-[#111]'
-                  : 'bg-white text-[#111]'
+              onClick={exporting ? () => { cancelExportRef.current = true; setExporting(false); setExportStatus(null); } : handleExport}
+              className={`manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 transition-colors ${
+                exporting
+                  ? 'bg-red-50 text-red-600 border-red-300 hover:bg-red-100'
+                  : allVideosGenerated
+                    ? 'bg-[#111] text-white border-[#111]'
+                    : 'bg-white text-[#111]'
               }`}
-              style={allVideosGenerated ? { boxShadow: '3px 3px 0px #a855f7' } : undefined}
+              style={!exporting && allVideosGenerated ? { boxShadow: '3px 3px 0px #a855f7' } : undefined}
             >
               {exporting
-                ? <><Loader2 size={14} className="animate-spin" /> {exportStatus || 'Compiling...'}</>
+                ? <><Loader2 size={14} className="animate-spin" /> {exportStatus || 'Compiling…'} <X size={12} /></>
                 : <><Clapperboard size={14} /> Compile Videos</>
               }
             </button>

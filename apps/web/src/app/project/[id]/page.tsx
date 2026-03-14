@@ -391,7 +391,10 @@ export default function EditorPage() {
       name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
     }));
     const sorted = [...clips].sort((a, b) => a.order - b.order);
-    const pending = sorted.filter(c => c.type !== 'text_overlay' && c.type !== 'transition' && c.gen_status === 'pending');
+    const pending = sorted.filter(c =>
+      c.type !== 'text_overlay' && c.type !== 'transition' &&
+      (c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.generated_media_url))
+    );
     pending.forEach((clip) => {
       const order = sorted.findIndex(c => c.id === clip.id);
       updateClip(clip.id, { gen_status: 'generating' });
@@ -401,8 +404,16 @@ export default function EditorPage() {
         mood: analysis?.mood,
         genre: analysis?.genre,
       }).then((result: any) => {
-        updateClip(clip.id, { gen_status: 'done', generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url });
-      }).catch(() => updateClip(clip.id, { gen_status: 'error' }));
+        const url = result.media_url || result.output_url || result.generated_media_url;
+        if (url) {
+          // Sync result (Gemini fallback) — URL came back immediately
+          updateClip(clip.id, { gen_status: 'done', generated_media_url: url, thumbnail_url: result.thumbnail_url || url });
+        } else if (result.status === 'generating') {
+          // Async result (Kling) — stays 'generating', WebSocket callback will update when done
+        } else {
+          updateClip(clip.id, { gen_status: 'error', gen_error: result.message || 'No image returned' });
+        }
+      }).catch((err: any) => updateClip(clip.id, { gen_status: 'error', gen_error: String(err) }));
     });
   }, [id, clips, currentProject, updateClip]);
 
@@ -476,7 +487,9 @@ export default function EditorPage() {
 
   // Workflow phase detection
   const playableClips = clips.filter(c => c.type !== 'text_overlay' && c.type !== 'transition');
-  const imagesAllDone = playableClips.length > 0 && playableClips.every(c => c.gen_status === 'done' || c.gen_status === 'error');
+  const imagesAllDone = playableClips.length > 0 && playableClips.every(c =>
+    (c.gen_status === 'done' && !!c.generated_media_url) || c.gen_status === 'error'
+  );
   const anyGenerating = playableClips.some(c => c.gen_status === 'generating');
   const videosExist = playableClips.some(c => c.type === 'video' && c.gen_status === 'done' && c.generated_media_url);
   const workflowPhase: WorkflowPhase =
@@ -553,9 +566,15 @@ export default function EditorPage() {
             </button>
           )}
           {/* Phase-aware primary CTA */}
-          {workflowPhase === 'images' && !anyGenerating && playableClips.some(c => c.gen_status === 'pending') && (
+          {workflowPhase === 'images' && anyGenerating && (
+            <div className="manga-btn bg-purple-600/20 text-purple-700 px-3 py-1.5 text-sm flex items-center gap-2 border-purple-300 cursor-default select-none">
+              <Loader2 size={14} className="animate-spin" />
+              {playableClips.filter(c => c.gen_status === 'done' && c.generated_media_url).length}/{playableClips.length} Generating...
+            </div>
+          )}
+          {workflowPhase === 'images' && !anyGenerating && playableClips.some(c => c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.generated_media_url)) && (
             <button onClick={handleGenerateAllImages} className="manga-btn bg-purple-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-purple-600">
-              <Sparkles size={14} /> Generate All Images
+              <Sparkles size={14} /> {playableClips.some(c => c.gen_status === 'error') ? 'Retry Failed' : 'Generate All Images'}
             </button>
           )}
           {workflowPhase === 'videos' && (

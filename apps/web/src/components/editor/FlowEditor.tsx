@@ -72,7 +72,7 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { fitView, setCenter, getNodes } = useReactFlow();
   const [focusedIdx, setFocusedIdx] = useState(0);
-  const [locked, setLocked] = useState(true); // Start locked on first frame
+  const [locked, setLocked] = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);

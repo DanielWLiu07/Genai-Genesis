@@ -142,10 +142,10 @@ try:
         return f"Applied {style} auto-AMV at {bpm or 'current'} BPM"
 
     @rt.function_node
-    async def trigger_generate_clip(clip_id: str, new_prompt: Optional[str] = None) -> str:
-        """Trigger image generation for a specific clip via the AI pipeline."""
-        _record("trigger_generate_clip", clip_id=clip_id, new_prompt=new_prompt)
-        return f"Triggered generation for clip {clip_id}"
+    async def trigger_generate_clip(clip_id: str, new_prompt: Optional[str] = None, media_type: Optional[str] = None) -> str:
+        """Trigger image or video generation for a specific clip. media_type='image' (default) uses Imagen/Gemini; media_type='video' uses Veo 3."""
+        _record("trigger_generate_clip", clip_id=clip_id, new_prompt=new_prompt, media_type=media_type)
+        return f"Triggered {media_type or 'image'} generation for clip {clip_id}"
 
     @rt.function_node
     async def bulk_update_clips(updates: list) -> str:
@@ -166,7 +166,8 @@ SCENE PACING: Hook 2-3s cut | Establishing 3-4s dissolve | Action 1.5-2.5s cut |
 AMV: flash_white/black on strong beats 100-200ms intensity 0.8-1.0 | zoom_burst every 4th beat 200-300ms
      chromatic for tension 200-400ms | glitch digital/sci-fi 150-300ms | strobe climax 50-100ms
 SHOT TYPE: continuous = same scene flowing | cut = new scene
-PROMPTS: always include camera angle, lighting, mood, color palette, atmosphere, anime/manga style."""
+PROMPTS: always include camera angle, lighting, mood, color palette, atmosphere, anime/manga style.
+GENERATION: trigger_generate_clip with media_type='image' for still frames (Imagen/Gemini), media_type='video' for animated clips (Veo 3). Default to 'image' unless user asks for video."""
 
     # ── CopilotAgent definition ──────────────────────────────────────────────
     CopilotAgent = rt.agent_node(

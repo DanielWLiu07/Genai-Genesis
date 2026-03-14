@@ -165,16 +165,28 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
         const prompt = args.new_prompt || clip.prompt;
         const analysis = useProjectStore.getState().currentProject?.analysis;
         const chars = ((analysis?.characters as any[]) || []).map((c: any) => ({
-          name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+          name: c.name,
+          description: c.description,
+          visual_description: c.visual_description,
+          appearance: c.appearance,
+          image_url: c.image_url || c.reference_image_url,
         }));
         const sorted = [...useTimelineStore.getState().clips].sort((a, b) => a.order - b.order);
-        const order = sorted.findIndex((c) => c.id === args.clip_id);
+        const clipOrder = sorted.findIndex((c) => c.id === args.clip_id);
+        const prevClip = clipOrder > 0 ? sorted[clipOrder - 1] : null;
+        const nextClip = clipOrder < sorted.length - 1 ? sorted[clipOrder + 1] : null;
+        const genType: 'image' | 'video' = args.media_type === 'video' ? 'video' : (clip.type === 'video' ? 'video' : 'image');
         updateClip(args.clip_id, { gen_status: 'generating' });
-        api.generateClip(projectId, args.clip_id, prompt, 'image', {
-          clip_order: order,
+        api.generateClip(projectId, args.clip_id, prompt, genType, {
+          clip_order: clipOrder,
+          clip_total: sorted.length,
           characters: chars.length > 0 ? chars : undefined,
           mood: (analysis as any)?.mood,
           genre: (analysis as any)?.genre,
+          themes: (analysis as any)?.themes,
+          prev_scene_prompt: prevClip?.prompt || undefined,
+          next_scene_prompt: nextClip?.prompt || undefined,
+          start_frame_url: genType === 'video' ? (clip.thumbnail_url || undefined) : undefined,
         }).then((result: any) => {
           updateClip(args.clip_id, { gen_status: 'done', generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url });
         }).catch(() => updateClip(args.clip_id, { gen_status: 'error' }));

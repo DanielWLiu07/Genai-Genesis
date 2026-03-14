@@ -111,22 +111,25 @@ export default function Dashboard() {
       const cards = document.querySelectorAll('.project-card');
       cards.forEach((card) => {
         const el = card as HTMLElement;
+        const tiltEl = el.querySelector('.book-tilt') as HTMLElement;
         const bookEl = el.querySelector('.book-card') as HTMLElement;
-        if (!bookEl) return;
+        if (!tiltEl || !bookEl) return;
         el.addEventListener('mouseenter', () => {
           gsap.to(el, { opacity: 1, duration: 0.2 });
-          gsap.to(bookEl, { y: -8, rotation: -2, boxShadow: '6px 12px 0px rgba(0,0,0,0.3)', duration: 0.25, ease: 'power2.out' });
+          gsap.to(tiltEl, { y: -8, rotation: -2, duration: 0.25, ease: 'power2.out' });
+          gsap.to(bookEl, { boxShadow: '6px 12px 0px rgba(0,0,0,0.3)', duration: 0.25 });
         }, { signal });
         el.addEventListener('mouseleave', () => {
           gsap.to(el, { opacity: 0.6, duration: 0.25 });
-          gsap.to(bookEl, { y: 0, rotation: 0, boxShadow: '3px 3px 0px #000', duration: 0.25, ease: 'power2.out' });
+          gsap.to(tiltEl, { y: 0, rotation: 0, duration: 0.25, ease: 'power2.out' });
+          gsap.to(bookEl, { boxShadow: '3px 3px 0px #000', duration: 0.25 });
         }, { signal });
         const linkEl = el.querySelector('a.book-link') as HTMLAnchorElement | null;
         linkEl?.addEventListener('click', (e) => {
           e.preventDefault();
           const href = linkEl.getAttribute('href');
-          gsap.killTweensOf(bookEl);
-          gsap.to(bookEl, {
+          gsap.killTweensOf(tiltEl);
+          gsap.to(tiltEl, {
             x: 180, y: -40, rotation: 25, opacity: 0, duration: 0.45, ease: 'power2.in',
             onComplete: () => { if (href) window.location.href = href; },
           });
@@ -219,13 +222,14 @@ export default function Dashboard() {
                         className="project-card group flex-shrink-0 relative"
                         style={{ width: 'calc((100% - 80px) / 5)', opacity: 0 }}
                       >
+                        <div className="book-tilt relative" style={{ transformOrigin: 'bottom center' }}>
                         <Link
                           href={`/project/${project.id}`}
                           className="block book-link"
                         >
                         <div
                           className="book-card relative aspect-[2/3] overflow-hidden border-2 border-[#111]"
-                          style={{ boxShadow: '3px 3px 0px #000', transformOrigin: 'bottom center' }}
+                          style={{ boxShadow: '3px 3px 0px #000' }}
                         >
                           {/* Cover image — check localStorage for data URL thumbnails */}
                           {(() => {
@@ -278,13 +282,14 @@ export default function Dashboard() {
                           </div>
                         </div>
                         </Link>
-                        {/* Delete button — outside Link to prevent click-through navigation */}
+                        {/* Delete button inside tilt wrapper so it moves with the book */}
                         <button
                           className="manga-badge text-[0.5rem] bg-red-600/80 text-white border-red-800 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 px-1.5 py-0.5 absolute top-2 right-2 z-10"
                           onClick={(e) => { e.stopPropagation(); setConfirmDelete(project.id); }}
                         >
                           ✕ DEL
                         </button>
+                        </div>{/* end book-tilt */}
                       </div>
                     ))}
                   </div>

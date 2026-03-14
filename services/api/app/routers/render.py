@@ -80,13 +80,19 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
             })
             return _render_unavailable()
 
-    # Extract URLs from render result
+    # For async video generation the render service returns {status:"generating"} immediately.
+    # Veo runs in a background task and calls /internal/clip-status when done.
+    # We must NOT mark the clip as done here — that will arrive via WebSocket callback.
+    is_async = result.get("status") == "generating"
+    if is_async:
+        return result
+
+    # Synchronous generation (images) — persist result now
     generated_url = result.get("output_url") or result.get("media_url")
     thumbnail_url = result.get("thumbnail_url") or result.get("thumbnail")
 
     db = get_supabase()
     if db is not None:
-        # Persist generated_media_url + thumbnail_url into the timeline clip
         try:
             tl_row = db.table("timelines").select("clips").eq("project_id", project_id).execute()
             if tl_row.data:
@@ -103,7 +109,6 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         except Exception:
             pass
 
-        # Auto-set project cover_image_url from first generated thumbnail
         if thumbnail_url:
             try:
                 proj_row = db.table("projects").select("cover_image_url").eq("id", project_id).execute()
@@ -112,7 +117,6 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
             except Exception:
                 pass
 
-    # Broadcast completion with thumbnail
     await manager.broadcast(project_id, {
         "type": "clip_updated",
         "clip_id": data.clip_id,

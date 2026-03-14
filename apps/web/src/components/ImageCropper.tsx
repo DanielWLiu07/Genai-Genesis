@@ -37,17 +37,37 @@ async function getCroppedDataUrl(image: HTMLImageElement, crop: PixelCrop): Prom
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
-export function ImageCropper({ src, aspect = 2 / 3, onConfirm, onCancel }: ImageCropperProps) {
+export function ImageCropper({ src, aspect, onConfirm, onCancel }: ImageCropperProps) {
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const imgRef = useRef<HTMLImageElement>(null);
   const [mounted, setMounted] = useState(false);
+  // Use a blob URL for external images to avoid tainted-canvas CORS errors
+  const [safeSrc, setSafeSrc] = useState<string>(src);
 
   useEffect(() => { setMounted(true); }, []);
 
+  useEffect(() => {
+    if (src.startsWith('data:') || src.startsWith('blob:')) {
+      setSafeSrc(src);
+      return;
+    }
+    let objectUrl: string;
+    fetch(src)
+      .then(r => r.blob())
+      .then(blob => { objectUrl = URL.createObjectURL(blob); setSafeSrc(objectUrl); })
+      .catch(() => setSafeSrc(src)); // fallback to original if fetch fails
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [src]);
+
   const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
-    setCrop(centerAspectCrop(width, height, aspect));
+    if (aspect) {
+      setCrop(centerAspectCrop(width, height, aspect));
+    } else {
+      // Free crop — default to full image selected
+      setCrop({ unit: '%', x: 5, y: 5, width: 90, height: 90 });
+    }
   }, [aspect]);
 
   const handleConfirm = useCallback(async () => {
@@ -89,7 +109,7 @@ export function ImageCropper({ src, aspect = 2 / 3, onConfirm, onCancel }: Image
           >
             <img
               ref={imgRef}
-              src={src}
+              src={safeSrc}
               alt="crop"
               style={{ maxHeight: '60vh', maxWidth: '100%', objectFit: 'contain' }}
               onLoad={onImageLoad}

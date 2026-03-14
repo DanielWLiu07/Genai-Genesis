@@ -57,10 +57,10 @@ async def update_clip_status(data: ClipStatusUpdate):
     ws_message = {
         "type": "clip_updated",
         "clip_id": data.clip_id,
-        "status": data.status,
-        "media_url": data.media_url,
+        "gen_status": data.status,
+        "generated_media_url": data.media_url,
         "thumbnail_url": data.thumbnail_url,
-        "error": data.error,
+        "gen_error": data.error,
     }
     # Broadcast to all projects (since we don't know which project owns this clip)
     for project_id in list(manager.connections.keys()):

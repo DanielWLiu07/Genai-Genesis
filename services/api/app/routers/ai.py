@@ -73,11 +73,18 @@ async def analyze_story(project_id: str, body: Optional[dict] = None):
 
     settings = get_settings()
 
+    payload: dict = {"project_id": project_id, "book_text": book_text}
+    if body:
+        if "characters" in body:
+            payload["characters"] = body["characters"]
+        if "uploaded_images" in body:
+            payload["uploaded_images"] = body["uploaded_images"]
+
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             resp = await client.post(
                 f"{settings.ai_service_url}/ai/analyze",
-                json={"project_id": project_id, "book_text": book_text},
+                json=payload,
             )
             result = resp.json()
         except httpx.ConnectError:

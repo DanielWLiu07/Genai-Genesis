@@ -4,11 +4,12 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { FlowEditor } from '@/components/editor/FlowEditor';
 import { ChatPanel } from '@/components/chat/ChatPanel';
-import { Film, ArrowLeft, Play, Download, Loader2, Sparkles, BookOpen, Clapperboard } from 'lucide-react';
+import { Film, ArrowLeft, Play, Download, Loader2, Sparkles, BookOpen, Clapperboard, Lightbulb, Palette } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useTimelineStore } from '@/stores/timeline-store';
 import { useProjectStore } from '@/stores/project-store';
+import { ClipDetailPanel } from '@/components/editor/ClipDetailPanel';
 import gsap from 'gsap';
 
 type GenerationStep = 'idle' | 'analyzing' | 'planning' | 'done' | 'error';
@@ -21,6 +22,10 @@ export default function EditorPage() {
   const [genError, setGenError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState('cinematic');
+  const [suggestions, setSuggestions] = useState<any[] | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const loadTimeline = useTimelineStore((s) => s.loadTimeline);
   const setProjectId = useTimelineStore((s) => s.setProjectId);
   const clips = useTimelineStore((s) => s.clips);
@@ -284,7 +289,7 @@ export default function EditorPage() {
       }
 
       setGenStep('planning');
-      const timeline: any = await api.planTrailer(id, { analysis });
+      const timeline: any = await api.planTrailer(id, { analysis, style: selectedStyle });
 
       // Validate response
       if (!timeline || !timeline.clips || timeline.clips.length === 0) {
@@ -313,7 +318,22 @@ export default function EditorPage() {
       setGenError(err.message || 'Failed to generate trailer. Please try again.');
       setGenStep('error');
     }
-  }, [currentProject, id, loadTimeline, updateProject]);
+  }, [currentProject, id, loadTimeline, updateProject, selectedStyle]);
+
+  const handleGetSuggestions = useCallback(async () => {
+    if (!id || loadingSuggestions) return;
+    setLoadingSuggestions(true);
+    try {
+      const timeline = { clips, music_track: useTimelineStore.getState().musicTrack, settings: useTimelineStore.getState().settings };
+      const result: any = await api.getSuggestions(id, timeline, currentProject?.analysis);
+      setSuggestions(result.suggestions || []);
+    } catch (err) {
+      console.error('Suggestions failed:', err);
+      setSuggestions([]);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }, [id, clips, currentProject, loadingSuggestions]);
 
   const hasBook = currentProject && (
     currentProject.book_text ||
@@ -369,6 +389,16 @@ export default function EditorPage() {
           </span>
         </div>
         <div className="ml-auto flex gap-2">
+          {clips.length > 0 && (
+            <button
+              onClick={handleGetSuggestions}
+              disabled={loadingSuggestions}
+              className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5"
+            >
+              {loadingSuggestions ? <Loader2 size={14} className="animate-spin" /> : <Lightbulb size={14} />}
+              Suggestions
+            </button>
+          )}
           <button className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
             <Play size={14} /> Preview
           </button>
@@ -442,8 +472,13 @@ export default function EditorPage() {
 
         {/* React Flow Editor */}
         <div className="flex-1">
-          <FlowEditor />
+          <FlowEditor onNodeClick={(clipId) => setSelectedClipId(clipId)} />
         </div>
+
+        {/* Clip Detail Panel */}
+        {selectedClipId && clips.length > 0 && (
+          <ClipDetailPanel clipId={selectedClipId} onClose={() => setSelectedClipId(null)} />
+        )}
 
         {/* Onboarding overlay */}
         {showOnboarding && (
@@ -473,6 +508,30 @@ export default function EditorPage() {
                       label="Planning trailer scenes"
                       status={genStep === 'planning' ? 'active' : genStep === 'analyzing' ? 'pending' : 'done'}
                     />
+                  </div>
+                )}
+
+                {/* Style Preset Selector */}
+                {!isGenerating && genStep !== 'error' && (
+                  <div className="mb-6">
+                    <label className="text-xs text-[#888] uppercase tracking-wider flex items-center gap-1 mb-2">
+                      <Palette size={12} /> Trailer Style
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['cinematic', 'manga', 'noir', 'horror', 'romance', 'fantasy', 'sci-fi', 'comic'].map((style) => (
+                        <button
+                          key={style}
+                          onClick={() => setSelectedStyle(style)}
+                          className={`text-xs py-1.5 px-2 border-2 transition-colors capitalize ${
+                            selectedStyle === style
+                              ? 'border-[#111] bg-[#111] text-white'
+                              : 'border-[#ccc] bg-white text-[#666] hover:border-[#888]'
+                          }`}
+                        >
+                          {style}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 

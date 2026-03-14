@@ -103,6 +103,7 @@ export const api = {
       shot_type?: string;
       is_continuous?: boolean;
       style_seed?: string;
+    text?: string;
     }
   ) =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {

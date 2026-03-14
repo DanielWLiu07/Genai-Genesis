@@ -18,9 +18,10 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   const [prompt, setPrompt] = useState(clip?.prompt || '');
+  const [feedback, setFeedback] = useState('');
   const [durationMs, setDurationMs] = useState(clip?.duration_ms || 3000);
   const [text, setText] = useState(clip?.text || '');
-  const [transition, setTransition] = useState(clip?.transition_type || 'fade');
+  const [transition, setTransition] = useState<string>(clip?.transition_type || 'fade');
 
   // Slide in on mount
   useEffect(() => {
@@ -67,17 +68,21 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
     if (!projectId) return;
     handleSave();
     updateClip(clipId, { gen_status: 'generating' });
+    const combinedPrompt = feedback.trim()
+      ? `${prompt}\n\nRefinement: ${feedback.trim()}`
+      : prompt;
     try {
-      const result: any = await api.generateClip(projectId, clipId, prompt, clip?.type || 'image');
+      const result: any = await api.generateClip(projectId, clipId, combinedPrompt, clip?.type || 'image');
       updateClip(clipId, {
         gen_status: 'done',
         generated_media_url: result.media_url,
         thumbnail_url: result.thumbnail_url,
       });
+      setFeedback('');
     } catch (err) {
       updateClip(clipId, { gen_status: 'error', gen_error: String(err) });
     }
-  }, [clipId, prompt, clip?.type, updateClip, handleSave]);
+  }, [clipId, prompt, feedback, clip?.type, updateClip, handleSave]);
 
   const handleDelete = useCallback(() => {
     removeClip(clipId);
@@ -100,12 +105,12 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
   };
 
   return (
-    <div ref={panelRef} className="w-[300px] shrink-0 border-l-2 border-[#ccc] bg-white overflow-y-auto flex flex-col">
+    <div ref={panelRef} className="w-full h-full bg-white overflow-y-auto flex flex-col">
       {/* Header */}
       <div className="p-3 border-b-2 border-[#ccc] flex items-center justify-between">
-        <span className="manga-accent-bar text-xs">Clip Details</span>
-        <button onClick={handleClose} className="text-[#888] hover:text-[#111] transition-colors">
-          <X size={16} />
+        <span className="manga-accent-bar text-xs">CLIP DETAILS</span>
+        <button onClick={handleClose} className="text-[#888] hover:text-[#111] transition-colors flex items-center gap-1 text-xs">
+          <X size={12} /> Chat
         </button>
       </div>
 
@@ -121,10 +126,18 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
         </div>
 
         {/* Preview */}
-        {clip.thumbnail_url || clip.generated_media_url ? (
-          <img src={clip.thumbnail_url || clip.generated_media_url} alt="" className="w-full h-32 object-cover border-2 border-[#ccc]" />
+        {clip.generated_media_url && clip.type === 'video' ? (
+          <video
+            src={clip.generated_media_url}
+            className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
+            controls
+            preload="metadata"
+            poster={clip.thumbnail_url}
+          />
+        ) : clip.thumbnail_url || clip.generated_media_url ? (
+          <img src={clip.thumbnail_url || clip.generated_media_url} alt="" className="w-full h-48 object-cover border-2 border-[#ccc]" />
         ) : (
-          <div className="w-full h-32 bg-[#eee] border-2 border-[#ccc] flex items-center justify-center manga-halftone">
+          <div className="w-full h-48 bg-[#eee] border-2 border-[#ccc] flex items-center justify-center manga-halftone">
             <span className="text-[#888] text-xs">No preview</span>
           </div>
         )}
@@ -139,6 +152,20 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
             onChange={(e) => setPrompt(e.target.value)}
             onBlur={handleSave}
             rows={4}
+            className="manga-input w-full text-xs resize-none"
+          />
+        </div>
+
+        {/* Feedback / Refinement */}
+        <div>
+          <label className="text-xs text-[#888] uppercase tracking-wider flex items-center gap-1 mb-1">
+            <Sparkles size={12} /> Feedback
+          </label>
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            rows={2}
+            placeholder="e.g. make it darker, add rain..."
             className="manga-input w-full text-xs resize-none"
           />
         </div>

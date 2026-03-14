@@ -117,7 +117,7 @@ function SceneNodeInner({ data }: NodeProps) {
   }, [clip.id, clip.prompt, clip.type, updateClip]);
 
   return (
-    <div ref={nodeRef} className="manga-panel p-3 min-w-[200px]">
+    <div ref={nodeRef} className="manga-panel p-4" style={{ width: 260 }}>
       <Handle type="target" position={Position.Left} className="!bg-[#111]" />
 
       <div className="flex items-center gap-2 mb-2">
@@ -127,10 +127,18 @@ function SceneNodeInner({ data }: NodeProps) {
       </div>
 
       <div className="relative group">
-        {clip.thumbnail_url ? (
-          <img src={clip.thumbnail_url} alt="" className="w-full h-24 object-cover mb-2" />
+        {clip.generated_media_url && clip.type === 'video' ? (
+          <video
+            src={clip.generated_media_url}
+            className="w-full h-32 object-cover mb-2 bg-black"
+            controls
+            preload="metadata"
+            poster={clip.thumbnail_url}
+          />
+        ) : clip.thumbnail_url ? (
+          <img src={clip.thumbnail_url} alt="" className="w-full h-32 object-cover mb-2" />
         ) : (
-          <div className="w-full h-24 bg-[#eee] mb-2 flex items-center justify-center manga-halftone">
+          <div className="w-full h-32 bg-[#eee] mb-2 flex items-center justify-center manga-halftone">
             <span className="text-[#555] text-xs">No preview</span>
           </div>
         )}
@@ -173,7 +181,7 @@ function SceneNodeInner({ data }: NodeProps) {
         )}
       </div>
 
-      <p className="text-xs text-[#666] line-clamp-2">{clip.prompt}</p>
+      <p className="text-xs text-[#666] line-clamp-3 leading-relaxed">{clip.prompt}</p>
 
       {clip.text && (
         <p className="text-xs text-[#111] mt-1 italic">&quot;{clip.text}&quot;</p>

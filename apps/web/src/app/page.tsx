@@ -5,6 +5,9 @@ import Image from 'next/image';
 import gsap from 'gsap';
 import { ArrowRight } from 'lucide-react';
 import { usePageTransition } from '@/components/PageTransition';
+import dynamic from 'next/dynamic';
+
+const LeafOverlay = dynamic(() => import('@/components/LeafOverlay'), { ssr: false });
 
 const NOISE_DUR = '3.5s';
 const NOISE_SPLINE = '0.1 0.6 0.3 1';
@@ -111,10 +114,10 @@ export default function LandingPage() {
         repeat: -1,
       });
 
-      // Leaves fade in
+      // Leaves drop down from top
       gsap.fromTo(leavesRef.current,
-        { opacity: 0 },
-        { opacity: 1, duration: 1.2, delay: 0.3, ease: 'power2.out' }
+        { y: '-100%', opacity: 0 },
+        { y: '0%', opacity: 1, duration: 1.5, delay: 0.2, ease: 'power2.out' }
       );
 
       // Logo — much sooner
@@ -157,8 +160,8 @@ export default function LandingPage() {
 
   return (
     <div ref={containerRef} className="min-h-screen flex items-center justify-end overflow-hidden relative" style={{ background: `url('/hero-bg.png') center/cover no-repeat` }}>
-      {/* Video overlay revealed through noise mask */}
-      <div className="absolute inset-0 pointer-events-none">
+      {/* Layer 1: Hero video (behind everything) */}
+      <div className="absolute inset-0 pointer-events-none z-[1]">
         <NoiseMask id="video-reveal" mode="reveal">
           <div className="w-full h-full">
             <video
@@ -211,23 +214,8 @@ export default function LandingPage() {
         </video>
       </div>
 
-      {/* Leaves overlay */}
-      <div
-        ref={leavesRef}
-        className="absolute inset-0 pointer-events-none z-[5]"
-        style={{ opacity: 0 }}
-      >
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-full object-cover"
-          style={{ background: 'transparent' }}
-        >
-          <source src="/leaves-overlay.webm" type="video/webm" />
-        </video>
-      </div>
+      {/* Leaves overlay — canvas-based PNG sequence with real transparency */}
+      <LeafOverlay ref={leavesRef} />
 
       {/* White vignette — soft edges, slowly pulsing */}
       <div

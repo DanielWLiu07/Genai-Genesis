@@ -274,9 +274,9 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
                   style={{
                     fontSize: 'clamp(2.2rem, 6vw, 4.5rem)',
                     color: '#fff',
-                    WebkitTextStroke: '2px #111',
+                    WebkitTextStroke: '3px #111',
                     paintOrder: 'stroke fill',
-                    textShadow: '4px 4px 0px #000',
+                    textShadow: '4px 4px 0px #000, -1px -1px 0px #000',
                     lineHeight: 1,
                   }}
                 >

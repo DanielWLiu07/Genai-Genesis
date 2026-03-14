@@ -71,6 +71,7 @@ export default function LandingPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const leavesRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
+  const rightTreeRef = useRef<HTMLDivElement>(null);
   const holyRef = useRef<HTMLDivElement>(null);
   const vignetteRef = useRef<HTMLDivElement>(null);
   const { navigate } = usePageTransition();
@@ -79,9 +80,15 @@ export default function LandingPage() {
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
-      // Left tree slides in from offscreen left, shifted up
+      // Left tree slides in from offscreen left
       gsap.fromTo(treeRef.current,
         { x: '-100%', opacity: 0 },
+        { x: '0%', opacity: 1, duration: 1.8, delay: 0.4, ease: 'power2.out' }
+      );
+
+      // Right tree slides in from offscreen right
+      gsap.fromTo(rightTreeRef.current,
+        { x: '100%', opacity: 0 },
         { x: '0%', opacity: 1, duration: 1.8, delay: 0.4, ease: 'power2.out' }
       );
 
@@ -183,6 +190,24 @@ export default function LandingPage() {
           style={{ background: 'transparent' }}
         >
           <source src="/left-tree.webm" type="video/webm" />
+        </video>
+      </div>
+
+      {/* Right tree overlay — slides in from right */}
+      <div
+        ref={rightTreeRef}
+        className="absolute pointer-events-none z-[3]"
+        style={{ opacity: 0, top: '-8%', left: 0, right: 0, bottom: 0 }}
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+          style={{ background: 'transparent' }}
+        >
+          <source src="/right-tree.webm" type="video/webm" />
         </video>
       </div>
 

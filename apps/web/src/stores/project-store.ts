@@ -45,6 +45,7 @@ interface ProjectState {
   addUploadedImage: (image: Omit<UploadedImage, 'id'>) => void;
   removeUploadedImage: (id: string) => void;
   setStoryText: (text: string) => void;
+  removeProject: (id: string) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set) => ({
@@ -93,4 +94,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
     if (!state.currentProject) return state;
     return { currentProject: { ...state.currentProject, story_text: text } };
   }),
+  removeProject: (id) => set((state) => ({
+    projects: state.projects.filter((p) => p.id !== id),
+    currentProject: state.currentProject?.id === id ? null : state.currentProject,
+  })),
 }));

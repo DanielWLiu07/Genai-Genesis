@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
 import { Check, X } from 'lucide-react';
 
 interface ImageCropperProps {
   src: string;
-  aspect?: number; // default 2/3 (book cover)
+  aspect?: number;
   onConfirm: (croppedDataUrl: string) => void;
   onCancel: () => void;
 }
@@ -41,6 +41,9 @@ export function ImageCropper({ src, aspect = 2 / 3, onConfirm, onCancel }: Image
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const imgRef = useRef<HTMLImageElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
@@ -53,17 +56,23 @@ export function ImageCropper({ src, aspect = 2 / 3, onConfirm, onCancel }: Image
     onConfirm(dataUrl);
   }, [completedCrop, onConfirm]);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onCancel]);
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onCancel}>
-      <div className="manga-panel bg-white w-full max-w-lg mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="manga-panel bg-white w-full max-w-lg mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-4 py-3 border-b-2 border-[#ccc]">
           <span className="manga-accent-bar text-xs">CROP THUMBNAIL</span>
           <button onClick={onCancel} className="text-[#888] hover:text-[#111] transition-colors">
@@ -71,36 +80,44 @@ export function ImageCropper({ src, aspect = 2 / 3, onConfirm, onCancel }: Image
           </button>
         </div>
 
-        {/* Crop area */}
-        <div className="p-4 flex flex-col items-center gap-4 bg-[#111]">
+        <div className="p-4 flex flex-col items-center gap-3 bg-[#111]">
           <ReactCrop
             crop={crop}
             onChange={(c) => setCrop(c)}
             onComplete={(c) => setCompletedCrop(c)}
             aspect={aspect}
-            className="max-h-[60vh]"
           >
             <img
               ref={imgRef}
               src={src}
               alt="crop"
-              className="max-h-[60vh] max-w-full object-contain"
+              style={{ maxHeight: '60vh', maxWidth: '100%', objectFit: 'contain' }}
               onLoad={onImageLoad}
             />
           </ReactCrop>
-          <p className="text-[0.6rem] text-white/50 uppercase tracking-wider">Drag to reposition · drag corners to resize</p>
+          <p className="text-[0.6rem] text-white/40 uppercase tracking-wider">
+            Drag to reposition · drag corners to resize
+          </p>
         </div>
 
-        {/* Actions */}
         <div className="px-4 py-3 border-t-2 border-[#ccc] flex gap-2 justify-end">
-          <button onClick={onCancel} className="manga-btn bg-white text-[#888] px-4 py-1.5 text-sm flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="manga-btn bg-white text-[#888] px-4 py-1.5 text-sm flex items-center gap-1.5"
+          >
             <X size={13} /> Cancel
           </button>
-          <button onClick={handleConfirm} className="manga-btn bg-[#111] text-white px-4 py-1.5 text-sm flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="manga-btn bg-[#111] text-white px-4 py-1.5 text-sm flex items-center gap-1.5"
+          >
             <Check size={13} /> Apply Crop
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

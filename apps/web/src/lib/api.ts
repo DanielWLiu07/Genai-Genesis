@@ -17,6 +17,8 @@ export const api = {
   getProject: (id: string) => fetchAPI(`/projects/${id}`),
   updateProject: (id: string, data: Record<string, any>) =>
     fetchAPI(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteProject: (id: string) =>
+    fetchAPI(`/projects/${id}`, { method: 'DELETE' }),
 
   // Timeline
   getTimeline: (projectId: string) => fetchAPI(`/projects/${projectId}/timeline`),

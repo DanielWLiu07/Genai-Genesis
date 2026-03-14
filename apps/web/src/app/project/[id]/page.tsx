@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { FlowEditor } from '@/components/editor/FlowEditor';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import {
@@ -26,6 +26,7 @@ const STYLES = ['cinematic', 'manga', 'noir', 'horror', 'romance', 'fantasy', 's
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [genStep, setGenStep] = useState<GenerationStep>('idle');
@@ -44,6 +45,8 @@ export default function EditorPage() {
   // Left sidebar tab state
   const [activeTab, setActiveTab] = useState<SidebarTab>('story');
   const [showSettings, setShowSettings] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
 
   // Character editing state
   const [editingCharId, setEditingCharId] = useState<string | null>(null);
@@ -68,6 +71,7 @@ export default function EditorPage() {
   const updateClip = useTimelineStore((s) => s.updateClip);
   const { currentProject, setCurrentProject } = useProjectStore();
   const updateProject = useProjectStore((s) => s.updateProject);
+  const removeProject = useProjectStore((s) => s.removeProject);
   const addCharacter = useProjectStore((s) => s.addCharacter);
   const removeCharacter = useProjectStore((s) => s.removeCharacter);
   const updateCharacter = useProjectStore((s) => s.updateCharacter);
@@ -366,6 +370,19 @@ export default function EditorPage() {
     } catch { setSuggestions([]); } finally { setLoadingSuggestions(false); }
   }, [id, clips, currentProject, loadingSuggestions]);
 
+  const handleDeleteProject = useCallback(async () => {
+    if (!id) return;
+    setDeletingProject(true);
+    try {
+      await api.deleteProject(id).catch(() => {});
+      removeProject(id);
+      localStorage.removeItem(`cover_image_${id}`);
+      router.push('/dashboard');
+    } finally {
+      setDeletingProject(false);
+    }
+  }, [id, removeProject, router]);
+
   // Batch generate scene images for all pending clips
   const handleGenerateAllImages = useCallback(async () => {
     if (!id) return;
@@ -514,8 +531,8 @@ export default function EditorPage() {
         <div ref={editorHeaderRef} className="flex items-center gap-2 min-w-0">
           <Film size={18} className="text-[#111] shrink-0" />
           <span
-            className="font-bold text-base"
-            style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '1.5px #111', paintOrder: 'stroke fill', textShadow: '2px 2px 0px #000', whiteSpace: 'nowrap' }}
+            className="font-bold text-2xl"
+            style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000', whiteSpace: 'nowrap' }}
           >
             {currentProject?.title || 'MangaMate Editor'}
           </span>
@@ -562,11 +579,6 @@ export default function EditorPage() {
             <Link href={`/project/${id}/timeline`} className="manga-btn bg-white text-[#888] px-2.5 py-1.5 text-sm flex items-center gap-1.5">
               <Zap size={14} />
             </Link>
-          )}
-          {!rightOpen && (
-            <button onClick={() => setRightOpen(true)} className="text-[#888] hover:text-[#111] transition-colors" title="Open panel">
-              <ChevronLeft size={16} />
-            </button>
           )}
         </div>
       </header>
@@ -666,7 +678,10 @@ export default function EditorPage() {
                     <>
                       <div>
                         <span className="manga-accent-bar text-[0.6rem]">PROJECT</span>
-                        <h3 className="text-sm font-bold mt-2 text-[#111] leading-snug">{currentProject.title}</h3>
+                        <h3
+                          className="text-lg font-bold mt-2 leading-snug"
+                          style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '1.5px #111', paintOrder: 'stroke fill', textShadow: '2px 2px 0px #000' }}
+                        >{currentProject.title}</h3>
                         {currentProject.description && (
                           <p className="text-[0.7rem] text-[#888] mt-1 leading-relaxed">{currentProject.description}</p>
                         )}
@@ -831,7 +846,7 @@ export default function EditorPage() {
         )}
 
         {/* Center: React Flow + Timeline Strip */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
           <div className="flex-1">
             <FlowEditor onNodeClick={(clipId) => setSelectedClipId(clipId)} />
           </div>
@@ -839,7 +854,19 @@ export default function EditorPage() {
         </div>
 
         {/* Right: Clip Detail Panel + Chat */}
-        <div className={`shrink-0 flex flex-col transition-all duration-200 overflow-hidden ${rightOpen ? 'w-[320px] border-l-2 border-[#ccc]' : 'w-0'}`}>
+        <div
+          className="shrink-0 border-l-2 border-[#ccc] bg-white flex flex-col overflow-hidden transition-all duration-200"
+          style={{ width: rightOpen ? 320 : 24 }}
+        >
+          {!rightOpen && (
+            <button
+              onClick={() => setRightOpen(true)}
+              className="flex-1 flex items-center justify-center text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors"
+              title="Expand panel"
+            >
+              <ChevronLeft size={13} />
+            </button>
+          )}
           {rightOpen && (
             <div className="flex-1 flex flex-col overflow-hidden">
               {selectedClipId && clips.length > 0 ? (
@@ -853,11 +880,11 @@ export default function EditorPage() {
 
         {/* Settings modal */}
         {showSettings && (
-          <div className="absolute inset-0 z-50 flex items-start justify-center pt-16 bg-black/30 backdrop-blur-[2px]" onClick={() => setShowSettings(false)}>
+          <div className="absolute inset-0 z-50 flex items-start justify-center pt-16 bg-black/30 backdrop-blur-[2px]" onClick={() => { setShowSettings(false); setConfirmDelete(false); }}>
             <div className="manga-panel bg-white w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3 border-b-2 border-[#ccc]">
                 <span className="manga-accent-bar text-xs">PROJECT SETTINGS</span>
-                <button onClick={() => setShowSettings(false)} className="text-[#888] hover:text-[#111] transition-colors"><X size={14} /></button>
+                <button onClick={() => { setShowSettings(false); setConfirmDelete(false); }} className="text-[#888] hover:text-[#111] transition-colors"><X size={14} /></button>
               </div>
               <div className="p-4 space-y-4">
                 <div>
@@ -929,6 +956,40 @@ export default function EditorPage() {
                     {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Regenerate from Scratch
                   </button>
                   <p className="text-[0.55rem] text-[#aaa] text-center leading-snug">Re-plan keeps analysis. Regen from scratch re-analyzes the story.</p>
+                </div>
+                <div className="border-t-2 border-red-200 pt-3 space-y-2">
+                  <span className="manga-accent-bar text-[0.6rem]" style={{ background: '#dc2626' }}>DANGER ZONE</span>
+                  {!confirmDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(true)}
+                      className="manga-btn w-full bg-white text-red-600 border-red-300 py-1.5 text-sm flex items-center justify-center gap-1.5 hover:bg-red-50"
+                    >
+                      <Trash2 size={13} /> Delete Project
+                    </button>
+                  ) : (
+                    <div className="border-2 border-red-400 bg-red-50 p-3 space-y-2">
+                      <p className="text-xs text-red-700 font-bold text-center uppercase tracking-wide">This cannot be undone!</p>
+                      <p className="text-[0.6rem] text-red-500 text-center">All clips and timeline data will be lost.</p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(false)}
+                          className="manga-btn flex-1 bg-white text-[#888] py-1.5 text-xs flex items-center justify-center gap-1"
+                        >
+                          <X size={11} /> Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDeleteProject}
+                          disabled={deletingProject}
+                          className="manga-btn flex-1 bg-red-600 text-white border-red-600 py-1.5 text-xs flex items-center justify-center gap-1"
+                        >
+                          {deletingProject ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Confirm Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -27,6 +27,19 @@ const EFFECT_META: Record<EffectType, { label: string; color: string; desc: stri
 
 const EFFECT_TYPES = Object.keys(EFFECT_META) as EffectType[];
 
+// ─── Transition metadata ──────────────────────────────────────────────────────
+
+type TransitionType = 'cut' | 'fade' | 'dissolve' | 'wipe';
+
+const TRANSITION_META: Record<TransitionType, { label: string; color: string; desc: string }> = {
+  cut:     { label: 'CUT',   color: '#6b7280', desc: 'Hard cut — instant switch' },
+  fade:    { label: 'FADE',  color: '#3b82f6', desc: 'Fade to/from black' },
+  dissolve:{ label: 'DISS',  color: '#10b981', desc: 'Cross-dissolve blend' },
+  wipe:    { label: 'WIPE',  color: '#f97316', desc: 'Directional wipe' },
+};
+
+const TRANSITION_CYCLE: TransitionType[] = ['cut', 'fade', 'dissolve', 'wipe'];
+
 // ─── Clip colors by type ─────────────────────────────────────────────────────
 
 const CLIP_COLORS: Record<string, string> = {
@@ -74,14 +87,15 @@ export default function TimelinePage() {
     }
   }, [id, setProjectId, loadTimeline]);
 
-  const clips      = useTimelineStore((s) => s.clips);
-  const effects    = useTimelineStore((s) => s.effects);
-  const beatMap    = useTimelineStore((s) => s.beatMap);
-  const addEffect  = useTimelineStore((s) => s.addEffect);
-  const removeEffect   = useTimelineStore((s) => s.removeEffect);
-  const setBeatMap     = useTimelineStore((s) => s.setBeatMap);
-  const setEffects     = useTimelineStore((s) => s.setEffects);
-  const clearEffects   = useTimelineStore((s) => s.clearEffects);
+  const clips        = useTimelineStore((s) => s.clips);
+  const effects      = useTimelineStore((s) => s.effects);
+  const beatMap      = useTimelineStore((s) => s.beatMap);
+  const addEffect    = useTimelineStore((s) => s.addEffect);
+  const removeEffect = useTimelineStore((s) => s.removeEffect);
+  const setBeatMap   = useTimelineStore((s) => s.setBeatMap);
+  const setEffects   = useTimelineStore((s) => s.setEffects);
+  const clearEffects = useTimelineStore((s) => s.clearEffects);
+  const updateClip   = useTimelineStore((s) => s.updateClip);
 
   const [selectedType, setSelectedType] = useState<EffectType>('flash_white');
   const [hoveredType, setHoveredType]   = useState<EffectType | null>(null);
@@ -217,6 +231,14 @@ export default function TimelinePage() {
       intensity: 0.8,
     });
   }, [pxPerMs, selectedType, totalMs, addEffect]);
+
+  // ── Cycle transition type on a clip ─────────────────────────────────────
+
+  const handleCycleTransition = useCallback((clipId: string, current: TransitionType) => {
+    const idx = TRANSITION_CYCLE.indexOf(current);
+    const next = TRANSITION_CYCLE[(idx + 1) % TRANSITION_CYCLE.length];
+    updateClip(clipId, { transition_type: next });
+  }, [updateClip]);
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -503,6 +525,9 @@ export default function TimelinePage() {
               <div className="h-16 border-b border-[#222] flex items-center px-2">
                 <span className="text-[0.5rem] text-[#555] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>CLIPS</span>
               </div>
+              <div className="h-8 border-b border-[#222] flex items-center px-2">
+                <span className="text-[0.5rem] text-[#555] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>TRANS</span>
+              </div>
               <div className="flex-1 flex items-center px-2">
                 <span className="text-[0.5rem] text-[#555] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>FX</span>
               </div>
@@ -632,6 +657,52 @@ export default function TimelinePage() {
                   />
                 </div>
 
+                {/* ── Transitions track ────────────────────────────────── */}
+                <div
+                  className="h-8 border-b border-[#222] relative shrink-0 bg-[#0c0c0c]"
+                  style={{ width: timelineWidth + 100 }}
+                >
+                  {sortedClips.map((clip, idx) => {
+                    if (idx === 0) return null; // no transition before first clip
+                    const x = clipStartMs[clip.id] * pxPerMs;
+                    const transType = (clip.transition_type || 'cut') as TransitionType;
+                    const meta = TRANSITION_META[transType] || TRANSITION_META.cut;
+                    return (
+                      <button
+                        key={clip.id}
+                        onClick={() => handleCycleTransition(clip.id, transType)}
+                        className="absolute top-1 bottom-1 -translate-x-1/2 flex items-center justify-center z-10 group"
+                        style={{ left: x }}
+                        title={`${meta.desc} — click to cycle`}
+                      >
+                        {/* Vertical boundary line */}
+                        <div
+                          className="absolute w-px h-full opacity-40"
+                          style={{ backgroundColor: meta.color }}
+                        />
+                        {/* Label badge */}
+                        <div
+                          className="relative px-1.5 py-0.5 text-[0.45rem] font-bold tracking-widest border transition-all group-hover:scale-110"
+                          style={{
+                            fontFamily: 'var(--font-manga)',
+                            backgroundColor: `${meta.color}22`,
+                            borderColor: meta.color,
+                            color: meta.color,
+                            boxShadow: `0 0 6px ${meta.color}44`,
+                          }}
+                        >
+                          {meta.label}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {/* Playhead */}
+                  <div
+                    className="absolute top-0 h-full w-0.5 bg-white/30 z-20 pointer-events-none"
+                    style={{ left: playheadMs * pxPerMs }}
+                  />
+                </div>
+
                 {/* ── Effects track ─────────────────────────────────────── */}
                 <div
                   className="flex-1 relative bg-[#080808] cursor-crosshair"
@@ -733,6 +804,11 @@ export default function TimelinePage() {
             {selectedEffectId && (
               <span className="text-[0.5rem] text-[#fbbf24]" style={{ fontFamily: 'var(--font-manga)' }}>
                 EFFECT SELECTED — CLICK AGAIN TO DELETE
+              </span>
+            )}
+            {!selectedEffectId && sortedClips.length > 1 && (
+              <span className="text-[0.5rem] text-[#333]" style={{ fontFamily: 'var(--font-manga)' }}>
+                TRANS TRACK: CLICK BADGE TO CYCLE CUT › FADE › DISS › WIPE
               </span>
             )}
           </div>

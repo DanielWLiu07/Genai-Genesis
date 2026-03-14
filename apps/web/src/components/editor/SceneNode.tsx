@@ -199,7 +199,13 @@ function SceneNodeInner({ data }: NodeProps) {
   }, [clip.id, clip.prompt, clip.thumbnail_url, updateClip, clips, currentProject]);
 
   return (
-    <div ref={nodeRef} className="manga-panel p-4" style={{ width: 260 }}>
+    <div
+      ref={nodeRef}
+      className="manga-panel p-4"
+      style={{ width: 260 }}
+      onMouseEnter={() => { if (nodeRef.current) gsap.to(nodeRef.current, { scale: 1.04, zIndex: 10, duration: 0.2, ease: 'back.out(1.5)' }); }}
+      onMouseLeave={() => { if (nodeRef.current) gsap.to(nodeRef.current, { scale: 1, zIndex: 1, duration: 0.2, ease: 'power2.out' }); }}
+    >
       <Handle type="target" position={Position.Left} className="!bg-[#111]" />
 
       <div className="flex items-center gap-2 mb-2">
@@ -342,13 +348,22 @@ function SceneNodeInner({ data }: NodeProps) {
         )}
 
         {clip.gen_status === 'done' && clip.type !== 'video' && clip.type !== 'text_overlay' && (
-          <button
-            onClick={handleGenerate}
-            className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/60 flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-          >
-            <RefreshCw size={16} className="text-white" />
-            <span className="text-xs text-white" style={{ fontFamily: 'var(--font-manga)' }}>Regenerate</span>
-          </button>
+          <div className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
+            <button
+              onClick={handleGenerate}
+              className="flex flex-col items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/25 border border-white/30 transition-colors"
+            >
+              <RefreshCw size={14} className="text-white" />
+              <span className="text-[0.6rem] text-white" style={{ fontFamily: 'var(--font-manga)' }}>Regen Frame</span>
+            </button>
+            <button
+              onClick={handleGenerateVideo}
+              className="flex flex-col items-center gap-1 px-3 py-2 bg-blue-500/40 hover:bg-blue-500/60 border border-blue-400/50 transition-colors"
+            >
+              <Film size={14} className="text-blue-200" />
+              <span className="text-[0.6rem] text-blue-200" style={{ fontFamily: 'var(--font-manga)' }}>Gen Video</span>
+            </button>
+          </div>
         )}
       </div>
 

@@ -7,7 +7,7 @@ import { ChatPanel } from '@/components/chat/ChatPanel';
 import {
   Film, ArrowLeft, Play, Download, Loader2, Sparkles, BookOpen, Clapperboard,
   Lightbulb, Palette, Settings, Users, BarChart2, Plus, Trash2, Check,
-  RotateCcw, RefreshCw, X, Edit2, Upload,
+  RotateCcw, RefreshCw, X, Edit2, Upload, ChevronLeft, ChevronRight, Zap,
 } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import { api } from '@/lib/api';
@@ -18,7 +18,7 @@ import { TimelineStrip } from '@/components/editor/TimelineStrip';
 import gsap from 'gsap';
 
 type GenerationStep = 'idle' | 'analyzing' | 'planning' | 'done' | 'error';
-type SidebarTab = 'story' | 'chars' | 'settings';
+type SidebarTab = 'story' | 'chars';
 
 const STYLES = ['cinematic', 'manga', 'noir', 'horror', 'romance', 'fantasy', 'sci-fi', 'comic'];
 
@@ -39,6 +39,7 @@ export default function EditorPage() {
 
   // Left sidebar tab state
   const [activeTab, setActiveTab] = useState<SidebarTab>('story');
+  const [showSettings, setShowSettings] = useState(false);
 
   // Character editing state
   const [editingCharId, setEditingCharId] = useState<string | null>(null);
@@ -401,30 +402,38 @@ export default function EditorPage() {
       <div ref={flashOverlayRef} className="fixed inset-0 z-50 bg-[#111] pointer-events-none" style={{ display: 'none', opacity: 0 }} />
 
       {/* Top bar */}
-      <header ref={topBarRef} className="h-12 border-b-2 border-[#ccc] flex items-center px-4 gap-4 shrink-0 bg-white/80 backdrop-blur-sm">
+      <header ref={topBarRef} className="h-12 border-b-2 border-[#ccc] flex items-center px-4 gap-3 shrink-0 bg-white/80 backdrop-blur-sm">
         <Link href="/dashboard" className="text-[#888] hover:text-[#111] transition-colors">
           <ArrowLeft size={18} />
         </Link>
-        {currentProject && clips.length > 0 && (
-          <button
-            onClick={() => setLeftOpen(!leftOpen)}
-            className="text-[#888] hover:text-[#111] transition-colors"
-            title={leftOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          >
-            <Clapperboard size={16} className={leftOpen ? 'opacity-100' : 'opacity-40'} />
-          </button>
-        )}
         <div ref={editorHeaderRef} className="flex items-center gap-2">
           <Film size={18} className="text-[#111]" />
-          <span className="font-semibold text-sm text-[#111]" style={{ fontFamily: 'var(--font-manga)' }}>
+          <span
+            className="font-bold text-base truncate max-w-[280px]"
+            style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '1.5px #111', paintOrder: 'stroke fill', textShadow: '2px 2px 0px #000' }}
+          >
             {currentProject?.title || 'MangaMate Editor'}
           </span>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-stretch gap-2">
+          {currentProject && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className={`manga-btn px-2.5 text-sm flex items-center gap-1.5 transition-colors ${showSettings ? 'bg-[#111] text-white' : 'bg-white text-[#111] hover:text-black'}`}
+              title="Settings"
+            >
+              <Settings size={14} />
+            </button>
+          )}
           {clips.length > 0 && (
             <button onClick={handleGetSuggestions} disabled={loadingSuggestions} className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
               {loadingSuggestions ? <Loader2 size={14} className="animate-spin" /> : <Lightbulb size={14} />} Suggestions
             </button>
+          )}
+          {clips.length > 0 && (
+            <Link href={`/project/${id}/timeline`} className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
+              <Zap size={14} /> Edit
+            </Link>
           )}
           <button className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
             <Play size={14} /> Preview
@@ -433,13 +442,11 @@ export default function EditorPage() {
             {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             {exportStatus || (exporting ? 'Exporting...' : 'Export')}
           </button>
-          <button
-            onClick={() => setRightOpen(!rightOpen)}
-            className="text-[#888] hover:text-[#111] transition-colors"
-            title={rightOpen ? 'Collapse panel' : 'Expand panel'}
-          >
-            <Clapperboard size={16} className={`scale-x-[-1] ${rightOpen ? 'opacity-100' : 'opacity-40'}`} />
-          </button>
+          {!rightOpen && (
+            <button onClick={() => setRightOpen(true)} className="text-[#888] hover:text-[#111] transition-colors" title="Open panel">
+              <ChevronLeft size={16} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -448,15 +455,33 @@ export default function EditorPage() {
 
         {/* Left sidebar — tabbed */}
         {currentProject && clips.length > 0 && (
-          <div className={`shrink-0 bg-white flex flex-col transition-all duration-200 overflow-hidden ${leftOpen ? 'w-[220px] border-r-2 border-[#ccc]' : 'w-0'}`}>
+          <>
+            {/* Collapsed strip — proper sibling, takes own 24px */}
+            {!leftOpen && (
+              <button
+                onClick={() => setLeftOpen(true)}
+                className="shrink-0 w-6 border-r-2 border-[#ccc] bg-white hover:bg-[#f0f0f0] transition-colors flex items-center justify-center text-[#888] hover:text-[#111]"
+                title="Expand sidebar"
+              >
+                <ChevronRight size={13} />
+              </button>
+            )}
+
+            {/* Open sidebar */}
             {leftOpen && (
-              <>
+          <div className="shrink-0 w-[220px] border-r-2 border-[#ccc] bg-white flex flex-col overflow-hidden">
                 {/* Tab buttons */}
                 <div className="flex border-b-2 border-[#ccc] shrink-0">
+                  <button
+                    onClick={() => setLeftOpen(false)}
+                    className="px-2 flex items-center justify-center text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors border-r border-[#eee]"
+                    title="Collapse"
+                  >
+                    <ChevronLeft size={12} />
+                  </button>
                   {([
                     { key: 'story', icon: <BarChart2 size={12} />, label: 'STORY' },
                     { key: 'chars', icon: <Users size={12} />, label: 'CHARS' },
-                    { key: 'settings', icon: <Settings size={12} />, label: 'SETTINGS' },
                   ] as const).map(({ key, icon, label }) => (
                     <button
                       key={key}
@@ -772,9 +797,9 @@ export default function EditorPage() {
                   )}
 
                 </div>
-              </>
+              </div>
             )}
-          </div>
+          </>
         )}
 
         {/* Center: React Flow + Timeline Strip */}
@@ -792,11 +817,77 @@ export default function EditorPage() {
               {selectedClipId && clips.length > 0 ? (
                 <ClipDetailPanel clipId={selectedClipId} onClose={() => setSelectedClipId(null)} />
               ) : (
-                <ChatPanel projectId={id} />
+                <ChatPanel projectId={id} onCollapse={() => setRightOpen(false)} />
               )}
             </div>
           )}
         </div>
+
+        {/* Settings modal */}
+        {showSettings && (
+          <div className="absolute inset-0 z-50 flex items-start justify-center pt-16 bg-black/30 backdrop-blur-[2px]" onClick={() => setShowSettings(false)}>
+            <div className="manga-panel bg-white w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b-2 border-[#ccc]">
+                <span className="manga-accent-bar text-xs">PROJECT SETTINGS</span>
+                <button onClick={() => setShowSettings(false)} className="text-[#888] hover:text-[#111] transition-colors"><X size={14} /></button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="text-[0.6rem] text-[#888] uppercase tracking-wider block mb-1">Book Thumbnail</label>
+                  <div onClick={() => thumbnailInputRef.current?.click()} className="relative group w-full h-32 border-2 border-dashed border-[#ccc] cursor-pointer hover:border-[#111] transition-colors overflow-hidden">
+                    {editThumbnail ? (
+                      <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 manga-halftone">
+                        <Upload size={20} className="text-[#aaa]" />
+                        <span className="text-xs text-[#aaa]">Click to upload</span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <span className="text-white text-xs font-medium">Change Image</span>
+                    </div>
+                  </div>
+                  {editThumbnail && <button onClick={() => setEditThumbnail('')} className="text-[0.6rem] text-red-400 hover:text-red-600 mt-0.5">Remove thumbnail</button>}
+                  <input ref={thumbnailInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setEditThumbnail(reader.result as string); reader.readAsDataURL(file); e.target.value = ''; }} />
+                </div>
+                <div>
+                  <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Title</label>
+                  <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="manga-input w-full text-sm mt-1 py-1.5" />
+                </div>
+                <div>
+                  <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Description</label>
+                  <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={2} className="manga-input w-full text-sm mt-1 resize-none" />
+                </div>
+                <div>
+                  <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Original Story Prompt</label>
+                  <textarea value={editStoryText} onChange={(e) => setEditStoryText(e.target.value)} rows={4} placeholder="Your story text or prompt..." className="manga-input w-full text-sm mt-1 resize-none" />
+                  <p className="text-[0.55rem] text-[#aaa] mt-0.5">Used for regeneration</p>
+                </div>
+                <button onClick={async () => { await handleSaveSettings(); setShowSettings(false); }} disabled={savingSettings} className="manga-btn w-full bg-[#111] text-white py-2 text-sm flex items-center justify-center gap-1.5">
+                  {savingSettings ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Save Settings
+                </button>
+                <div className="border-t-2 border-[#eee] pt-3 space-y-2">
+                  <span className="manga-accent-bar text-[0.6rem]">TRAILER STYLE</span>
+                  <div className="grid grid-cols-4 gap-1 mt-2">
+                    {STYLES.map((s) => (
+                      <button key={s} onClick={() => setSelectedStyle(s)} className={`text-[0.6rem] py-1 px-1 border-2 transition-colors capitalize ${selectedStyle === s ? 'border-[#111] bg-[#111] text-white' : 'border-[#ccc] text-[#666] hover:border-[#888]'}`}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t-2 border-[#eee] pt-3 space-y-2">
+                  <span className="manga-accent-bar text-[0.6rem]">REGENERATION</span>
+                  <button onClick={() => { handleReplan(); setShowSettings(false); }} disabled={isGenerating} className="manga-btn w-full bg-white text-[#111] py-1.5 text-sm flex items-center justify-center gap-1.5">
+                    {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Re-plan with {selectedStyle} style
+                  </button>
+                  <button onClick={() => { handleRegenFromScratch(); setShowSettings(false); }} disabled={isGenerating} className="manga-btn w-full bg-[#111] text-white py-1.5 text-sm flex items-center justify-center gap-1.5">
+                    {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Regenerate from Scratch
+                  </button>
+                  <p className="text-[0.55rem] text-[#aaa] text-center leading-snug">Re-plan keeps analysis. Regen from scratch re-analyzes the story.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Onboarding overlay */}
         {showOnboarding && (

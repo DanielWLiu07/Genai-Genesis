@@ -36,8 +36,6 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
   const overlayRef   = useRef<HTMLDivElement>(null);
   const logoRef      = useRef<HTMLDivElement>(null);
   const glowRef      = useRef<HTMLDivElement>(null);
-  const leftTreeRef  = useRef<HTMLDivElement>(null);
-  const rightTreeRef = useRef<HTMLDivElement>(null);
   const letterRefs   = useRef<(HTMLSpanElement | null)[]>([]);
   const isAnimating  = useRef(false);
   const isMounted    = useRef(false);
@@ -50,8 +48,6 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
     // Hide logo + letters initially
     if (logoRef.current)    gsap.set(logoRef.current, { opacity: 0, scale: 0.2, rotation: -25, y: 20 });
     if (glowRef.current)    gsap.set(glowRef.current, { opacity: 0, scale: 0.5 });
-    if (leftTreeRef.current)  gsap.set(leftTreeRef.current, { opacity: 1 });
-    if (rightTreeRef.current) gsap.set(rightTreeRef.current, { opacity: 1 });
     letterRefs.current.forEach((el) => {
       if (el) gsap.set(el, { opacity: 0, y: -60, rotation: () => Math.random() * 40 - 20 });
     });
@@ -150,8 +146,6 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
         // Reset logo + letters for next transition
         if (logoRef.current) gsap.set(logoRef.current, { opacity: 0, scale: 0.2, rotation: -25, y: 20, x: 0 });
         if (glowRef.current) gsap.set(glowRef.current, { opacity: 0, scale: 0.5 });
-        if (leftTreeRef.current)  gsap.set(leftTreeRef.current, { opacity: 1 });
-        if (rightTreeRef.current) gsap.set(rightTreeRef.current, { opacity: 1 });
         letterRefs.current.forEach((el) => {
           if (el) gsap.set(el, { opacity: 0, y: -60, x: 0, rotation: 0, scale: 1, scaleX: 1, scaleY: 1 });
         });
@@ -237,18 +231,6 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
             );
           })}
         </svg>
-
-        {/* ── Tree overlays ─────────────────────────────────── */}
-        <div ref={leftTreeRef} className="absolute inset-0 pointer-events-none">
-          <video autoPlay loop muted playsInline className="w-full h-full object-cover" style={{ background: 'transparent' }}>
-            <source src="/left-tree.webm" type="video/webm" />
-          </video>
-        </div>
-        <div ref={rightTreeRef} className="absolute inset-0 pointer-events-none">
-          <video autoPlay loop muted playsInline className="w-full h-full object-cover" style={{ background: 'transparent' }}>
-            <source src="/right-tree.webm" type="video/webm" />
-          </video>
-        </div>
 
         {/* ── Violet glow burst ─────────────────────────────── */}
         <div

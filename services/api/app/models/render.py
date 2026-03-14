@@ -3,7 +3,7 @@ from typing import Optional
 
 class GenerateClipRequest(BaseModel):
     clip_id: str
-    prompt: str
+    prompt: str = ""
     type: str = "image"
 
 class RenderRequest(BaseModel):

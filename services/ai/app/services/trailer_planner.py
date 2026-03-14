@@ -112,6 +112,8 @@ The trailer should make someone want to read this book immediately."""
                 clip["type"] = "image"
             if "duration_ms" not in clip:
                 clip["duration_ms"] = 3000
+            if not clip.get("prompt"):
+                clip["prompt"] = ""
             if "transition_type" not in clip:
                 clip["transition_type"] = preset["transitions"][0] if preset["transitions"] else "dissolve"
             # Apply preset text_style to text overlays that don't have one

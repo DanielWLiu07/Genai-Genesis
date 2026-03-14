@@ -24,8 +24,16 @@ async def list_projects():
     db = get_supabase()
     if db is None:
         return list_projects_mem()
-    result = db.table("projects").select("*").order("created_at", desc=True).execute()
-    return result.data
+    result = db.table("projects").select(
+        "id,title,author,description,status,cover_image_url,created_at,updated_at"
+    ).order("created_at", desc=True).execute()
+    # Strip base64 data URLs — too large for list view, stored in client localStorage
+    rows = []
+    for row in result.data:
+        if (row.get("cover_image_url") or "").startswith("data:"):
+            row = {**row, "cover_image_url": None}
+        rows.append(row)
+    return rows
 
 
 @router.get("/{project_id}")

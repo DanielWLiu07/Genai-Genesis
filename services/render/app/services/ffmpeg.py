@@ -278,6 +278,8 @@ async def compose_trailer(
     settings: Optional[dict] = None,
     music_track: Optional[dict] = None,
     progress_callback=None,
+    effects: Optional[list] = None,
+    beat_map: Optional[dict] = None,
 ) -> dict:
     """Compose final trailer video from clips using FFmpeg.
 
@@ -422,11 +424,21 @@ async def compose_trailer(
         else:
             music_output = text_output
 
-        # Step 5: Copy to final output
-        if progress_callback:
-            await progress_callback(95, "Final encoding...")
+        # Step 5: Apply AMV effects
+        if effects:
+            if progress_callback:
+                await progress_callback(90, f"Applying {len(effects)} AMV effects...")
+            effects_output = os.path.join(tmpdir, "with_effects.mp4")
+            ok = await apply_amv_effects(music_output, effects_output, effects, width, height)
+            final_input = effects_output if ok else music_output
+        else:
+            final_input = music_output
 
-        shutil.copy2(music_output, output_path)
+        # Step 6: Copy to final output
+        if progress_callback:
+            await progress_callback(97, "Final encoding...")
+
+        shutil.copy2(final_input, output_path)
 
         total_duration_ms = sum(c.get("duration_ms", 3000) for c in playable_clips)
 
@@ -448,6 +460,96 @@ async def compose_trailer(
             shutil.rmtree(tmpdir, ignore_errors=True)
         except Exception:
             pass
+
+
+def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
+    """Build an FFmpeg -vf filter chain that applies AMV beat effects at given timestamps."""
+    if not effects:
+        return ""
+    parts = []
+    for eff in sorted(effects, key=lambda e: e.get("timestamp_ms", 0)):
+        t_s = eff["timestamp_ms"] / 1000.0
+        t_e = (eff["timestamp_ms"] + eff.get("duration_ms", 200)) / 1000.0
+        intensity = max(0.1, min(1.0, eff.get("intensity", 0.8)))
+        en = f"between(t,{t_s:.4f},{t_e:.4f})"
+        etype = eff.get("type", "")
+
+        if etype == "flash_white":
+            b = min(1.5, 0.5 + intensity)
+            parts.append(f"eq=brightness={b:.3f}:saturation=0.1:enable='{en}'")
+
+        elif etype == "flash_black":
+            b = max(-0.9, -0.5 - intensity * 0.4)
+            parts.append(f"eq=brightness={b:.3f}:enable='{en}'")
+
+        elif etype == "zoom_burst":
+            c = min(2.5, 1.0 + intensity * 0.8)
+            b = min(0.3, intensity * 0.25)
+            parts.append(f"eq=contrast={c:.2f}:brightness={b:.3f}:saturation=1.5:enable='{en}'")
+
+        elif etype == "shake":
+            sigma = max(1.0, intensity * 5.0)
+            parts.append(f"gblur=sigma={sigma:.1f}:enable='{en}'")
+
+        elif etype == "echo":
+            frames = max(2, min(6, int(intensity * 4) + 2))
+            w_vals = " ".join([f"{max(0.05, 1.0 - i * 0.25):.2f}" for i in range(frames)])
+            parts.append(f"tmix=frames={frames}:weights='{w_vals}':enable='{en}'")
+
+        elif etype == "speed_ramp":
+            sigma = max(0.5, intensity * 3.0)
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=2:enable='{en}'")
+
+        elif etype == "chromatic":
+            shift = max(2, int(intensity * 14))
+            parts.append(f"rgbashift=rh={shift}:bh=-{shift}:rv=0:bv=0:enable='{en}'")
+
+        elif etype == "panel_split":
+            lw = max(3, int(intensity * 8))
+            cx = width // 2 - lw // 2
+            parts.append(
+                f"drawbox=x={cx}:y=0:w={lw}:h=ih:color=white@0.85:t=fill:enable='{en}'"
+            )
+
+        elif etype == "reverse":
+            c = min(3.0, 1.5 + intensity * 1.5)
+            s = min(3.0, 1.0 + intensity * 2.0)
+            parts.append(f"eq=contrast={c:.2f}:saturation={s:.2f}:enable='{en}'")
+
+        elif etype == "glitch":
+            h_shift = int(intensity * 120)
+            s_boost = min(5.0, 1.0 + intensity * 4.0)
+            parts.append(f"hue=h={h_shift}:s={s_boost:.1f}:enable='{en}'")
+
+        elif etype == "strobe":
+            parts.append(f"eq=brightness=1.3:saturation=0:enable='{en}'")
+
+    return ",".join(parts) if parts else ""
+
+
+async def apply_amv_effects(
+    input_path: str,
+    output_path: str,
+    effects: list,
+    width: int,
+    height: int,
+) -> bool:
+    """Apply AMV beat effects to a video using FFmpeg filter chain."""
+    vf = _build_amv_effects_filter(effects, width, height)
+    if not vf:
+        shutil.copy2(input_path, output_path)
+        return True
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-vf", vf,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "21",
+        "-c:a", "copy",
+        "-pix_fmt", "yuv420p",
+        output_path,
+    ]
+    return _run_ffmpeg(cmd, "apply amv effects")
 
 
 async def generate_preview(input_path: str, output_path: str, max_width: int = 640) -> bool:

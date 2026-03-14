@@ -28,6 +28,8 @@ class ComposeRequest(BaseModel):
     include_end_card: bool = True
     title: str = ""
     author: str = ""
+    effects: Optional[list] = None
+    beat_map: Optional[dict] = None
 
 
 class ComposeResponse(BaseModel):
@@ -186,6 +188,8 @@ async def _compose_background(data: ComposeRequest, job_id: str):
             settings=timeline_settings,
             music_track=music_track,
             progress_callback=progress_cb,
+            effects=data.effects or [],
+            beat_map=data.beat_map,
         )
 
         if result.get("status") == "done":

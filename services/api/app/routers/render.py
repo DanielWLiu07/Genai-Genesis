@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.models.render import GenerateClipRequest, RenderJobResponse
+from app.models.render import GenerateClipRequest, RenderRequest, RenderJobResponse
 from app.config import get_settings
 from app.db import get_supabase
 from app.routers.ws import manager
@@ -28,17 +28,33 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         "gen_status": "generating",
     })
 
+    generate_payload: dict = {
+        "clip_id": data.clip_id,
+        "prompt": data.prompt,
+        "type": data.type,
+        "aspect_ratio": "16:9",
+        "duration_ms": 3000,
+    }
+    if data.clip_order is not None:
+        generate_payload["clip_order"] = data.clip_order
+    if data.scene_image_url:
+        generate_payload["scene_image_url"] = data.scene_image_url
+    if data.characters:
+        generate_payload["characters"] = data.characters
+    if data.mood:
+        generate_payload["mood"] = data.mood
+    if data.genre:
+        generate_payload["genre"] = data.genre
+    if data.shot_type:
+        generate_payload["shot_type"] = data.shot_type
+    if data.is_continuous is not None:
+        generate_payload["is_continuous"] = data.is_continuous
+
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             resp = await client.post(
                 f"{settings.render_service_url}/render/generate",
-                json={
-                    "clip_id": data.clip_id,
-                    "prompt": data.prompt,
-                    "type": data.type,
-                    "aspect_ratio": "16:9",
-                    "duration_ms": 3000,
-                },
+                json=generate_payload,
             )
             result = resp.json()
         except httpx.ConnectError:
@@ -95,7 +111,7 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
 
 
 @router.post("/render")
-async def render_trailer(project_id: str):
+async def render_trailer(project_id: str, data: RenderRequest = None):
     settings = get_settings()
 
     # Fetch current timeline and project info
@@ -138,11 +154,22 @@ async def render_trailer(project_id: str):
         "progress": 0,
     })
 
+    compose_payload = {
+        "project_id": project_id,
+        "timeline": timeline,
+        "title": title,
+        "author": author,
+    }
+    if data and data.effects:
+        compose_payload["effects"] = data.effects
+    if data and data.beat_map:
+        compose_payload["beat_map"] = data.beat_map
+
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             resp = await client.post(
                 f"{settings.render_service_url}/render/compose",
-                json={"project_id": project_id, "timeline": timeline, "title": title, "author": author},
+                json=compose_payload,
             )
             result = resp.json()
         except httpx.ConnectError:

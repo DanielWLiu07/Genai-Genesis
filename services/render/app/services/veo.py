@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 STORAGE_BUCKET = "renders"
 # Use Veo 2 (stable) by default; swap to veo-3.0-generate-001 once quota allows
-VEO_MODEL = "veo-2.0-generate-001"
+VEO_MODEL = "veo-3.0-generate-001"
 
 _cache: dict[str, dict] = {}
 

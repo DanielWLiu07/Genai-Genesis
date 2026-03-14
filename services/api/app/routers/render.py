@@ -55,6 +55,14 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         generate_payload["style_seed"] = data.style_seed
     if data.text:
         generate_payload["text"] = data.text
+    if data.themes:
+        generate_payload["themes"] = data.themes
+    if data.prev_scene_prompt:
+        generate_payload["prev_scene_prompt"] = data.prev_scene_prompt
+    if data.next_scene_prompt:
+        generate_payload["next_scene_prompt"] = data.next_scene_prompt
+    if data.feedback:
+        generate_payload["feedback"] = data.feedback
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:

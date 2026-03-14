@@ -646,12 +646,12 @@ export default function EditorPage() {
               onClick={!videosExist ? (e) => e.preventDefault() : undefined}
               className={`manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 font-bold transition-all ${
                 videosExist
-                  ? 'bg-[#fbbf24] text-black border-[#fbbf24]'
+                  ? 'bg-[#fbbf24] text-[#111] border-[#fbbf24]'
                   : 'bg-[#fbbf24]/30 text-black/30 border-[#fbbf24]/30 blur-[0.5px] cursor-not-allowed select-none'
               }`}
               title={videosExist ? 'Edit timeline & effects' : 'Generate videos first to unlock editing'}
             >
-              <Zap size={14} /> Edit
+              <Edit2 size={14} /> Edit
             </Link>
           )}
         </div>

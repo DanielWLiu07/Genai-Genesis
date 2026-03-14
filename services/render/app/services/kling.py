@@ -156,6 +156,7 @@ async def generate_video(
     start_frame_url: Optional[str] = None,
     reference_image_urls: Optional[list[str]] = None,
     callback_url: Optional[str] = None,
+    cfg_scale: float = 0.5,
 ) -> dict:
     """Generate a video clip using Kling 3.0 API.
 
@@ -182,13 +183,13 @@ async def generate_video(
     if use_img2vid:
         # image-to-video: much better temporal consistency
         body: dict = {
-            "model_name": "kling-v1",  # standard model, lower cost
+            "model_name": "kling-v1-5",  # v1.5 — better motion quality, same endpoint
             "image_url": start_frame_url,
             "prompt": prompt,
             "duration": duration,
             "aspect_ratio": aspect_ratio,
-            "mode": "std",  # std mode = lower cost, still good quality
-            "cfg_scale": 0.5,
+            "mode": "std",
+            "cfg_scale": round(cfg_scale, 2),  # 0.7 continuous, 0.5 cut
         }
         if negative_prompt:
             body["negative_prompt"] = negative_prompt

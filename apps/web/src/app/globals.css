@@ -176,3 +176,9 @@ body {
 .parallax-br   { animation: kenburns-br   8s ease-in-out infinite alternate; }
 .parallax-zoom { animation: kenburns-zoom 7s ease-in-out infinite alternate; }
 .parallax-pan  { animation: kenburns-pan  9s ease-in-out infinite alternate; }
+
+@keyframes sway {
+  0%, 100% { transform: var(--sway-base) rotate(var(--sway-from)); }
+  50%       { transform: var(--sway-base) rotate(var(--sway-to)); }
+}
+.decor-sway { animation: sway var(--sway-dur, 3s) ease-in-out infinite; }

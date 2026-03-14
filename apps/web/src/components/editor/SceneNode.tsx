@@ -121,12 +121,14 @@ function SceneNodeInner({ data }: NodeProps) {
     const characters = (analysis?.characters as any[] || []).map((c: any) => ({
       name: c.name,
       description: c.description,
+      visual_description: c.visual_description,
       appearance: c.appearance,
-      image_url: c.image_url,
+      image_url: c.image_url || c.reference_image_url,
     }));
     const sortedClips = [...clips].sort((a, b) => a.order - b.order);
     const clipOrder = sortedClips.findIndex((c) => c.id === clip.id);
     const prevClip = clipOrder > 0 ? sortedClips[clipOrder - 1] : null;
+    const nextClip = clipOrder < sortedClips.length - 1 ? sortedClips[clipOrder + 1] : null;
     const isContinuous = (clip as any).shot_type === 'continuous';
 
     // Continuous shot → use previous clip's frame as start frame (same scene flowing)
@@ -144,13 +146,17 @@ function SceneNodeInner({ data }: NodeProps) {
     try {
       const result: any = await api.generateClip(projectId, clip.id, clip.prompt, genType, {
         clip_order: clipOrder,
+        clip_total: sortedClips.length,
         scene_image_url: sceneImageUrl,
         characters: characters.length > 0 ? characters : undefined,
         mood: analysis?.mood,
         genre: analysis?.genre,
+        themes: (analysis?.themes as string[] | undefined),
         shot_type: (clip as any).shot_type || 'cut',
         is_continuous: isContinuous,
         text: clip.text || undefined,
+        prev_scene_prompt: prevClip?.prompt,
+        next_scene_prompt: nextClip?.prompt,
       });
       updateClip(clip.id, {
         gen_status: 'done',
@@ -171,10 +177,16 @@ function SceneNodeInner({ data }: NodeProps) {
 
     const analysis = currentProject?.analysis;
     const characters = (analysis?.characters as any[] || []).map((c: any) => ({
-      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+      name: c.name,
+      description: c.description,
+      visual_description: c.visual_description,
+      appearance: c.appearance,
+      image_url: c.image_url || c.reference_image_url,
     }));
     const sortedClips = [...clips].sort((a, b) => a.order - b.order);
     const clipOrder = sortedClips.findIndex((c) => c.id === clip.id);
+    const prevClip = clipOrder > 0 ? sortedClips[clipOrder - 1] : null;
+    const nextClip = clipOrder < sortedClips.length - 1 ? sortedClips[clipOrder + 1] : null;
     const isContinuous = (clip as any).shot_type === 'continuous';
     const startFrame = clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:')
       ? clip.thumbnail_url : undefined;
@@ -182,12 +194,16 @@ function SceneNodeInner({ data }: NodeProps) {
     try {
       const result: any = await api.generateClip(projectId, clip.id, clip.prompt, 'video', {
         clip_order: clipOrder,
+        clip_total: sortedClips.length,
         scene_image_url: startFrame,
         characters: characters.length > 0 ? characters : undefined,
         mood: analysis?.mood,
         genre: analysis?.genre,
+        themes: (analysis?.themes as string[] | undefined),
         shot_type: (clip as any).shot_type || 'cut',
         is_continuous: isContinuous,
+        prev_scene_prompt: prevClip?.prompt,
+        next_scene_prompt: nextClip?.prompt,
       });
       // Video is async — WS will update gen_status; if result already has url, apply it
       if (result.media_url) {
@@ -227,14 +243,14 @@ function SceneNodeInner({ data }: NodeProps) {
         {showTabs && (
           <div className="flex mb-1 border-b border-[#ccc]">
             <button
-              onClick={() => setActiveTab('image')}
+              onClick={(e) => { e.stopPropagation(); setActiveTab('image'); }}
               className={`flex items-center gap-1 px-2 py-0.5 text-[0.55rem] font-bold transition-colors ${activeTab === 'image' ? 'bg-[#111] text-white' : 'text-[#888] hover:text-[#111]'}`}
               style={{ fontFamily: 'var(--font-manga)' }}
             >
               <ImageIcon size={9} /> IMAGE
             </button>
             <button
-              onClick={() => setActiveTab('video')}
+              onClick={(e) => { e.stopPropagation(); setActiveTab('video'); }}
               className={`flex items-center gap-1 px-2 py-0.5 text-[0.55rem] font-bold transition-colors ${activeTab === 'video' ? 'bg-blue-600 text-white' : 'text-[#888] hover:text-[#111]'}`}
               style={{ fontFamily: 'var(--font-manga)' }}
             >
@@ -301,7 +317,7 @@ function SceneNodeInner({ data }: NodeProps) {
 
         {clip.gen_status === 'pending' && clip.type !== 'transition' && (
           <button
-            onClick={handleGenerate}
+            onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
             className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"
           >
             <Sparkles size={18} className="text-white" />
@@ -320,7 +336,7 @@ function SceneNodeInner({ data }: NodeProps) {
 
         {clip.gen_status === 'error' && (
           <button
-            onClick={handleGenerate}
+            onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
             className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-red-600/30 transition-colors cursor-pointer"
           >
             <AlertCircle size={18} className="text-red-400" />
@@ -331,14 +347,14 @@ function SceneNodeInner({ data }: NodeProps) {
         {clip.gen_status === 'done' && clip.type === 'video' && (
           <div className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
             <button
-              onClick={handleGenerate}
+              onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
               className="flex flex-col items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/25 border border-white/30 transition-colors"
             >
               <ImageIcon size={14} className="text-white" />
               <span className="text-[0.6rem] text-white" style={{ fontFamily: 'var(--font-manga)' }}>Regen Frame</span>
             </button>
             <button
-              onClick={handleGenerateVideo}
+              onClick={(e) => { e.stopPropagation(); handleGenerateVideo(); }}
               className="flex flex-col items-center gap-1 px-3 py-2 bg-blue-500/40 hover:bg-blue-500/60 border border-blue-400/50 transition-colors"
             >
               <Film size={14} className="text-blue-200" />
@@ -350,14 +366,14 @@ function SceneNodeInner({ data }: NodeProps) {
         {clip.gen_status === 'done' && clip.type !== 'video' && clip.type !== 'text_overlay' && (
           <div className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
             <button
-              onClick={handleGenerate}
+              onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
               className="flex flex-col items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/25 border border-white/30 transition-colors"
             >
               <RefreshCw size={14} className="text-white" />
               <span className="text-[0.6rem] text-white" style={{ fontFamily: 'var(--font-manga)' }}>Regen Frame</span>
             </button>
             <button
-              onClick={handleGenerateVideo}
+              onClick={(e) => { e.stopPropagation(); handleGenerateVideo(); }}
               className="flex flex-col items-center gap-1 px-3 py-2 bg-blue-500/40 hover:bg-blue-500/60 border border-blue-400/50 transition-colors"
             >
               <Film size={14} className="text-blue-200" />

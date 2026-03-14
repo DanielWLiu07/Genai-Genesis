@@ -83,9 +83,9 @@ export const api = {
   getPresets: () => fetchAPI('/presets'),
   getPreset: (style: string) => fetchAPI(`/presets/${style}`),
 
-  // Chat
+  // Chat — served via Next.js API route -> Gemini directly
   chat: async (projectId: string, message: string, timeline: any, history: any[]) => {
-    const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/chat`, {
+    const res = await fetch(`/api/projects/${projectId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, timeline, history }),
@@ -104,13 +104,17 @@ export const api = {
       clip_order?: number;
       clip_total?: number;
       scene_image_url?: string;
-      characters?: { name: string; description?: string; appearance?: string; image_url?: string }[];
+      characters?: { name: string; description?: string; appearance?: string; image_url?: string; visual_description?: string }[];
       mood?: string;
       genre?: string;
       shot_type?: string;
       is_continuous?: boolean;
       style_seed?: string;
-    text?: string;
+      text?: string;
+      themes?: string[];
+      prev_scene_prompt?: string;
+      next_scene_prompt?: string;
+      feedback?: string;
     }
   ) =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {

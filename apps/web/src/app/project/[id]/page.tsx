@@ -25,6 +25,60 @@ type WorkflowPhase = 'plan' | 'images' | 'videos' | 'effects';
 
 const STYLES = ['cinematic', 'manga', 'noir', 'horror', 'romance', 'fantasy', 'sci-fi', 'comic'];
 
+function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose: () => void; onFallback: () => void }) {
+  const [videoError, setVideoError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  // Route through Next.js proxy to avoid CORS / port accessibility issues
+  const proxied = `/api/render-proxy?url=${encodeURIComponent(url)}`;
+
+  if (videoError) {
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm">
+        <div className="manga-panel p-8 max-w-sm mx-4 text-center" style={{ border: '3px solid #111', boxShadow: '4px 4px 0 #111' }}>
+          <p className="text-[#111] font-bold mb-2" style={{ fontFamily: 'var(--font-manga)' }}>VIDEO UNAVAILABLE</p>
+          <p className="text-[#888] text-xs mb-4">The compiled file couldn't be loaded. Try the canvas preview or re-export.</p>
+          <div className="flex gap-2">
+            <button onClick={() => { onFallback(); }} className="manga-btn bg-[#a855f7] text-white px-3 py-2 text-xs flex-1">Canvas Preview</button>
+            <a href={url} target="_blank" rel="noreferrer" className="manga-btn bg-white text-[#111] px-3 py-2 text-xs flex-1 text-center border-[#111]">Open Direct</a>
+          </div>
+          <button onClick={onClose} className="text-[#aaa] text-xs mt-3 hover:text-[#111] transition-colors block mx-auto">Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative w-full max-w-3xl px-4" onClick={e => e.stopPropagation()}>
+        <button className="absolute -top-10 right-4 text-white/70 hover:text-white" onClick={onClose}>
+          <X size={20} />
+        </button>
+        <div className="border-2 border-[#333] bg-black relative" style={{ aspectRatio: '16/9' }}>
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+              <Loader2 size={32} className="text-white/40 animate-spin" />
+            </div>
+          )}
+          <video
+            src={proxied}
+            controls
+            autoPlay
+            className="w-full h-full"
+            onCanPlay={() => setLoading(false)}
+            onError={() => { setLoading(false); setVideoError(true); }}
+          />
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-white/30 text-xs" style={{ fontFamily: 'var(--font-manga)' }}>COMPILED TRAILER</p>
+          <a href={proxied} download className="text-white/30 hover:text-white/70 text-xs flex items-center gap-1 transition-colors">
+            <Download size={12} /> Download
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -49,6 +103,8 @@ export default function EditorPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [compiledUrl, setCompiledUrl] = useState<string | null>(null);
+  const [showRenderComplete, setShowRenderComplete] = useState(false);
 
   // Character editing state
   const [editingCharId, setEditingCharId] = useState<string | null>(null);
@@ -244,8 +300,18 @@ export default function EditorPage() {
   const handleExport = useCallback(async () => {
     if (!id || exporting) return;
     setExporting(true);
-    setExportStatus('Starting render...');
+    setExportStatus('Saving timeline...');
     try {
+      // Flush current Zustand state to DB so the render service gets all video URLs
+      const { clips: currentClips, musicTrack, settings: tlSettings } = useTimelineStore.getState();
+      await api.updateTimeline(id, {
+        clips: currentClips,
+        music_track: musicTrack || null,
+        settings: tlSettings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
+        total_duration_ms: currentClips.reduce((sum, c) => sum + (c.duration_ms || 0), 0),
+      }).catch(() => {});
+
+      setExportStatus('Starting render...');
       const result: any = await api.renderTrailer(id);
       const jobId = result.job_id;
       if (!jobId) { setExportStatus(null); alert('Export submitted.'); return; }
@@ -260,8 +326,8 @@ export default function EditorPage() {
           if (status.status === 'done') {
             setExportStatus('Done!');
             const outputUrl = status.output_url || '';
-            if (outputUrl.startsWith('http')) window.open(outputUrl, '_blank');
-            else alert('Render complete! Output: ' + outputUrl);
+            setCompiledUrl(outputUrl || null);
+            setShowRenderComplete(true);
             break;
           } else if (status.status === 'error') {
             setExportStatus(null);
@@ -308,7 +374,8 @@ export default function EditorPage() {
       }
 
       setGenStep('planning');
-      const timeline: any = await api.planTrailer(id, { analysis, style: selectedStyle });
+      const currentMusicTrack = useTimelineStore.getState().musicTrack;
+      const timeline: any = await api.planTrailer(id, { analysis, style: selectedStyle, music_track: currentMusicTrack || undefined });
       if (timeline?.status === 'ai_service_unavailable') {
         throw new Error('AI service is not running. Start it on port 8001.');
       }
@@ -412,16 +479,23 @@ export default function EditorPage() {
       name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
     }));
 
-    // Build a style seed — a consistent visual anchor sent with every clip so Imagen
-    // outputs frames with the same palette, character appearances, and art direction.
-    const styleSeedParts: string[] = [];
-    if (analysis?.genre) styleSeedParts.push(`${analysis.genre} story`);
-    if (analysis?.mood) styleSeedParts.push(`${analysis.mood} atmosphere`);
-    chars.forEach((c: any) => {
-      if (c.appearance) styleSeedParts.push(`${c.name}: ${c.appearance}`);
-    });
-    styleSeedParts.push('same color palette throughout, consistent character designs, unified lighting and shadow style');
-    const styleSeed = styleSeedParts.join(', ');
+    // Build a strong visual style seed — injected first in every prompt so Gemini
+    // commits to a single consistent art style, palette, and character look.
+    const moodLower = (analysis?.mood || '').toLowerCase();
+    const genreLower = (analysis?.genre || '').toLowerCase();
+    const palette = genreLower.includes('horror') ? 'deep blacks, blood red, desaturated greens'
+      : genreLower.includes('romance') ? 'soft pinks, warm golds, gentle pastels'
+      : moodLower.includes('epic') || moodLower.includes('somber') ? 'muted earth tones, deep navy shadows, amber fire highlights'
+      : 'rich jewel tones, high contrast shadows';
+    const charLines = chars.map((c: any) => c.appearance ? `${c.name} — ${c.appearance}` : '').filter(Boolean).join('; ');
+    const styleSeed = [
+      'ART STYLE: hand-drawn manga illustration, thick bold black ink outlines, heavy chiaroscuro ink-wash shading, flat cel-shading, no photorealism, no 3D CGI, no watercolor',
+      'ACTION: every frame shows MAXIMUM physical action — full-body heavy swings, explosive impacts, dramatic leaps at peak extension, bodies mid-motion with full weight and force visible, never static or posed',
+      'MOTION: speed lines radiating from impact, motion blur on limbs, shockwave distortion rings, debris and dust from impacts, energy crackles',
+      `COLOR PALETTE: ${palette}, consistent across every scene, high contrast black shadows`,
+      charLines ? `CHARACTERS (draw identically every scene): ${charLines}` : '',
+      `TONE: ${analysis?.mood || 'intense'}, fast-paced ${analysis?.genre || 'action'} manga AMV`,
+    ].filter(Boolean).join('. ');
 
     const sorted = [...clips].sort((a, b) => a.order - b.order);
     const playable = sorted.filter(c => c.type !== 'transition');
@@ -504,14 +578,23 @@ export default function EditorPage() {
       image_url: c.image_url || c.reference_image_url,
     }));
     const sorted = [...clips].sort((a, b) => a.order - b.order);
-    const toConvert = sorted.filter(c => c.type !== 'transition' && c.thumbnail_url);
+    const toConvert = sorted.filter(c => c.type !== 'transition' && c.type !== 'video' && c.thumbnail_url);
 
     // Style seed for visual consistency across all clips
+    const vidMoodLower = (analysis?.mood || '').toLowerCase();
+    const vidGenreLower = (analysis?.genre || '').toLowerCase();
+    const vidPalette = vidGenreLower.includes('horror') ? 'deep blacks, blood red, desaturated greens'
+      : vidGenreLower.includes('romance') ? 'soft pinks, warm golds, gentle pastels'
+      : vidMoodLower.includes('epic') || vidMoodLower.includes('somber') ? 'muted earth tones, deep navy shadows, amber fire highlights'
+      : 'rich jewel tones, high contrast shadows';
+    const vidCharLines = chars.slice(0, 3).map((c: any) => c.appearance ? `${c.name} — ${c.appearance}` : '').filter(Boolean).join('; ');
     const styleSeed = [
-      analysis?.genre,
-      analysis?.mood,
-      ...chars.slice(0, 3).map((c: any) => c.appearance || c.visual_description).filter(Boolean),
-    ].filter(Boolean).join('; ') || undefined;
+      'manga AMV style, thick bold ink outlines, heavy cel-shading, no photorealism, no 3D CGI',
+      'MOTION: massive full-body action every clip — heavy sword swings at full extension, explosive impacts, dramatic leaps, shockwave rings, speed lines, motion blur on limbs, debris flying',
+      `color palette: ${vidPalette}, same across all clips, high contrast black ink shadows`,
+      vidCharLines ? `characters (draw consistently): ${vidCharLines}` : '',
+      `fast-paced ${analysis?.mood || 'intense'} ${analysis?.genre || 'action'} tone`,
+    ].filter(Boolean).join('. ') || undefined;
 
     setGeneratingVideos(true);
     setVideoGenProgress({ done: 0, total: toConvert.length });
@@ -588,6 +671,12 @@ export default function EditorPage() {
   );
   const anyGenerating = playableClips.some(c => c.gen_status === 'generating');
   const videosExist = playableClips.some(c => c.type === 'video' && c.gen_status === 'done' && !!c.generated_media_url);
+  // Clips that are eligible for video generation (excludes text_overlay/transition which stay as images)
+  const videoEligibleClips = playableClips.filter(c => c.type !== 'transition' && !!c.thumbnail_url);
+  const allVideosGenerated = videoEligibleClips.length > 0 && videoEligibleClips.every(c =>
+    (c.type === 'video' && c.gen_status === 'done' && !!c.generated_media_url) ||
+    c.type === 'text_overlay'
+  );
   const workflowPhase: WorkflowPhase =
     clips.length === 0 ? 'plan' :
     !imagesAllDone ? 'images' :
@@ -728,7 +817,7 @@ export default function EditorPage() {
               {playableClips.filter(c => c.type === 'video' && c.gen_status === 'done').length}/{playableClips.length} Generating Videos...
             </div>
           )}
-          {(workflowPhase === 'videos') && !anyGenerating && !generatingVideos && (
+          {imagesAllDone && !allVideosGenerated && !anyGenerating && !generatingVideos && (
             <button
               onClick={handleGenerateAllVideos}
               className="manga-btn bg-blue-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-blue-600"
@@ -736,11 +825,16 @@ export default function EditorPage() {
               <Film size={14} /> Generate Videos
             </button>
           )}
-          {videosExist && (
+          {imagesAllDone && (
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="manga-btn bg-blue-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-blue-600 disabled:opacity-60"
+              className={`manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 disabled:opacity-60 ${
+                allVideosGenerated
+                  ? 'bg-[#111] text-white border-[#111]'
+                  : 'bg-white text-[#111]'
+              }`}
+              style={allVideosGenerated ? { boxShadow: '3px 3px 0px #a855f7' } : undefined}
             >
               {exporting
                 ? <><Loader2 size={14} className="animate-spin" /> {exportStatus || 'Compiling...'}</>
@@ -762,7 +856,7 @@ export default function EditorPage() {
               onClick={!videosExist ? (e) => e.preventDefault() : undefined}
               className={`manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 font-bold transition-all ${
                 videosExist
-                  ? 'bg-[#fbbf24] text-[#111] border-[#fbbf24]'
+                  ? 'bg-[#fbbf24] text-black border-[#fbbf24]'
                   : 'bg-[#fbbf24]/30 text-black/30 border-[#fbbf24]/30 blur-[0.5px] cursor-not-allowed select-none'
               }`}
               title={videosExist ? 'Edit timeline & effects' : 'Generate videos first to unlock editing'}
@@ -1143,12 +1237,19 @@ export default function EditorPage() {
 
                           // Same style seed used for scene generation — ensures cover shares
                           // the same palette, character designs, and art direction as the clips.
-                          const styleSeedParts: string[] = [];
-                          if (analysis?.genre) styleSeedParts.push(`${analysis.genre} story`);
-                          if (analysis?.mood) styleSeedParts.push(`${analysis.mood} atmosphere`);
-                          chars.forEach((c: any) => { if (c.appearance) styleSeedParts.push(`${c.name}: ${c.appearance}`); });
-                          styleSeedParts.push('same color palette throughout, consistent character designs, unified lighting and shadow style');
-                          const styleSeed = styleSeedParts.join(', ');
+                          const coverMood = (analysis?.mood || '').toLowerCase();
+                          const coverGenre = (analysis?.genre || '').toLowerCase();
+                          const coverPalette = coverGenre.includes('horror') ? 'deep blacks, blood red, desaturated greens'
+                            : coverGenre.includes('romance') ? 'soft pinks, warm golds, gentle pastels'
+                            : coverMood.includes('epic') || coverMood.includes('somber') ? 'muted earth tones, deep navy shadows, amber fire highlights'
+                            : 'rich jewel tones, high contrast shadows';
+                          const coverCharLines = chars.map((c: any) => c.appearance ? `${c.name} — ${c.appearance}` : '').filter(Boolean).join('; ');
+                          const styleSeed = [
+                            'ART STYLE: hand-drawn manga illustration, bold black ink outlines, dramatic chiaroscuro shading, flat cel-shading with no photorealism, no 3D CGI',
+                            `COLOR PALETTE: ${coverPalette}, same palette used in every scene`,
+                            coverCharLines ? `CHARACTERS (always draw consistently): ${coverCharLines}` : '',
+                            `TONE: ${analysis?.mood || 'dramatic'}, ${analysis?.genre || 'fantasy'} epic`,
+                          ].filter(Boolean).join('. ');
 
                           // Pull scene descriptions from already-generated clips to ground
                           // the thumbnail in the visual world that has been established.
@@ -1293,11 +1394,77 @@ export default function EditorPage() {
 
         {/* Trailer preview modal */}
         {showPreview && (
-          <TrailerPreview
-            clips={clips}
-            musicTrack={musicTrack}
-            onClose={() => setShowPreview(false)}
-          />
+          compiledUrl ? (
+            <CompiledVideoModal
+              url={compiledUrl}
+              onClose={() => setShowPreview(false)}
+              onFallback={() => { setCompiledUrl(null); }}
+            />
+          ) : (
+            <TrailerPreview
+              clips={clips}
+              musicTrack={musicTrack}
+              onClose={() => setShowPreview(false)}
+            />
+          )
+        )}
+
+        {/* Render complete popup */}
+        {showRenderComplete && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div
+              className="manga-panel relative max-w-sm w-full mx-4 p-8 text-center"
+              style={{ border: '3px solid #111', boxShadow: '6px 6px 0 #111' }}
+            >
+              {/* Speed lines SVG background */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-5" xmlns="http://www.w3.org/2000/svg">
+                {Array.from({ length: 16 }).map((_, i) => {
+                  const angle = (i / 16) * 360;
+                  const rad = (angle * Math.PI) / 180;
+                  return <line key={i} x1="50%" y1="50%" x2={`${50 + Math.cos(rad) * 80}%`} y2={`${50 + Math.sin(rad) * 80}%`} stroke="#111" strokeWidth="1" />;
+                })}
+              </svg>
+
+              <div className="relative z-10">
+                <div className="w-16 h-16 bg-[#111] flex items-center justify-center mx-auto mb-4 border-2 border-[#111]" style={{ boxShadow: '3px 3px 0 #a855f7' }}>
+                  <Clapperboard size={28} className="text-white" />
+                </div>
+                <h2
+                  className="text-3xl font-black mb-1"
+                  style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0 #000' }}
+                >
+                  RENDER COMPLETE
+                </h2>
+                <p className="text-[#888] text-sm mb-6">Your trailer has been compiled successfully.</p>
+
+                <div className="flex flex-col gap-2">
+                  {compiledUrl && (
+                    <button
+                      onClick={() => { setShowRenderComplete(false); setShowPreview(true); }}
+                      className="manga-btn bg-[#a855f7] text-white px-4 py-2.5 text-sm flex items-center justify-center gap-2 border-[#a855f7] hover:bg-[#9333ea] w-full"
+                    >
+                      <Play size={16} /> Watch Trailer
+                    </button>
+                  )}
+                  {compiledUrl && (
+                    <a
+                      href={compiledUrl}
+                      download
+                      className="manga-btn bg-white text-[#111] px-4 py-2.5 text-sm flex items-center justify-center gap-2 border-[#111] hover:bg-[#f5f5f5] w-full"
+                    >
+                      <Download size={16} /> Download
+                    </a>
+                  )}
+                  <button
+                    onClick={() => setShowRenderComplete(false)}
+                    className="text-[#aaa] hover:text-[#111] text-xs mt-1 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Image crop modal */}

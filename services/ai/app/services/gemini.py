@@ -28,7 +28,7 @@ def get_model(system_instruction: str = "", tools=None):
     _ensure_configured()
 
     kwargs = {
-        "model_name": "gemini-2.0-flash",
+        "model_name": "gemini-2.5-flash",
         "generation_config": GenerationConfig(
             temperature=0.7,
             max_output_tokens=8192,
@@ -46,7 +46,7 @@ def get_json_model(system_instruction: str = ""):
     """Get a model configured for JSON output."""
     _ensure_configured()
     return genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
+        model_name="gemini-2.5-flash",
         system_instruction=system_instruction,
         generation_config=GenerationConfig(
             temperature=0.4,

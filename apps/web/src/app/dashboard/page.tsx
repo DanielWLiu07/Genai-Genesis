@@ -144,8 +144,8 @@ export default function Dashboard() {
         <Image src="/stylized_imgs/flower3.png" alt="" width={140} height={260} className="decor-item absolute -top-8 -right-4 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.2))', transform: 'rotate(-25deg) scaleX(-1)' }} />
         {/* Top-left: leaf branch coming from left edge, pointing right */}
         <Image src="/stylized_imgs/leaf7.png" alt="" width={150} height={134} className="decor-item absolute top-8 -left-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-10deg)' }} />
-        {/* Bottom-left: flowers reaching up-right from corner */}
-        <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item absolute -bottom-8 -left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(15deg) scaleX(-1)' }} />
+        {/* Bottom-left: flowers right-side up, reaching inward */}
+        <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item absolute -bottom-8 -left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
         {/* Bottom-right: stone anchoring the corner */}
         <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item absolute -bottom-14 -right-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
         {/* Sun: top center, lower, with warm glow, slowly rotating */}

@@ -24,7 +24,7 @@ def _ensure_configured():
 
 
 def get_model(system_instruction: str = "", tools=None):
-    """Get a Gemini model instance with optional system instruction and tools."""
+    """Get a Gemini model instance for free-text generation."""
     _ensure_configured()
 
     kwargs = {
@@ -43,14 +43,19 @@ def get_model(system_instruction: str = "", tools=None):
 
 
 def get_json_model(system_instruction: str = ""):
-    """Get a model configured for JSON output."""
+    """Get a model configured for JSON output.
+
+    Uses gemini-2.5-flash (not a thinking model) so response.text contains
+    only the JSON output — no interleaved thought tokens that break parsing.
+    Token limit raised to 16 384 to avoid truncation of large analysis objects.
+    """
     _ensure_configured()
     return genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         system_instruction=system_instruction,
         generation_config=GenerationConfig(
             temperature=0.4,
-            max_output_tokens=8192,
+            max_output_tokens=16384,
             response_mime_type="application/json",
         ),
     )

@@ -86,9 +86,17 @@ async def analyze_story(project_id: str, body: Optional[dict] = None):
                 f"{settings.ai_service_url}/ai/analyze",
                 json=payload,
             )
-            result = resp.json()
         except httpx.ConnectError:
             return _ai_unavailable()
+
+    if not resp.is_success:
+        try:
+            detail = resp.json().get("detail", f"AI service error {resp.status_code}")
+        except Exception:
+            detail = f"AI service error {resp.status_code}: {resp.text[:200]}"
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    result = resp.json()
 
     # Persist the full analysis result
     db = get_supabase()
@@ -133,9 +141,17 @@ async def plan_trailer(project_id: str, body: Optional[dict] = None):
                 f"{settings.ai_service_url}/ai/plan-trailer",
                 json=payload,
             )
-            result = resp.json()
         except httpx.ConnectError:
             return _ai_unavailable()
+
+    if not resp.is_success:
+        try:
+            detail = resp.json().get("detail", f"AI service error {resp.status_code}")
+        except Exception:
+            detail = f"AI service error {resp.status_code}: {resp.text[:200]}"
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    result = resp.json()
 
     # Update project status
     db = get_supabase()

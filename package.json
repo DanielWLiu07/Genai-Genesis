@@ -1,0 +1,11 @@
+{
+  "name": "frameflow",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @frameflow/web dev",
+    "dev:api": "cd services/api && uvicorn app.main:app --reload --port 8000",
+    "dev:ai": "cd services/ai && uvicorn app.main:app --reload --port 8001",
+    "dev:render": "cd services/render && uvicorn app.main:app --reload --port 8002",
+    "install:py": "cd services/api && pip install -r requirements.txt && cd ../ai && pip install -r requirements.txt && cd ../render && pip install -r requirements.txt"
+  }
+}

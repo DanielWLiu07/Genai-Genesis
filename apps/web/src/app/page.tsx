@@ -6,8 +6,8 @@ import Image from 'next/image';
 import gsap from 'gsap';
 import { ArrowRight } from 'lucide-react';
 
-const NOISE_DUR = '3.5s';
-const NOISE_SPLINE = '0.2 0.8 0.3 1';
+const NOISE_DUR = '6s';
+const NOISE_SPLINE = '0.1 0.6 0.3 1';
 
 function NoiseMask({
   id,
@@ -71,47 +71,54 @@ export default function LandingPage() {
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const ctaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const leavesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Trigger the video reveal noise animation on mount
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
-      // Content fades in ~2s into 3.5s noise reveal
+      // Leaves drop down from top after SVG noise animation settles
+      gsap.fromTo(leavesRef.current,
+        { y: '-100%', opacity: 0 },
+        { y: '0%', opacity: 1, duration: 1.5, delay: 4.5, ease: 'power2.out' }
+      );
+
+      // Logo fades in smoothly (while noise is still revealing)
       gsap.fromTo(logoRef.current,
-        { scale: 0, opacity: 0, rotation: -180 },
-        { scale: 1, opacity: 1, rotation: 0, duration: 0.5, delay: 1.8, ease: 'back.out(1.2)' }
+        { scale: 0.6, opacity: 0, rotation: -30 },
+        { scale: 1, opacity: 1, rotation: 0, duration: 1.2, delay: 2.0, ease: 'power3.out' }
       );
+      // Title slides in from right, smooth
       gsap.fromTo(titleRef.current,
-        { scale: 2, opacity: 0, y: -100, rotateZ: -3 },
-        { scale: 1, opacity: 1, y: 0, rotateZ: 0, duration: 0.4, delay: 2.0, ease: 'power4.out' }
+        { opacity: 0, x: 40 },
+        { opacity: 1, x: 0, duration: 1.0, delay: 2.4, ease: 'power2.out' }
       );
-      gsap.fromTo(containerRef.current,
-        { x: 0, y: 0 },
-        { x: 4, y: -2, duration: 0.03, delay: 2.2, yoyo: true, repeat: 5, ease: 'power2.inOut' }
-      );
+      // Line draws in
       gsap.fromTo(lineRef.current,
-        { scaleX: 0, transformOrigin: 'center' },
-        { scaleX: 1, duration: 0.3, delay: 2.3, ease: 'power3.out' }
+        { scaleX: 0, transformOrigin: 'right center' },
+        { scaleX: 1, duration: 0.8, delay: 3.0, ease: 'power2.out' }
       );
+      // Subtitle fades up gently
       gsap.fromTo(subtitleRef.current,
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.4, delay: 2.5, ease: 'power2.out' }
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.8, delay: 3.4, ease: 'power2.out' }
       );
+      // CTA fades in
       gsap.fromTo(ctaRef.current,
-        { opacity: 0, y: 15 },
-        { opacity: 1, y: 0, duration: 0.4, delay: 2.7, ease: 'back.out(1.5)' }
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.7, delay: 3.8, ease: 'power2.out' }
       );
-      // Idle float
-      gsap.to(logoRef.current, { y: -8, duration: 2.5, delay: 3.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
-      gsap.to(logoRef.current, { rotation: 5, duration: 4, delay: 3.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      // Gentle idle float on logo
+      gsap.to(logoRef.current, { y: -5, duration: 3, delay: 5.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to(logoRef.current, { rotation: 3, duration: 5, delay: 5.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
     });
     return () => ctx.revert();
   }, []);
 
   return (
-    <div ref={containerRef} className="min-h-screen flex items-center justify-end overflow-hidden relative bg-[#f5f0e8]">
-      {/* Background video with noise reveal */}
+    <div ref={containerRef} className="min-h-screen flex items-center justify-end overflow-hidden relative" style={{ background: `url('/hero-bg.png') center/cover no-repeat` }}>
+      {/* Video overlay revealed through noise mask — bg.png shows until reveal */}
       <div className="absolute inset-0 pointer-events-none">
         <NoiseMask id="video-reveal" mode="reveal">
           <div className="w-full h-full">
@@ -122,16 +129,33 @@ export default function LandingPage() {
               playsInline
               className="w-full h-full object-cover"
             >
-              <source src="/bg-video.mp4" type="video/mp4" />
+              <source src="/hero-bg.mp4" type="video/mp4" />
             </video>
           </div>
         </NoiseMask>
       </div>
 
+      {/* Leaves overlay — drops down from top after SVG animation */}
+      <div
+        ref={leavesRef}
+        className="absolute inset-0 pointer-events-none z-[5]"
+        style={{ opacity: 0 }}
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+        >
+          <source src="/leaves-overlay.webm" type="video/webm" />
+        </video>
+      </div>
+
       {/* Content — right-aligned */}
       <div className="relative z-10 flex flex-col items-end text-right pr-[8vw]" style={{ marginTop: '-4vh' }}>
         {/* Logo + Title */}
-        <div className="flex items-center gap-5 mb-4">
+        <div className="flex items-center gap-5 mb-1">
           <div ref={logoRef} style={{ opacity: 0 }}>
             <Image
               src="/logo.png"
@@ -164,14 +188,14 @@ export default function LandingPage() {
         {/* Line */}
         <div
           ref={lineRef}
-          className="h-[3px] w-56"
+          className="h-[2px] w-48 mt-1"
           style={{ background: 'linear-gradient(to left, #fff, transparent)' }}
         />
 
         {/* Subtitle */}
         <p
           ref={subtitleRef}
-          className="text-base md:text-lg mt-5 max-w-md leading-relaxed select-none"
+          className="text-base md:text-lg mt-2 max-w-md leading-relaxed select-none"
           style={{
             opacity: 0,
             fontFamily: 'var(--font-manga)',

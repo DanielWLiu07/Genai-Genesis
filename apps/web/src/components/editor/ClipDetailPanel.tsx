@@ -30,7 +30,8 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
   const [generatingVideo, setGeneratingVideo] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
 
-  const hasVideo = !!(clip?.generated_media_url && clip?.type === 'video');
+  const videoUrl = clip?.generated_media_url;
+  const hasVideo = !!(videoUrl && (clip?.type === 'video' || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(videoUrl)));
   const hasImage = !!clip?.thumbnail_url;
   const showTabs = hasVideo && hasImage;
 
@@ -223,21 +224,13 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
           )}
 
           <div className="relative group">
-            {showTabs && activeTab === 'video' ? (
+            {(hasVideo && !hasImage) || (showTabs && activeTab === 'video') ? (
               <video
-                key={clip.generated_media_url}
-                src={clip.generated_media_url!}
+                key={videoUrl}
+                src={videoUrl!}
                 className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
                 controls
                 autoPlay
-                preload="metadata"
-                poster={clip.thumbnail_url}
-              />
-            ) : clip.generated_media_url && clip.type === 'video' && !hasImage ? (
-              <video
-                src={clip.generated_media_url}
-                className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
-                controls
                 preload="metadata"
                 poster={clip.thumbnail_url}
               />
@@ -264,7 +257,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
               </button>
             )}
             {/* Fullscreen button — video tab */}
-            {(showTabs && activeTab === 'video') || (clip.generated_media_url && clip.type === 'video' && !hasImage) ? (
+            {hasVideo && ((showTabs && activeTab === 'video') || !hasImage) ? (
               <button
                 onClick={() => setShowVideoModal(true)}
                 className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-black/90 text-white transition-colors opacity-0 group-hover:opacity-100"
@@ -411,7 +404,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
       </div>
 
       {/* Fullscreen video modal */}
-      {showVideoModal && clip.generated_media_url && (
+      {showVideoModal && videoUrl && (
         <div
           className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center"
           onClick={() => setShowVideoModal(false)}
@@ -426,7 +419,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
             Scene {clips.sort((a, b) => a.order - b.order).findIndex((c) => c.id === clipId) + 1}
           </p>
           <video
-            src={clip.generated_media_url}
+            src={videoUrl}
             className="max-w-4xl w-full max-h-[80vh] bg-black"
             controls
             autoPlay

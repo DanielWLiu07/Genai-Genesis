@@ -430,41 +430,60 @@ export default function EditorPage() {
     const existingThumb = currentProject?.cover_image_url;
     let prevUrl: string | undefined = (existingThumb && !existingThumb.startsWith('data:')) ? existingThumb : undefined;
 
-    // Generate one at a time — each clip passes the previous frame as scene_image_url
-    // so the video pipeline later can use it as an image-to-video start frame.
+    // Generate one at a time sequentially — each clip builds on the previous for visual consistency
+    let prevPrompt: string | undefined;
     for (const clip of pending) {
       const order = sorted.findIndex(c => c.id === clip.id);
-      // If chain hasn't started yet, look for the nearest already-done clip before this one
+      // Find nearest already-done clip before this one for scene_image_url chain
       if (!prevUrl) {
         const prevDone = sorted.slice(0, order).reverse().find(
           c => c.type !== 'text_overlay' && c.type !== 'transition' && c.generated_media_url && !c.generated_media_url.startsWith('data:')
         );
         if (prevDone) prevUrl = prevDone.generated_media_url!;
       }
+      if (!prevPrompt) {
+        const prevDone = sorted.slice(0, order).reverse().find(
+          c => c.type !== 'text_overlay' && c.type !== 'transition' && c.prompt
+        );
+        if (prevDone) prevPrompt = prevDone.prompt;
+      }
 
       updateClip(clip.id, { gen_status: 'generating' });
-      try {
-        const result: any = await api.generateClip(id, clip.id, clip.prompt, 'image', {
-          clip_order: order,
-          clip_total: playable.length,
-          scene_image_url: prevUrl,
-          characters: chars.length > 0 ? chars : undefined,
-          mood: analysis?.mood,
-          genre: analysis?.genre,
-          style_seed: styleSeed,
-        });
-        const url = result.media_url || result.output_url || result.generated_media_url;
-        if (url) {
-          updateClip(clip.id, { gen_status: 'done', generated_media_url: url, thumbnail_url: result.thumbnail_url || url });
-          prevUrl = url;
-        } else if (result.status === 'generating') {
-          // Async — WebSocket callback will update; don't block sequence on it
-        } else {
-          updateClip(clip.id, { gen_status: 'error', gen_error: result.message || 'No image returned' });
+
+      // Try up to 2 times (once retry on failure) with 1.5s gap between clips for rate limits
+      let result: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 3000)); // longer wait on retry
+        try {
+          result = await api.generateClip(id, clip.id, clip.prompt, 'image', {
+            clip_order: order,
+            clip_total: playable.length,
+            scene_image_url: prevUrl,
+            characters: chars.length > 0 ? chars : undefined,
+            mood: analysis?.mood,
+            genre: analysis?.genre,
+            style_seed: styleSeed,
+            prev_scene_prompt: prevPrompt,
+          });
+          if (result.status === 'done' || result.media_url) break;
+        } catch (err: any) {
+          result = { status: 'error', message: String(err) };
         }
-      } catch (err: any) {
-        updateClip(clip.id, { gen_status: 'error', gen_error: String(err) });
       }
+
+      const url = result?.media_url || result?.output_url || result?.generated_media_url;
+      if (url) {
+        updateClip(clip.id, { gen_status: 'done', generated_media_url: url, thumbnail_url: result.thumbnail_url || url });
+        prevUrl = url;
+        prevPrompt = clip.prompt;
+      } else if (result?.status === 'generating') {
+        // Async video — WebSocket callback will update
+      } else {
+        updateClip(clip.id, { gen_status: 'error', gen_error: result?.message || 'No image returned' });
+      }
+
+      // Rate limit buffer between clips (Imagen QPM limit)
+      await new Promise(r => setTimeout(r, 1500));
     }
   }, [id, clips, currentProject, updateClip]);
 
@@ -542,7 +561,7 @@ export default function EditorPage() {
     (c.gen_status === 'done' && !!c.generated_media_url) || c.gen_status === 'error'
   );
   const anyGenerating = playableClips.some(c => c.gen_status === 'generating');
-  const videosExist = playableClips.some(c => c.type === 'video' && c.gen_status === 'done' && c.generated_media_url);
+  const videosExist = playableClips.some(c => c.type === 'video' && c.gen_status === 'done' && !!c.generated_media_url);
   const workflowPhase: WorkflowPhase =
     clips.length === 0 ? 'plan' :
     !imagesAllDone ? 'images' :
@@ -628,7 +647,7 @@ export default function EditorPage() {
               <Sparkles size={14} /> {playableClips.some(c => c.gen_status === 'error') ? 'Retry Failed' : 'Generate All Images'}
             </button>
           )}
-          {workflowPhase === 'videos' && (
+          {(workflowPhase === 'videos' || workflowPhase === 'effects') && !videosExist && (
             <button
               onClick={handleGenerateAllVideos}
               disabled={generatingVideos}
@@ -636,6 +655,18 @@ export default function EditorPage() {
             >
               {generatingVideos
                 ? <><Loader2 size={14} className="animate-spin" /> {videoGenProgress.done}/{videoGenProgress.total} Videos...</>
+                : <><Film size={14} /> Generate Videos</>
+              }
+            </button>
+          )}
+          {videosExist && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="manga-btn bg-blue-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-blue-600 disabled:opacity-60"
+            >
+              {exporting
+                ? <><Loader2 size={14} className="animate-spin" /> {exportStatus || 'Compiling...'}</>
                 : <><Clapperboard size={14} /> Compile Videos</>
               }
             </button>
@@ -1074,6 +1105,9 @@ export default function EditorPage() {
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button onClick={() => thumbnailInputRef.current?.click()} className="manga-btn bg-white text-[#111] px-3 py-1 text-xs">
                           Replace
+                        </button>
+                        <button onClick={() => setCropSrc(editThumbnail)} className="manga-btn bg-white text-[#111] px-3 py-1 text-xs">
+                          Recrop
                         </button>
                         <button onClick={() => { setEditThumbnail(''); }} className="manga-btn bg-white text-red-500 px-3 py-1 text-xs">
                           Remove

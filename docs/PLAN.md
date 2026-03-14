@@ -41,7 +41,7 @@
 
 ## Implementation Status
 
-### Person A (Frontend) — ~90% complete
+### Person A (Frontend) — ~95% complete
 - [x] Dashboard with hero, features, project list
 - [x] Project creation form with file upload
 - [x] React Flow editor with custom SceneNode
@@ -50,7 +50,18 @@
 - [x] Chat panel with full tool call handler (add/remove/update/reorder/transition/regenerate)
 - [x] Export button with render job polling and progress display
 - [x] Timeline loading from backend
-- [ ] Visual polish, DnD, keyboard shortcuts (nice-to-have)
+- [x] Manga-themed UI (custom CSS: panels, buttons, inputs, dropzones, tabs, badges, speed lines, halftone)
+- [x] Upload page with tabs (story text, images, characters)
+- [x] Landing page with dramatic GSAP slam-in animation
+- [x] GSAP animations on ALL pages:
+  - Landing: logo spin + float, title slam, screen shake, speed lines
+  - Dashboard: hero slide-in, feature cards stagger, project cards pop
+  - New Project: header bounce, title slam, form fields stagger, button punch
+  - Upload: header fade, tab stagger, dropzone pulse, image/char card pop-in
+  - Editor: top bar slide, onboarding card entrance, generation flash, button glow
+  - SceneNode: entrance scale, generate shake, completion flash, error shake
+  - ChatPanel: message slide-in, tool badge stagger, empty state float, input glow
+- [ ] DnD reordering, keyboard shortcuts (nice-to-have)
 
 ### Person B (Backend API) — ~95% complete
 - [x] FastAPI app with CORS, router mounting
@@ -66,14 +77,20 @@
 - [x] Book text retrieval from DB for re-analysis
 - [ ] Wire real Supabase connection (works when configured)
 
-### Person C (AI Services) — ~95% complete
-- [x] Gemini client wrapper (JSON + text generation, retry logic)
-- [x] Story analyzer (extracts narrative structure, scenes, characters)
-- [x] Trailer planner (generates 8-12 clips with pacing)
-- [x] Tool definitions (add/remove/update clip, reorder, transitions)
-- [x] Chat endpoint with tool calling support
-- [ ] Uncomment tool calling in chat (ready, needs Gemini key)
-- [ ] Style presets, error recovery
+### Person C (AI Services) — ~98% complete
+- [x] Gemini client wrapper (JSON mode + text, retry logic, rate limit handling)
+- [x] Story analyzer (narrative structure, scenes, characters, manga/comic support)
+- [x] Trailer planner (8-12 clips with cinematic prompts and pacing)
+- [x] Tool definitions (add/remove/update clip, reorder, transitions, regenerate)
+- [x] Chat endpoint with REAL Gemini function calling (protos.Tool + FunctionDeclaration)
+- [x] 10 style presets (cinematic, manga, noir, horror, romance, fantasy, sci-fi, comic, literary, children's)
+- [x] Auto-detect style from genre
+- [x] Smart suggestions endpoint (reviews timeline, suggests improvements)
+- [x] Presets API (GET /ai/presets, GET /ai/presets/{style})
+- [x] Character input support in analysis
+- [x] Uploaded image reference support
+- [x] Rate limit retry with exponential backoff
+- [ ] Needs working Gemini API key (free tier exhausted)
 
 ### Person D (Render Pipeline) — ~90% complete
 - [x] Kling 3.0 API client with JWT auth, polling, caching

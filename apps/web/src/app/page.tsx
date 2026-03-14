@@ -78,10 +78,10 @@ export default function LandingPage() {
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
-      // Tree starts extremely big and shrinks to correct size
+      // Left tree slides in from offscreen left
       gsap.fromTo(treeRef.current,
-        { scale: 5, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 2, delay: 0.4, ease: 'power3.out' }
+        { x: '-100%', opacity: 0 },
+        { x: '0%', opacity: 1, duration: 1.8, delay: 0.4, ease: 'power2.out' }
       );
 
       // Holy glow — subtle white breathing in and out
@@ -172,7 +172,7 @@ export default function LandingPage() {
           className="w-full h-full object-cover"
           style={{ background: 'transparent' }}
         >
-          <source src="/tree-overlay.webm" type="video/webm" />
+          <source src="/left-tree.webm" type="video/webm" />
         </video>
       </div>
 

@@ -108,9 +108,9 @@ export default function NewProject() {
     >
       {/* One decorative element per corner, upright */}
       {/* top-left */}
-      <Image src="/stylized_imgs/leaf5.png" alt="" width={220} height={195} className="decor-item fixed -top-6 -left-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 4px rgba(0,0,0,0.15))' }} />
+      <Image src="/stylized_imgs/leaf5.png" alt="" width={220} height={195} className="decor-item fixed -top-6 -left-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 4px rgba(0,0,0,0.15))', transform: 'rotate(-95deg)' }} />
       {/* top-right */}
-      <Image src="/stylized_imgs/leaf6.png" alt="" width={200} height={170} className="decor-item fixed -top-6 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 4px rgba(0,0,0,0.15))', transform: 'scaleX(-1)' }} />
+      <Image src="/stylized_imgs/leaf6.png" alt="" width={200} height={170} className="decor-item fixed -top-6 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 4px rgba(0,0,0,0.15))', transform: 'rotate(-75deg)' }} />
       {/* bottom-left */}
       <Image src="/stylized_imgs/stone3.png" alt="" width={220} height={195} className="decor-item fixed -bottom-8 -left-8 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 5px rgba(0,0,0,0.2))' }} />
       {/* bottom-right */}

@@ -16,6 +16,7 @@ import { useProjectStore, type CharacterEntry } from '@/stores/project-store';
 import { ClipDetailPanel } from '@/components/editor/ClipDetailPanel';
 import { TimelineStrip } from '@/components/editor/TimelineStrip';
 import { ImageCropper } from '@/components/ImageCropper';
+import { TrailerPreview } from '@/components/editor/TrailerPreview';
 import gsap from 'gsap';
 
 type GenerationStep = 'idle' | 'analyzing' | 'planning' | 'done' | 'error';
@@ -47,6 +48,7 @@ export default function EditorPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Character editing state
   const [editingCharId, setEditingCharId] = useState<string | null>(null);
@@ -70,6 +72,8 @@ export default function EditorPage() {
   const setProjectId = useTimelineStore((s) => s.setProjectId);
   const clips = useTimelineStore((s) => s.clips);
   const updateClip = useTimelineStore((s) => s.updateClip);
+  const musicTrack = useTimelineStore((s) => s.musicTrack);
+  const timelineSettings = useTimelineStore((s) => s.settings);
   const { currentProject, setCurrentProject } = useProjectStore();
   const updateProject = useProjectStore((s) => s.updateProject);
   const removeProject = useProjectStore((s) => s.removeProject);
@@ -420,9 +424,9 @@ export default function EditorPage() {
     const styleSeed = styleSeedParts.join(', ');
 
     const sorted = [...clips].sort((a, b) => a.order - b.order);
-    const playable = sorted.filter(c => c.type !== 'text_overlay' && c.type !== 'transition');
+    const playable = sorted.filter(c => c.type !== 'transition');
     const pending = playable.filter(c =>
-      c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.generated_media_url)
+      c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.thumbnail_url)
     );
 
     // Seed the consistency chain with the existing thumbnail so clip 1 is grounded
@@ -455,15 +459,17 @@ export default function EditorPage() {
       for (let attempt = 0; attempt < 2; attempt++) {
         if (attempt > 0) await new Promise(r => setTimeout(r, 3000)); // longer wait on retry
         try {
-          result = await api.generateClip(id, clip.id, clip.prompt, 'image', {
+          const clipType = clip.type === 'text_overlay' ? 'text_overlay' : 'image';
+          result = await api.generateClip(id, clip.id, clip.prompt, clipType, {
             clip_order: order,
             clip_total: playable.length,
-            scene_image_url: prevUrl,
+            scene_image_url: clip.type !== 'text_overlay' ? prevUrl : undefined,
             characters: chars.length > 0 ? chars : undefined,
             mood: analysis?.mood,
             genre: analysis?.genre,
             style_seed: styleSeed,
-            prev_scene_prompt: prevPrompt,
+            prev_scene_prompt: clip.type !== 'text_overlay' ? prevPrompt : undefined,
+            text: (clip as any).text || undefined,
           });
           if (result.status === 'done' || result.media_url) break;
         } catch (err: any) {
@@ -474,8 +480,7 @@ export default function EditorPage() {
       const url = result?.media_url || result?.output_url || result?.generated_media_url;
       if (url) {
         updateClip(clip.id, { gen_status: 'done', generated_media_url: url, thumbnail_url: result.thumbnail_url || url });
-        prevUrl = url;
-        prevPrompt = clip.prompt;
+        if (clip.type !== 'text_overlay') { prevUrl = url; prevPrompt = clip.prompt; }
       } else if (result?.status === 'generating') {
         // Async video — WebSocket callback will update
       } else {
@@ -487,43 +492,63 @@ export default function EditorPage() {
     }
   }, [id, clips, currentProject, updateClip]);
 
-  // Compile all scene images → Kling videos (sequential)
+  // Compile all scene images → Veo videos (fires requests, WebSocket callbacks update each clip)
   const handleGenerateAllVideos = useCallback(async () => {
     if (!id || generatingVideos) return;
     const analysis = currentProject?.analysis;
     const chars = (analysis?.characters as any[] || []).map((c: any) => ({
-      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+      name: c.name,
+      description: c.description,
+      visual_description: c.visual_description,
+      appearance: c.appearance,
+      image_url: c.image_url || c.reference_image_url,
     }));
     const sorted = [...clips].sort((a, b) => a.order - b.order);
-    const toConvert = sorted.filter(c => c.type !== 'text_overlay' && c.type !== 'transition' && c.thumbnail_url);
+    const toConvert = sorted.filter(c => c.type !== 'transition' && c.thumbnail_url);
+
+    // Style seed for visual consistency across all clips
+    const styleSeed = [
+      analysis?.genre,
+      analysis?.mood,
+      ...chars.slice(0, 3).map((c: any) => c.appearance || c.visual_description).filter(Boolean),
+    ].filter(Boolean).join('; ') || undefined;
+
     setGeneratingVideos(true);
     setVideoGenProgress({ done: 0, total: toConvert.length });
+
     for (let i = 0; i < toConvert.length; i++) {
       const clip = toConvert[i];
       const order = sorted.findIndex(c => c.id === clip.id);
       const isCont = (clip as any).shot_type === 'continuous';
       const prev = order > 0 ? sorted[order - 1] : null;
+      const next = order < sorted.length - 1 ? sorted[order + 1] : null;
       const startFrame = isCont
         ? (prev?.thumbnail_url && !prev.thumbnail_url.startsWith('data:') ? prev.thumbnail_url : clip.thumbnail_url)
         : (clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined);
+
       updateClip(clip.id, { gen_status: 'generating' });
       try {
         const result: any = await api.generateClip(id, clip.id, clip.prompt, 'video', {
           clip_order: order,
+          clip_total: sorted.length,
           scene_image_url: startFrame,
           characters: chars.length > 0 ? chars : undefined,
           mood: analysis?.mood,
           genre: analysis?.genre,
+          style_seed: styleSeed,
           shot_type: (clip as any).shot_type || 'cut',
           is_continuous: isCont,
+          prev_scene_prompt: prev?.prompt,
+          next_scene_prompt: next?.prompt,
         });
-        updateClip(clip.id, {
-          gen_status: 'done', type: 'video' as any,
-          generated_media_url: result.media_url,
-          thumbnail_url: result.thumbnail_url || clip.thumbnail_url,
-        });
-      } catch {
-        updateClip(clip.id, { gen_status: 'error' });
+        // Veo is async — returns {status:"generating"} immediately.
+        // WebSocket callback (clip_updated) will set gen_status, generated_media_url, and type:'video' when done.
+        // Only mark error here if the request itself failed.
+        if (result?.status === 'error') {
+          updateClip(clip.id, { gen_status: 'error', gen_error: result?.message });
+        }
+      } catch (err) {
+        updateClip(clip.id, { gen_status: 'error', gen_error: String(err) });
       }
       setVideoGenProgress({ done: i + 1, total: toConvert.length });
     }
@@ -557,8 +582,9 @@ export default function EditorPage() {
 
   // Workflow phase detection
   const playableClips = clips.filter(c => c.type !== 'text_overlay' && c.type !== 'transition');
+  // imagesAllDone: all clips have a thumbnail (image) — true even when clips are generating videos
   const imagesAllDone = playableClips.length > 0 && playableClips.every(c =>
-    (c.gen_status === 'done' && !!c.generated_media_url) || c.gen_status === 'error'
+    !!c.thumbnail_url || c.gen_status === 'error'
   );
   const anyGenerating = playableClips.some(c => c.gen_status === 'generating');
   const videosExist = playableClips.some(c => c.type === 'video' && c.gen_status === 'done' && !!c.generated_media_url);
@@ -582,10 +608,59 @@ export default function EditorPage() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 size={32} className="mx-auto mb-3 text-[#111] animate-spin" />
-          <p className="text-[#888]">Loading project...</p>
+      <div className="h-screen w-full flex items-center justify-center overflow-hidden" style={{ background: '#fff' }}>
+        {/* Halftone dot background */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="htdots-load" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+              <circle cx="4" cy="4" r="1.2" fill="#111" opacity="0.07" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#htdots-load)" />
+          {/* Speed lines */}
+          {Array.from({ length: 24 }).map((_, i) => {
+            const angle = (i / 24) * 360;
+            const rad   = (angle * Math.PI) / 180;
+            const x1 = (50 + Math.cos(rad) * 3).toFixed(2);
+            const y1 = (50 + Math.sin(rad) * 3).toFixed(2);
+            const x2 = (50 + Math.cos(rad) * 70).toFixed(2);
+            const y2 = (50 + Math.sin(rad) * 70).toFixed(2);
+            const thick = i % 6 === 0 ? 2 : i % 3 === 0 ? 1 : 0.4;
+            const op    = i % 6 === 0 ? 0.1 : i % 3 === 0 ? 0.06 : 0.03;
+            return <line key={i} x1={`${x1}%`} y1={`${y1}%`} x2={`${x2}%`} y2={`${y2}%`} stroke="#111" strokeWidth={thick} opacity={op} />;
+          })}
+        </svg>
+        {/* Center content — mirrors PageTransition overlay */}
+        <div className="relative flex flex-col items-center gap-3">
+          <div className="flex items-center gap-4">
+            {/* Logo */}
+            <div className="relative shrink-0">
+              <img src="/logo.png" alt="MangaMate" width={88} height={88} className="drop-shadow-[0_0_24px_rgba(168,85,247,0.5)]" />
+              <div className="absolute inset-[-16px] rounded-full border-[3px] border-[#a855f7]/20 animate-ping" style={{ animationDuration: '1.6s' }} />
+            </div>
+            {/* MANGAMATE letters */}
+            <div className="flex items-center gap-[0.02em]" style={{ fontFamily: 'var(--font-manga)' }}>
+              {'MANGAMATE'.split('').map((char, i) => (
+                <span
+                  key={i}
+                  className="inline-block select-none"
+                  style={{
+                    fontSize: 'clamp(2.2rem, 6vw, 4.5rem)',
+                    color: '#fff',
+                    WebkitTextStroke: '3px #111',
+                    paintOrder: 'stroke fill',
+                    textShadow: '4px 4px 0px #000, -1px -1px 0px #000',
+                    lineHeight: 1,
+                  }}
+                >
+                  {char}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="text-[0.65rem] text-[#999] uppercase tracking-[0.3em] select-none" style={{ fontFamily: 'var(--font-manga)' }}>
+            AI Book Trailer Generator
+          </div>
         </div>
       </div>
     );
@@ -647,16 +722,18 @@ export default function EditorPage() {
               <Sparkles size={14} /> {playableClips.some(c => c.gen_status === 'error') ? 'Retry Failed' : 'Generate All Images'}
             </button>
           )}
-          {(workflowPhase === 'videos' || workflowPhase === 'effects') && !videosExist && (
+          {(workflowPhase === 'videos') && anyGenerating && (
+            <div className="manga-btn bg-blue-600/20 text-blue-700 px-3 py-1.5 text-sm flex items-center gap-2 border-blue-300 cursor-default select-none">
+              <Loader2 size={14} className="animate-spin" />
+              {playableClips.filter(c => c.type === 'video' && c.gen_status === 'done').length}/{playableClips.length} Generating Videos...
+            </div>
+          )}
+          {(workflowPhase === 'videos') && !anyGenerating && !generatingVideos && (
             <button
               onClick={handleGenerateAllVideos}
-              disabled={generatingVideos}
               className="manga-btn bg-blue-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-blue-600"
             >
-              {generatingVideos
-                ? <><Loader2 size={14} className="animate-spin" /> {videoGenProgress.done}/{videoGenProgress.total} Videos...</>
-                : <><Film size={14} /> Generate Videos</>
-              }
+              <Film size={14} /> Generate Videos
             </button>
           )}
           {videosExist && (
@@ -669,6 +746,14 @@ export default function EditorPage() {
                 ? <><Loader2 size={14} className="animate-spin" /> {exportStatus || 'Compiling...'}</>
                 : <><Clapperboard size={14} /> Compile Videos</>
               }
+            </button>
+          )}
+          {clips.some(c => c.generated_media_url) && (
+            <button
+              onClick={() => setShowPreview(true)}
+              className="manga-btn bg-[#a855f7] text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-[#a855f7] hover:bg-[#9333ea]"
+            >
+              <Play size={14} /> Preview
             </button>
           )}
           {clips.length > 0 && (
@@ -1100,8 +1185,8 @@ export default function EditorPage() {
                   </div>
 
                   {editThumbnail ? (
-                    <div className="relative group w-full h-40 border-2 border-[#ccc] overflow-hidden">
-                      <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-cover" />
+                    <div className="relative group w-full border-2 border-[#ccc] overflow-hidden">
+                      <img src={editThumbnail} alt="thumbnail" className="w-full h-auto block" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button onClick={() => thumbnailInputRef.current?.click()} className="manga-btn bg-white text-[#111] px-3 py-1 text-xs">
                           Replace
@@ -1206,11 +1291,19 @@ export default function EditorPage() {
           </div>
         )}
 
+        {/* Trailer preview modal */}
+        {showPreview && (
+          <TrailerPreview
+            clips={clips}
+            musicTrack={musicTrack}
+            onClose={() => setShowPreview(false)}
+          />
+        )}
+
         {/* Image crop modal */}
         {cropSrc && (
           <ImageCropper
             src={cropSrc}
-            aspect={2 / 3}
             onConfirm={(dataUrl) => { setEditThumbnail(dataUrl); setCropSrc(null); }}
             onCancel={() => setCropSrc(null)}
           />

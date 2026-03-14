@@ -5,8 +5,9 @@ from pydantic import BaseModel
 from typing import Optional
 import httpx
 
-from app.services.kling import generate_image, download_media
+from app.services.kling import generate_image, generate_video as generate_video_kling, download_media
 from app.services.veo import generate_video_veo
+from app.services.fal_video import generate_video_fal
 from app.services.gemini_image import generate_image_gemini
 from app.services.media import create_thumbnail
 from app.services.prompt_builder import build_video_prompt, build_image_prompt, build_negative_prompt
@@ -101,17 +102,17 @@ async def _generate_and_callback(data: GenerateRequest):
                 prev_scene_prompt=data.prev_scene_prompt,
                 next_scene_prompt=data.next_scene_prompt,
                 feedback=data.feedback,
+                style_seed=data.style_seed,
             )
-            result = await generate_video_veo(
+            result = await generate_video_fal(
                 prompt=prompt,
                 aspect_ratio=data.aspect_ratio,
                 duration_sec=data.duration_ms / 1000,
-                negative_prompt=neg,
                 start_frame_url=data.scene_image_url,
             )
-            # Veo failed — fall back to Gemini image so clip isn't stranded
+            # fal failed — fall back to Gemini image so clip isn't stranded
             if result.get("status") != "done":
-                logger.warning("Veo video failed (%s), falling back to Gemini image", result.get("message"))
+                logger.warning("fal video failed (%s), falling back to Gemini image", result.get("message"))
                 img_prompt = build_image_prompt(data.prompt, characters=chars, mood=data.mood)
                 result = await generate_image_gemini(img_prompt, data.aspect_ratio)
                 actual_type = "image"
@@ -143,7 +144,7 @@ async def _generate_and_callback(data: GenerateRequest):
                 logger.warning("Thumbnail creation failed: %s", e)
 
             await _notify_progress(data.clip_id, "done", media_url, thumbnail_url,
-                                   extra={"actual_type": actual_type} if actual_type != data.type else {})
+                                   extra={"actual_type": actual_type})
         else:
             await _notify_progress(data.clip_id, "error", error=result.get("message", "Generation failed"))
 
@@ -185,6 +186,7 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
             style_seed=data.style_seed,
             clip_order=data.clip_order,
             clip_total=data.clip_total,
+            prev_scene_prompt=data.prev_scene_prompt,
         )
         result = await generate_image_gemini(prompt, data.aspect_ratio)
         return GenerateResponse(

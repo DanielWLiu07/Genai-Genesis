@@ -72,11 +72,9 @@ async def generate_video_veo(
 
         ar_map = {"16:9": "16:9", "9:16": "9:16", "1:1": "1:1"}
         ar = ar_map.get(aspect_ratio, "16:9")
-        duration_s = 8 if duration_sec > 5 else 5
 
         config = types.GenerateVideosConfig(
             aspect_ratio=ar,
-            duration_seconds=duration_s,
             negative_prompt=negative_prompt or None,
             number_of_videos=1,
         )
@@ -125,9 +123,20 @@ async def generate_video_veo(
             return {"status": "error", "message": err}
 
         video = operation.response.generated_videos[0]
-        video_bytes = video.video.video_bytes
+        video_obj = video.video
+
+        # Veo 3 may return a uri instead of raw bytes
+        video_uri = getattr(video_obj, "uri", None)
+        video_bytes = getattr(video_obj, "video_bytes", None)
+
+        if not video_bytes and video_uri:
+            logger.info("Veo returned URI, downloading: %s", video_uri[:80])
+            async with httpx.AsyncClient(timeout=120) as http:
+                resp = await http.get(video_uri)
+                video_bytes = resp.content
+
         if not video_bytes:
-            return {"status": "error", "message": "Veo returned empty video bytes"}
+            return {"status": "error", "message": "Veo returned no video bytes or URI"}
 
         filename = f"veo_{cache_key[:16]}.mp4"
 

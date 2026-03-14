@@ -112,6 +112,7 @@ def build_video_prompt(
     prev_scene_prompt: Optional[str] = None,
     next_scene_prompt: Optional[str] = None,
     feedback: Optional[str] = None,
+    style_seed: Optional[str] = None,
 ) -> str:
     """Build an optimised Kling video generation prompt.
 
@@ -128,10 +129,24 @@ def build_video_prompt(
     """
     parts: list[str] = []
 
-    # 1. Character context (max 2 chars × 20 words each)
-    char_block = _build_character_block(characters or [], scene_prompt)
-    if char_block:
-        parts.append(char_block)
+    # 1. All character descriptions — consistent appearance across every clip
+    if characters:
+        char_descs = []
+        for c in (characters or [])[:4]:
+            name = c.get("name", "")
+            if not name:
+                continue
+            visual = (
+                c.get("visual_description")
+                or c.get("appearance")
+                or (c.get("description", "").split(".")[0] if c.get("description") else "")
+            )
+            if visual:
+                char_descs.append(f"{name}: {_truncate_words(visual, 18)}")
+            else:
+                char_descs.append(name)
+        if char_descs:
+            parts.append("Characters — " + "; ".join(char_descs))
 
     # 2. Previous scene context — brief continuity hint (max 12 words)
     if prev_scene_prompt and not is_continuous:
@@ -167,7 +182,11 @@ def build_video_prompt(
     if atmosphere:
         parts.append(". ".join(atmosphere))
 
-    # 7. AMV style boilerplate
+    # 7. Style seed — visual consistency anchor across all clips
+    if style_seed:
+        parts.append(style_seed)
+
+    # 8. AMV style boilerplate
     parts.append(_AMV_STYLE)
 
     return ". ".join(p.rstrip(". ") for p in parts if p)
@@ -189,6 +208,7 @@ def build_image_prompt(
     style_seed: Optional[str] = None,
     clip_order: int = 0,
     clip_total: int = 0,
+    prev_scene_prompt: Optional[str] = None,
 ) -> str:
     """Build a Gemini/Imagen image generation prompt.
 
@@ -221,6 +241,11 @@ def build_image_prompt(
                 char_descs.append(name)
         if char_descs:
             parts.append("Characters — " + "; ".join(char_descs))
+
+    # Previous scene context — brief continuity hint for visual consistency
+    if prev_scene_prompt:
+        prev_hint = _truncate_words(prev_scene_prompt.strip(), 15)
+        parts.append(f"Continuing from: {prev_hint}")
 
     # Core scene
     parts.append(scene_prompt.strip())

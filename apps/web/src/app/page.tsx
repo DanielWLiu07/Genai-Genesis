@@ -139,7 +139,7 @@ export default function LandingPage() {
       <div
         ref={leavesRef}
         className="absolute inset-0 pointer-events-none z-[5]"
-        style={{ opacity: 0 }}
+        style={{ opacity: 0, mixBlendMode: 'screen' }}
       >
         <video
           autoPlay
@@ -147,6 +147,7 @@ export default function LandingPage() {
           muted
           playsInline
           className="w-full h-full object-cover"
+          style={{ background: 'transparent' }}
         >
           <source src="/leaves-overlay.webm" type="video/webm" />
         </video>

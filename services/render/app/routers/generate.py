@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from typing import Optional
 import httpx
 
-from app.services.kling import generate_image, generate_video, download_media
+from app.services.kling import generate_image, download_media
+from app.services.veo import generate_video_veo
 from app.services.gemini_image import generate_image_gemini
 from app.services.media import create_thumbnail
 from app.services.prompt_builder import build_video_prompt, build_image_prompt, build_negative_prompt
@@ -101,23 +102,16 @@ async def _generate_and_callback(data: GenerateRequest):
                 next_scene_prompt=data.next_scene_prompt,
                 feedback=data.feedback,
             )
-            # Tighter cfg_scale for continuous shots (stay close to start frame),
-            # looser for hard cuts (more creative freedom)
-            cfg_scale = 0.7 if data.is_continuous else 0.5
-            result = await generate_video(
+            result = await generate_video_veo(
                 prompt=prompt,
-                duration_sec=data.duration_ms / 1000,
                 aspect_ratio=data.aspect_ratio,
+                duration_sec=data.duration_ms / 1000,
                 negative_prompt=neg,
                 start_frame_url=data.scene_image_url,
-                cfg_scale=cfg_scale,
-                reference_image_urls=[
-                    c["image_url"] for c in chars if c.get("image_url")
-                ] or None,
             )
-            # Kling video failed — fall back to Gemini image so clip isn't stranded
+            # Veo failed — fall back to Gemini image so clip isn't stranded
             if result.get("status") != "done":
-                logger.warning("Kling video failed (%s), falling back to Gemini image", result.get("message"))
+                logger.warning("Veo video failed (%s), falling back to Gemini image", result.get("message"))
                 img_prompt = build_image_prompt(data.prompt, characters=chars, mood=data.mood)
                 result = await generate_image_gemini(img_prompt, data.aspect_ratio)
                 actual_type = "image"

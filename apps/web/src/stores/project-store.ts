@@ -25,6 +25,7 @@ export interface Project {
   cover_image_url?: string;
   status: 'uploading' | 'uploaded' | 'analyzing' | 'planning' | 'editing' | 'rendering' | 'done';
   analysis?: any;
+  audio_analysis?: any;
   characters: CharacterEntry[];
   uploaded_images: UploadedImage[];
   created_at: string;

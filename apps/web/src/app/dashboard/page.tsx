@@ -221,7 +221,7 @@ export default function Dashboard() {
                       >
                         <Link
                           href={`/project/${project.id}`}
-                          className="block"
+                          className="block book-link"
                         >
                         <div
                           className="book-card relative aspect-[2/3] overflow-hidden border-2 border-[#111]"
@@ -250,40 +250,41 @@ export default function Dashboard() {
 
                           {/* Content overlay */}
                           <div className="absolute inset-0 flex flex-col p-3 pl-4 bg-gradient-to-t from-black/60 via-transparent to-transparent">
-                            {/* Top row: status + delete */}
-                            <div className="flex items-start justify-between">
-                              <span className={`manga-badge text-[0.5rem] ${STATUS_STYLES[project.status] || 'text-[#444] bg-[#444]/10'}`}>
+                            {/* Top row: status badge */}
+                            <div className="flex items-start">
+                              <span className="manga-badge text-[0.5rem] text-white bg-black/50 border-black/30" style={{ textShadow: '0 1px 2px #000' }}>
                                 {project.status}
                               </span>
-                              <button
-                                className="manga-badge text-[0.5rem] bg-red-600/80 text-white border-red-800 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 px-1.5 py-0.5"
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDelete(project.id); }}
-                              >
-                                ✕ DEL
-                              </button>
                             </div>
 
                             <div className="flex-1" />
 
                             {/* Title at bottom */}
                             <h3
-                              className="text-sm font-bold text-white leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-                              style={{ fontFamily: 'var(--font-manga)', letterSpacing: '0.03em' }}
+                              className="text-sm font-bold leading-tight"
+                              style={{ fontFamily: 'var(--font-manga)', letterSpacing: '0.03em', color: '#fff', WebkitTextStroke: '0.6px #000', paintOrder: 'stroke fill', textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000' }}
                             >
                               {project.title}
                             </h3>
                             {project.description && (
-                              <p className="text-[0.6rem] text-white/70 line-clamp-2 mt-0.5 leading-snug">
+                              <p className="text-[0.6rem] line-clamp-2 mt-0.5 leading-snug" style={{ color: '#fff', textShadow: '0 1px 3px #000, 0 0 6px #000' }}>
                                 {project.description}
                               </p>
                             )}
-                            <div className="flex items-center gap-1 text-[0.55rem] text-white/50 mt-1">
+                            <div className="flex items-center gap-1 text-[0.55rem] mt-1" style={{ color: '#fff', textShadow: '0 1px 2px #000' }}>
                               <Clock size={8} />
                               {new Date(project.created_at).toLocaleDateString()}
                             </div>
                           </div>
                         </div>
                         </Link>
+                        {/* Delete button — outside Link to prevent click-through navigation */}
+                        <button
+                          className="manga-badge text-[0.5rem] bg-red-600/80 text-white border-red-800 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 px-1.5 py-0.5 absolute top-2 right-2 z-10"
+                          onClick={(e) => { e.stopPropagation(); setConfirmDelete(project.id); }}
+                        >
+                          ✕ DEL
+                        </button>
                       </div>
                     ))}
                   </div>

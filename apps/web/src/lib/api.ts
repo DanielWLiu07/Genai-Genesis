@@ -30,10 +30,10 @@ export const api = {
   deleteProject: (id: string) =>
     fetchProjects(`/${id}`, { method: 'DELETE' }),
 
-  // Timeline
-  getTimeline: (projectId: string) => fetchAPI(`/projects/${projectId}/timeline`),
+  // Timeline — served via Next.js API routes -> Supabase directly
+  getTimeline: (projectId: string) => fetchProjects(`/${projectId}/timeline`),
   updateTimeline: (projectId: string, timeline: any) =>
-    fetchAPI(`/projects/${projectId}/timeline`, { method: 'PUT', body: JSON.stringify(timeline) }),
+    fetchProjects(`/${projectId}/timeline`, { method: 'PUT', body: JSON.stringify(timeline) }),
 
   // Upload
   uploadBook: async (projectId: string, file: File) => {
@@ -103,6 +103,7 @@ export const api = {
       shot_type?: string;
       is_continuous?: boolean;
       style_seed?: string;
+    text?: string;
     }
   ) =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {

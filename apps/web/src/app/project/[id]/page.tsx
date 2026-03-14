@@ -625,14 +625,18 @@ export default function EditorPage() {
               }
             </button>
           )}
-          {workflowPhase === 'effects' && (
-            <Link href={`/project/${id}/timeline`} className="manga-btn bg-[#fbbf24] text-black px-3 py-1.5 text-sm flex items-center gap-1.5 border-[#fbbf24] font-bold">
-              <Zap size={14} /> Add Effects
-            </Link>
-          )}
-          {clips.length > 0 && workflowPhase !== 'effects' && (
-            <Link href={`/project/${id}/timeline`} className="manga-btn bg-white text-[#888] px-2.5 py-1.5 text-sm flex items-center gap-1.5">
-              <Zap size={14} />
+          {clips.length > 0 && (
+            <Link
+              href={videosExist ? `/project/${id}/timeline` : '#'}
+              onClick={!videosExist ? (e) => e.preventDefault() : undefined}
+              className={`manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 font-bold transition-all ${
+                videosExist
+                  ? 'bg-[#fbbf24] text-black border-[#fbbf24]'
+                  : 'bg-[#fbbf24]/30 text-black/30 border-[#fbbf24]/30 blur-[0.5px] cursor-not-allowed select-none'
+              }`}
+              title={videosExist ? 'Edit timeline & effects' : 'Generate videos first to unlock editing'}
+            >
+              <Zap size={14} /> Edit
             </Link>
           )}
         </div>

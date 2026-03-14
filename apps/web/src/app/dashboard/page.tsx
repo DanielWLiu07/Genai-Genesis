@@ -67,8 +67,8 @@ export default function Dashboard() {
         { opacity: 0.6, scale: 1, duration: 1.2, delay: 0.5, ease: 'power2.out' }
       );
       gsap.to('.decor-sun', {
-        y: -14,
-        duration: 4,
+        y: -22,
+        duration: 1.4,
         delay: 1.5,
         repeat: -1,
         yoyo: true,
@@ -81,14 +81,8 @@ export default function Dashboard() {
         repeat: -1,
         ease: 'none',
       });
-      // Oni fades in centered when no projects
-      gsap.fromTo('.decor-oni',
-        { opacity: 0, y: 20, scale: 0.85 },
-        { opacity: 1, y: 0, scale: 1, duration: 1.2, delay: 0.6, ease: 'power3.out' }
-      );
-      gsap.to('.decor-oni', {
-        y: -10, duration: 3.5, delay: 1.8, repeat: -1, yoyo: true, ease: 'sine.inOut',
-      });
+      // Oni bob
+      gsap.to('.decor-oni', { y: 18, duration: 2.2, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 0.5 });
       // Gentle sway — relative rotation so it rocks around its current CSS transform
       document.querySelectorAll('.decor-item').forEach((el, i) => {
         const dur = 2.8 + i * 0.6;
@@ -161,7 +155,8 @@ export default function Dashboard() {
     }
   }
 
-  const shelfRows = chunkArray(projects, 5);
+  const sorted = [...projects].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const shelfRows = chunkArray(sorted, 5);
 
   return (
     <main ref={mainRef} className="h-screen flex flex-col">
@@ -171,10 +166,7 @@ export default function Dashboard() {
       <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item fixed -bottom-6 -left-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
       <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item fixed -bottom-16 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
       <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun fixed top-28 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
-      {/* Oni — only shown on empty state, centered, same layer as other decoratives */}
-      {!loading && projects.length === 0 && (
-        <Image src="/stylized_imgs/oni.png" alt="" width={320} height={320} className="decor-oni fixed bottom-16 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ mixBlendMode: 'multiply', filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.25))' }} />
-      )}
+      <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 left-[52.5%] -translate-x-1/2 w-[1100px] pointer-events-none select-none z-[3]" style={{ opacity: 0.22 }} />
 
       {/* Top bar */}
       <div className="shrink-0 border-b-2 border-[#ddd] relative overflow-hidden bg-white/90 backdrop-blur-sm z-[20]">
@@ -209,12 +201,12 @@ export default function Dashboard() {
             <div className="flex items-center justify-center h-64">
               <Loader2 size={24} className="text-[#444] animate-spin" />
             </div>
-          ) : projects.length === 0 ? (
-            <Link href="/project/new" className="flex items-center justify-center h-72">
-              <div className="group flex flex-col items-center gap-3 px-16 py-10 border-2 border-[#111] bg-white/60 backdrop-blur-sm hover:bg-white/90 transition-all duration-200 cursor-pointer" style={{ boxShadow: '4px 4px 0px #111' }}>
+          ) : sorted.length === 0 ? (
+            <Link href="/project/new" className="group flex items-center justify-center h-[70vh]">
+              <div className="flex flex-col items-center gap-3 px-12 py-8 border-2 border-[#111] bg-white/70 backdrop-blur-sm group-hover:bg-white/90 transition-all" style={{ boxShadow: '4px 4px 0px #111' }}>
                 <p className="manga-title text-2xl" style={{ WebkitTextStroke: '2px #111', color: '#fff', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000' }}>NO STORIES YET</p>
-                <p className="text-xs text-[#555] border-t border-[#ccc] pt-3 group-hover:text-[#111] transition-colors">Upload your first manga to generate a cinematic trailer.</p>
-                <span className="manga-btn bg-[#111] text-white px-4 py-1.5 text-xs flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity -mt-1">
+                <p className="text-xs text-[#555] border-t border-[#ccc] pt-3">Upload your first manga to generate a cinematic trailer.</p>
+                <span className="manga-btn bg-[#111] text-white px-4 py-1.5 text-xs flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Plus size={12} /> New Project
                 </span>
               </div>
@@ -231,14 +223,6 @@ export default function Dashboard() {
                         className="project-card group flex-shrink-0 relative"
                         style={{ width: 'calc((100% - 80px) / 5)', opacity: 0 }}
                       >
-                        {/* Delete — top-right corner inside the card, visible on hover */}
-                        <button
-                          className="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-red-600/80 p-1"
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDelete(project.id); }}
-                          title="Delete project"
-                        >
-                          <X size={11} className="text-white" />
-                        </button>
                         <Link
                           href={`/project/${project.id}`}
                           className="block"
@@ -270,10 +254,18 @@ export default function Dashboard() {
 
                           {/* Content overlay */}
                           <div className="absolute inset-0 flex flex-col p-3 pl-4 bg-gradient-to-t from-black/60 via-transparent to-transparent">
-                            {/* Status */}
-                            <span className={`manga-badge text-[0.5rem] self-end ${STATUS_STYLES[project.status] || 'text-[#444] bg-[#444]/10'}`}>
-                              {project.status}
-                            </span>
+                            {/* Top row: status + delete */}
+                            <div className="flex items-start justify-between">
+                              <span className={`manga-badge text-[0.5rem] ${STATUS_STYLES[project.status] || 'text-[#444] bg-[#444]/10'}`}>
+                                {project.status}
+                              </span>
+                              <button
+                                className="manga-badge text-[0.5rem] bg-red-600/80 text-white border-red-800 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 px-1.5 py-0.5"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDelete(project.id); }}
+                              >
+                                ✕ DEL
+                              </button>
+                            </div>
 
                             <div className="flex-1" />
 

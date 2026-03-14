@@ -1,12 +1,12 @@
 'use client';
 
-import { memo, useCallback, useRef, useEffect } from 'react';
+import { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { Clip } from '@/stores/timeline-store';
 import { useTimelineStore } from '@/stores/timeline-store';
 import { useProjectStore } from '@/stores/project-store';
 import { api } from '@/lib/api';
-import { Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, Sparkles, AlertCircle, RefreshCw, Film, ImageIcon } from 'lucide-react';
 import gsap from 'gsap';
 
 function SceneNodeInner({ data }: NodeProps) {
@@ -17,6 +17,10 @@ function SceneNodeInner({ data }: NodeProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const statusDotRef = useRef<HTMLDivElement>(null);
   const prevStatus = useRef(clip.gen_status);
+  const hasVideo = !!(clip.generated_media_url && clip.type === 'video');
+  const hasImage = !!clip.thumbnail_url;
+  const showTabs = hasVideo && hasImage;
+  const [activeTab, setActiveTab] = useState<'image' | 'video'>('video');
 
   const statusColors: Record<string, string> = {
     pending: 'bg-yellow-500',
@@ -157,10 +161,51 @@ function SceneNodeInner({ data }: NodeProps) {
       console.error('Clip generation failed:', err);
       updateClip(clip.id, { gen_status: 'error', gen_error: String(err) });
     }
-  }, [clip.id, clip.prompt, clip.type, updateClip]);
+  }, [clip.id, clip.prompt, clip.type, clip.thumbnail_url, updateClip, clips, currentProject]);
+
+  const handleGenerateVideo = useCallback(async () => {
+    const projectId = useTimelineStore.getState().projectId;
+    if (!projectId) return;
+
+    updateClip(clip.id, { gen_status: 'generating' });
+
+    const analysis = currentProject?.analysis;
+    const characters = (analysis?.characters as any[] || []).map((c: any) => ({
+      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+    }));
+    const sortedClips = [...clips].sort((a, b) => a.order - b.order);
+    const clipOrder = sortedClips.findIndex((c) => c.id === clip.id);
+    const isContinuous = (clip as any).shot_type === 'continuous';
+    const startFrame = clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:')
+      ? clip.thumbnail_url : undefined;
+
+    try {
+      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, 'video', {
+        clip_order: clipOrder,
+        scene_image_url: startFrame,
+        characters: characters.length > 0 ? characters : undefined,
+        mood: analysis?.mood,
+        genre: analysis?.genre,
+        shot_type: (clip as any).shot_type || 'cut',
+        is_continuous: isContinuous,
+      });
+      // Video is async — WS will update gen_status; if result already has url, apply it
+      if (result.media_url) {
+        updateClip(clip.id, { gen_status: 'done', type: 'video' as any, generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url || clip.thumbnail_url });
+      }
+    } catch (err) {
+      updateClip(clip.id, { gen_status: 'error', gen_error: String(err) });
+    }
+  }, [clip.id, clip.prompt, clip.thumbnail_url, updateClip, clips, currentProject]);
 
   return (
-    <div ref={nodeRef} className="manga-panel p-4" style={{ width: 260 }}>
+    <div
+      ref={nodeRef}
+      className="manga-panel p-4"
+      style={{ width: 260 }}
+      onMouseEnter={() => { if (nodeRef.current) gsap.to(nodeRef.current, { scale: 1.04, zIndex: 10, duration: 0.2, ease: 'back.out(1.5)' }); }}
+      onMouseLeave={() => { if (nodeRef.current) gsap.to(nodeRef.current, { scale: 1, zIndex: 1, duration: 0.2, ease: 'power2.out' }); }}
+    >
       <Handle type="target" position={Position.Left} className="!bg-[#111]" />
 
       <div className="flex items-center gap-2 mb-2">
@@ -178,6 +223,26 @@ function SceneNodeInner({ data }: NodeProps) {
       </div>
 
       <div className="relative group">
+        {/* Image / Video tabs */}
+        {showTabs && (
+          <div className="flex mb-1 border-b border-[#ccc]">
+            <button
+              onClick={() => setActiveTab('image')}
+              className={`flex items-center gap-1 px-2 py-0.5 text-[0.55rem] font-bold transition-colors ${activeTab === 'image' ? 'bg-[#111] text-white' : 'text-[#888] hover:text-[#111]'}`}
+              style={{ fontFamily: 'var(--font-manga)' }}
+            >
+              <ImageIcon size={9} /> IMAGE
+            </button>
+            <button
+              onClick={() => setActiveTab('video')}
+              className={`flex items-center gap-1 px-2 py-0.5 text-[0.55rem] font-bold transition-colors ${activeTab === 'video' ? 'bg-blue-600 text-white' : 'text-[#888] hover:text-[#111]'}`}
+              style={{ fontFamily: 'var(--font-manga)' }}
+            >
+              <Film size={9} /> VIDEO
+            </button>
+          </div>
+        )}
+
         {/* Text overlay with generated scene — show image if generated, else text placeholder */}
         {clip.type === 'text_overlay' && clip.thumbnail_url ? (
           <div className="w-full h-32 overflow-hidden mb-2 relative">
@@ -197,6 +262,18 @@ function SceneNodeInner({ data }: NodeProps) {
                style={{ fontFamily: 'var(--font-manga)', letterSpacing: '0.05em' }}>
               {clip.text || clip.prompt || 'Text Overlay'}
             </p>
+          </div>
+        ) : showTabs && activeTab === 'video' ? (
+          <video
+            src={clip.generated_media_url!}
+            className="w-full h-32 object-cover mb-2 bg-black"
+            controls
+            preload="metadata"
+            poster={clip.thumbnail_url}
+          />
+        ) : showTabs && activeTab === 'image' ? (
+          <div className="w-full h-32 overflow-hidden mb-2">
+            <img src={clip.thumbnail_url!} alt="" className="w-full h-full object-cover" />
           </div>
         ) : clip.generated_media_url && clip.type === 'video' ? (
           <video
@@ -251,14 +328,42 @@ function SceneNodeInner({ data }: NodeProps) {
           </button>
         )}
 
-        {clip.gen_status === 'done' && (
-          <button
-            onClick={handleGenerate}
-            className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/60 flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-          >
-            <RefreshCw size={16} className="text-white" />
-            <span className="text-xs text-white" style={{ fontFamily: 'var(--font-manga)' }}>Regenerate</span>
-          </button>
+        {clip.gen_status === 'done' && clip.type === 'video' && (
+          <div className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
+            <button
+              onClick={handleGenerate}
+              className="flex flex-col items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/25 border border-white/30 transition-colors"
+            >
+              <ImageIcon size={14} className="text-white" />
+              <span className="text-[0.6rem] text-white" style={{ fontFamily: 'var(--font-manga)' }}>Regen Frame</span>
+            </button>
+            <button
+              onClick={handleGenerateVideo}
+              className="flex flex-col items-center gap-1 px-3 py-2 bg-blue-500/40 hover:bg-blue-500/60 border border-blue-400/50 transition-colors"
+            >
+              <Film size={14} className="text-blue-200" />
+              <span className="text-[0.6rem] text-blue-200" style={{ fontFamily: 'var(--font-manga)' }}>Regen Video</span>
+            </button>
+          </div>
+        )}
+
+        {clip.gen_status === 'done' && clip.type !== 'video' && clip.type !== 'text_overlay' && (
+          <div className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
+            <button
+              onClick={handleGenerate}
+              className="flex flex-col items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/25 border border-white/30 transition-colors"
+            >
+              <RefreshCw size={14} className="text-white" />
+              <span className="text-[0.6rem] text-white" style={{ fontFamily: 'var(--font-manga)' }}>Regen Frame</span>
+            </button>
+            <button
+              onClick={handleGenerateVideo}
+              className="flex flex-col items-center gap-1 px-3 py-2 bg-blue-500/40 hover:bg-blue-500/60 border border-blue-400/50 transition-colors"
+            >
+              <Film size={14} className="text-blue-200" />
+              <span className="text-[0.6rem] text-blue-200" style={{ fontFamily: 'var(--font-manga)' }}>Gen Video</span>
+            </button>
+          </div>
         )}
       </div>
 

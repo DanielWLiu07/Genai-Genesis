@@ -198,7 +198,7 @@ export default function LandingPage() {
       <div
         className="absolute inset-0 pointer-events-none z-[7]"
         style={{
-          boxShadow: 'inset 0 0 150px 60px rgba(255,255,255,0.7)',
+          boxShadow: 'inset 0 0 80px 15px rgba(255,255,255,0.4)',
         }}
       />
 

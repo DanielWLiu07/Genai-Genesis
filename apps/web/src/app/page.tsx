@@ -111,10 +111,10 @@ export default function LandingPage() {
         repeat: -1,
       });
 
-      // Leaves drop down after bg reveals
+      // Leaves fade in
       gsap.fromTo(leavesRef.current,
-        { y: '-100%', opacity: 0 },
-        { y: '0%', opacity: 1, duration: 1.5, delay: 0.2, ease: 'power2.out' }
+        { opacity: 0 },
+        { opacity: 1, duration: 1.2, delay: 0.3, ease: 'power2.out' }
       );
 
       // Logo — much sooner

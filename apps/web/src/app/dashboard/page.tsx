@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { TransitionLink as Link } from '@/components/PageTransition';
 import Image from 'next/image';
 import { Plus, Clock, Loader2, Users } from 'lucide-react';
 import { useProjectStore, type Project } from '@/stores/project-store';
@@ -105,7 +105,7 @@ export default function Dashboard() {
       </div>
 
       {/* Scrollable shelf area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
         <div className="max-w-6xl mx-auto px-6 pt-8 pb-12">
           {loading ? (
             <div className="flex items-center justify-center h-64">

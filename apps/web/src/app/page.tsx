@@ -79,7 +79,7 @@ export default function LandingPage() {
       // Leaves drop down after bg reveals
       gsap.fromTo(leavesRef.current,
         { y: '-100%', opacity: 0 },
-        { y: '0%', opacity: 1, duration: 1.5, delay: 2.5, ease: 'power2.out' }
+        { y: '0%', opacity: 1, duration: 1.5, delay: 0.2, ease: 'power2.out' }
       );
 
       // Logo — much sooner

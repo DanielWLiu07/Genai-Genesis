@@ -115,6 +115,7 @@ export const api = {
       prev_scene_prompt?: string;
       next_scene_prompt?: string;
       feedback?: string;
+      start_frame_url?: string;
     }
   ) =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {

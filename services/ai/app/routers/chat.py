@@ -20,41 +20,55 @@ class ChatRequest(BaseModel):
     history: List[dict] = []
 
 
-COPILOT_SYSTEM = """You are FrameFlow's AI copilot — a cinematic trailer editor assistant.
+COPILOT_SYSTEM = """You are MangaMate's AI copilot — a cinematic trailer editor and AMV specialist.
 
-You help users edit their book trailer timeline through natural language. You think like a professional film trailer editor.
+You help users edit their manga/book trailer through natural language. You think like a professional AMV editor who understands both cinematic storytelling AND fast-paced anime music video editing.
 
-CAPABILITIES:
-- Add new scenes/clips to the trailer
-- Remove scenes that don't work
-- Update clip prompts, durations, text overlays, and transitions
-- Reorder the timeline for better pacing
-- Regenerate visuals with improved prompts
-- Suggest creative improvements
+TOOLS AVAILABLE:
+Scene editing: add_clip, remove_clip, update_clip, reorder_clips, bulk_update_clips, set_transition, set_shot_type
+Regeneration: regenerate_clip, trigger_generate_clip
+Audio: set_music, update_settings, update_scene_duration
+AMV Effects: add_amv_effect, remove_amv_effect, set_bpm, auto_amv
 
 BEHAVIOR:
-- When the user asks to modify the trailer, ALWAYS use the appropriate tool(s)
-- Be concise — explain what you're doing in 1-2 sentences
-- Think cinematically: pacing, visual contrast, emotional arcs
-- If the user is vague ("make it better"), analyze the timeline and make specific improvements
-- You can call multiple tools in one response for complex changes
-- When referencing clips, use their IDs from the timeline state
+- ALWAYS use tools to apply changes — never just describe what to do
+- Be concise: 1-2 sentences max explaining what you did
+- Think in two modes: (1) story/scene editing, (2) AMV effects editing
+- When user says "make it more intense/flashy/AMV" → use auto_amv or add_amv_effect
+- When user says "change scene X" → use update_clip with that clip's ID
+- Call multiple tools per response for complex edits
+- If vague ("make it better"), analyze the timeline and make specific improvements
 
-PACING KNOWLEDGE:
-- Hook: 2-3 seconds, striking visual
-- Establishing shots: 3-4 seconds
-- Action/conflict: 2-3 seconds with quick cuts
-- Emotional moments: 4-5 seconds with dissolve transitions
-- Text overlays: 2-3 seconds
-- Total trailer: 30-60 seconds ideal
+SCENE PACING:
+- Hook: 2-3s, striking visual, cut transition
+- Establishing: 3-4s, wide shot, dissolve
+- Action/conflict: 1.5-2.5s, quick cuts
+- Emotional peak: 4-5s, dissolve/fade
+- Text overlays: 2-3s
+- Total: 30-60s ideal
+
+AMV EFFECTS KNOWLEDGE:
+- flash_white/flash_black: on strong beats, 100-200ms, intensity 0.8-1.0
+- zoom_burst: on every 4th beat, 200-300ms
+- shake: on impact moments, 150-250ms
+- echo: on every 8th beat or chorus, 300-500ms
+- chromatic: for tension/horror, 200-400ms
+- glitch: for digital/sci-fi feel, 150-300ms
+- strobe: for climax, 50-100ms
+- BPM 120-140 for action, 80-100 for drama, 150+ for intense fight scenes
+
+SHOT CONTINUITY:
+- Use set_shot_type("continuous") when scenes flow together in same location
+- Use set_shot_type("cut") for scene changes (default)
+- Continuous shots get smoother video generation from Kling
 
 VISUAL PROMPT STYLE:
-When creating or updating clip prompts, write detailed cinematic descriptions:
+Write detailed cinematic prompts:
 - Camera angle (wide, medium, close-up, aerial, low-angle, Dutch angle)
 - Lighting (golden hour, dramatic sidelight, neon, moonlit, chiaroscuro)
 - Color palette (warm amber, cool blue, desaturated, high contrast)
 - Atmosphere (fog, rain, dust particles, lens flare, bokeh)
-- Style (photorealistic, painterly, anime, noir, ethereal)"""
+- Style (manga illustration, anime sakuga, cel-shading, ink wash)"""
 
 
 @router.post("/chat")
@@ -70,7 +84,8 @@ async def chat(data: ChatRequest):
         }
 
     # Build timeline context
-    timeline_context = _build_timeline_context(data.timeline)
+    analysis = data.analysis or (data.timeline or {}).get("analysis")
+    timeline_context = _build_timeline_context(data.timeline, analysis)
 
     # Build Gemini chat history from our message history
     gemini_history = []
@@ -152,31 +167,69 @@ async def chat(data: ChatRequest):
         }
 
 
-def _build_timeline_context(timeline: dict | None) -> str:
-    """Build a concise timeline summary for the model's context."""
+def _build_timeline_context(timeline: dict | None, analysis: dict | None = None) -> str:
+    """Build a concise timeline summary including effects and story context."""
     if not timeline:
         return "The timeline is currently empty."
 
     clips = timeline.get("clips", [])
+    effects = timeline.get("effects", [])
+    beat_map = timeline.get("beat_map") or timeline.get("beatMap")
+    tl_analysis = analysis or timeline.get("analysis")
+
+    lines = []
+
+    # Story context
+    if tl_analysis:
+        genre = tl_analysis.get("genre", "")
+        mood = tl_analysis.get("mood", "")
+        themes = tl_analysis.get("themes", [])
+        chars = tl_analysis.get("characters", [])
+        if genre or mood:
+            lines.append(f"STORY: genre={genre}, mood={mood}, themes={', '.join(themes[:3]) if themes else 'none'}")
+        if chars:
+            char_names = [c.get("name", "") for c in chars[:4] if c.get("name")]
+            lines.append(f"CHARACTERS: {', '.join(char_names)}")
+        lines.append("")
+
     if not clips:
-        return "The timeline is currently empty."
+        lines.append("Timeline is empty.")
+        return "\n".join(lines)
 
     total_ms = sum(c.get("duration_ms", 0) for c in clips)
-    total_sec = total_ms / 1000
+    lines.append(f"TIMELINE ({len(clips)} clips, {total_ms/1000:.1f}s total):")
 
-    lines = [f"CURRENT TIMELINE ({len(clips)} clips, {total_sec:.1f}s total):"]
     for clip in sorted(clips, key=lambda c: c.get("order", 0)):
-        duration = clip.get("duration_ms", 3000) / 1000
-        clip_type = clip.get("type", "image")
+        dur = clip.get("duration_ms", 3000) / 1000
+        ctype = clip.get("type", "image")
         status = clip.get("gen_status", "pending")
-        text = f' text="{clip.get("text")}"' if clip.get("text") else ""
-        transition = f" → {clip.get('transition_type', 'cut')}" if clip.get("transition_type") else ""
-        prompt_preview = (clip.get("prompt", "")[:80] + "...") if len(clip.get("prompt", "")) > 80 else clip.get("prompt", "")
-
+        shot = clip.get("shot_type", "cut")
+        transition = clip.get("transition_type", "cut")
+        text = f' "{clip["text"]}"' if clip.get("text") else ""
+        prompt = clip.get("prompt", "")
+        prompt_preview = (prompt[:70] + "…") if len(prompt) > 70 else prompt
+        has_thumb = "✓" if clip.get("thumbnail_url") else "○"
         lines.append(
-            f"  [{clip.get('order', '?')}] id={clip['id']} | {clip_type} | {duration}s | {status}{text}{transition}"
+            f"  [{clip.get('order','?')}] id={clip['id']} | {ctype} {has_thumb} | {dur}s | {status} | {shot} | →{transition}{text}"
         )
-        lines.append(f"      prompt: {prompt_preview}")
+        if prompt_preview:
+            lines.append(f"      {prompt_preview}")
+
+    # Effects summary
+    if effects:
+        lines.append(f"\nAMV EFFECTS ({len(effects)} total):")
+        from collections import Counter
+        type_counts = Counter(e.get("type") for e in effects)
+        for etype, cnt in sorted(type_counts.items(), key=lambda x: -x[1]):
+            lines.append(f"  {etype}: {cnt}x")
+        # Show first few effects with timestamps
+        for e in sorted(effects, key=lambda x: x.get("timestamp_ms", 0))[:5]:
+            lines.append(f"  id={e['id']} | {e['type']} @ {e['timestamp_ms']}ms | dur={e.get('duration_ms')}ms | intensity={e.get('intensity', 0):.1f}")
+        if len(effects) > 5:
+            lines.append(f"  ... and {len(effects)-5} more")
+
+    if beat_map:
+        lines.append(f"\nBEAT MAP: {beat_map.get('bpm')} BPM, {len(beat_map.get('beats', []))} beats")
 
     return "\n".join(lines)
 

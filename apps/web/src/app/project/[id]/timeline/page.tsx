@@ -4,10 +4,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import {
-  ArrowLeft, Zap, Play, Download, Loader2, Trash2, ZoomIn, ZoomOut, Music,
+  ArrowLeft, Zap, Play, Download, Loader2, Trash2, ZoomIn, ZoomOut, Music, MessageSquare,
 } from 'lucide-react';
 import { useTimelineStore, type Effect, type EffectType, type BeatMap } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
+import { ChatPanel } from '@/components/chat/ChatPanel';
 
 // ─── Effect metadata ────────────────────────────────────────────────────────
 
@@ -106,6 +107,7 @@ export default function TimelinePage() {
   const [rendering, setRendering] = useState(false);
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const timelineRef   = useRef<HTMLDivElement>(null);
   const containerRef  = useRef<HTMLDivElement>(null);
@@ -374,6 +376,14 @@ export default function TimelinePage() {
           </button>
 
           <button
+            onClick={() => setChatOpen((o) => !o)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border transition-colors ${chatOpen ? 'bg-[#2563eb] text-white border-[#2563eb]' : 'border-[#333] text-[#888] hover:text-white hover:border-[#555]'}`}
+            style={{ fontFamily: 'var(--font-manga)' }}
+          >
+            <MessageSquare size={13} /> COPILOT
+          </button>
+
+          <button
             onClick={handleRender}
             disabled={rendering}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white text-black font-bold border border-white hover:bg-[#e5e5e5] disabled:opacity-40 transition-colors"
@@ -386,7 +396,9 @@ export default function TimelinePage() {
       </header>
 
       {/* ── MAIN CONTENT ────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
+        {/* Timeline content */}
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
         {/* ── PREVIEW AREA ─────────────────────────────────────────────── */}
         <div className="h-40 border-b border-[#333] bg-[#0f0f0f] flex items-center justify-center gap-8 px-6 shrink-0">
@@ -813,6 +825,14 @@ export default function TimelinePage() {
             )}
           </div>
         </div>
+        </div>{/* end timeline content */}
+
+        {/* Chat panel */}
+        {chatOpen && (
+          <div className="w-72 shrink-0 border-l border-[#222]">
+            <ChatPanel projectId={id!} onCollapse={() => setChatOpen(false)} dark />
+          </div>
+        )}
       </div>
     </div>
   );

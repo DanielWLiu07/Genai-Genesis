@@ -202,6 +202,114 @@ TOOL_DEFINITIONS = [
             "required": ["scene_id", "duration_sec"],
         },
     },
+    {
+        "name": "set_shot_type",
+        "description": "Set whether a clip continues the previous scene (continuous) or starts a new cut. Continuous shots share scene context with the previous clip for smoother video generation.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clip_id": {"type": "string", "description": "UUID of the clip"},
+                "shot_type": {
+                    "type": "string",
+                    "enum": ["continuous", "cut"],
+                    "description": "continuous = same scene flowing, cut = new scene",
+                },
+            },
+            "required": ["clip_id", "shot_type"],
+        },
+    },
+    {
+        "name": "add_amv_effect",
+        "description": "Add a beat-synced AMV visual effect at a specific timestamp. Use for dramatic moments, beat hits, action cuts.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["flash_white", "flash_black", "zoom_burst", "shake", "echo", "speed_ramp", "chromatic", "panel_split", "reverse", "glitch", "strobe"],
+                    "description": "Effect type",
+                },
+                "timestamp_ms": {"type": "integer", "description": "When the effect fires in milliseconds from start"},
+                "duration_ms": {"type": "integer", "description": "How long it lasts in ms (50-500 typical, default 200)"},
+                "intensity": {"type": "number", "description": "Intensity 0.0–1.0 (default 0.8)"},
+            },
+            "required": ["type", "timestamp_ms"],
+        },
+    },
+    {
+        "name": "remove_amv_effect",
+        "description": "Remove a specific AMV effect by its ID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "effect_id": {"type": "string", "description": "UUID of the effect to remove"},
+            },
+            "required": ["effect_id"],
+        },
+    },
+    {
+        "name": "set_bpm",
+        "description": "Set the BPM for beat-synced effects. Generates the beat map grid for the effects timeline.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "bpm": {"type": "integer", "description": "Beats per minute (60–300)"},
+            },
+            "required": ["bpm"],
+        },
+    },
+    {
+        "name": "auto_amv",
+        "description": "Auto-fill the effects timeline with beat-synced AMV effects across the entire trailer. Generates flash cuts, zoom bursts, and glitch effects matching the BPM.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "bpm": {"type": "integer", "description": "BPM override (uses current if omitted)"},
+                "style": {
+                    "type": "string",
+                    "enum": ["aggressive", "smooth", "minimal"],
+                    "description": "aggressive = every beat, smooth = every 2 beats, minimal = every 4 beats",
+                },
+            },
+        },
+    },
+    {
+        "name": "trigger_generate_clip",
+        "description": "Actually trigger image generation for a clip via the AI pipeline. Use when the user says to generate or regenerate a specific scene.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clip_id": {"type": "string", "description": "UUID of the clip to generate"},
+                "new_prompt": {"type": "string", "description": "Optional updated prompt before generating"},
+            },
+            "required": ["clip_id"],
+        },
+    },
+    {
+        "name": "bulk_update_clips",
+        "description": "Update multiple clips at once. Use for batch operations like changing all scene durations, applying a style to all clips, or making all cuts faster.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "updates": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "clip_id": {"type": "string"},
+                            "prompt": {"type": "string"},
+                            "duration_ms": {"type": "integer"},
+                            "transition_type": {"type": "string"},
+                            "shot_type": {"type": "string"},
+                        },
+                        "required": ["clip_id"],
+                    },
+                    "description": "List of per-clip updates",
+                },
+            },
+            "required": ["updates"],
+        },
+    },
 ]
 
 

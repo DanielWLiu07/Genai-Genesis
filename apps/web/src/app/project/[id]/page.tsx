@@ -529,7 +529,7 @@ export default function EditorPage() {
           <ArrowLeft size={18} />
         </Link>
         <div ref={editorHeaderRef} className="flex items-center gap-2 min-w-0">
-          <Film size={18} className="text-[#111] shrink-0" />
+          <Film size={28} className="text-[#111] shrink-0" />
           <span
             className="font-bold text-2xl"
             style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000', whiteSpace: 'nowrap' }}

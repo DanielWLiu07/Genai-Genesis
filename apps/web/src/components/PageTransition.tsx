@@ -2,7 +2,7 @@
 
 import {
   createContext, useContext, useRef, useCallback,
-  ReactNode, useEffect, MouseEvent,
+  ReactNode, useEffect, useLayoutEffect, MouseEvent,
 } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import NextLink from 'next/link';
@@ -44,6 +44,13 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
   const isAnimating = useRef(false);
   const isMounted = useRef(false);
 
+  // Set initial GSAP state before first paint so React never owns opacity/clipPath
+  useLayoutEffect(() => {
+    if (overlayRef.current) {
+      gsap.set(overlayRef.current, { opacity: 0, clipPath: HIDDEN_LEFT, pointerEvents: 'none' });
+    }
+  }, []);
+
   // ── Reveal: new page ready → sweep panel out to the right ────
   useEffect(() => {
     if (!isMounted.current) {
@@ -59,8 +66,8 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
     gsap.set(overlay, { opacity: 1, clipPath: FULL, pointerEvents: 'all' });
     gsap.to(overlay, {
       clipPath: HIDDEN_RIGHT,
-      duration: 0.5,
-      delay: 0.05,
+      duration: 0.9,
+      delay: 0.1,
       ease: 'power3.out',
       onComplete: () => {
         gsap.set(overlay, { pointerEvents: 'none', opacity: 0, clipPath: HIDDEN_LEFT });
@@ -82,8 +89,8 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
       gsap.set(overlay, { opacity: 1, clipPath: HIDDEN_LEFT, pointerEvents: 'all' });
       gsap.to(overlay, {
         clipPath: FULL,
-        duration: 0.42,
-        ease: 'power3.in',          // fast slam — visible from first frame
+        duration: 0.7,
+        ease: 'power3.in',
         onComplete: () => router.push(href),
       });
     },
@@ -97,7 +104,7 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
       <div
         ref={overlayRef}
         className="fixed inset-0 z-[9999] pointer-events-none"
-        style={{ opacity: 0, background: '#fff', clipPath: HIDDEN_LEFT }}
+        style={{ background: '#fff' }}
       >
         {/* Halftone dots */}
         <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">

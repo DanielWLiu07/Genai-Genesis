@@ -4,6 +4,7 @@ import { memo, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { Clip } from '@/stores/timeline-store';
 import { useTimelineStore } from '@/stores/timeline-store';
+import { useProjectStore } from '@/stores/project-store';
 import { api } from '@/lib/api';
 import { Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import gsap from 'gsap';
@@ -11,6 +12,8 @@ import gsap from 'gsap';
 function SceneNodeInner({ data }: NodeProps) {
   const clip = data.clip as Clip;
   const updateClip = useTimelineStore((s) => s.updateClip);
+  const clips = useTimelineStore((s) => s.clips);
+  const currentProject = useProjectStore((s) => s.currentProject);
   const nodeRef = useRef<HTMLDivElement>(null);
   const statusDotRef = useRef<HTMLDivElement>(null);
   const prevStatus = useRef(clip.gen_status);
@@ -101,10 +104,45 @@ function SceneNodeInner({ data }: NodeProps) {
       );
     }
 
+    // text_overlay and transition clips don't need API generation — mark done immediately
+    if (clip.type === 'text_overlay' || clip.type === 'transition') {
+      updateClip(clip.id, { gen_status: 'done' });
+      return;
+    }
+
     updateClip(clip.id, { gen_status: 'generating' });
 
+    // Build generation context
+    const analysis = currentProject?.analysis;
+    const characters = (analysis?.characters as any[] || []).map((c: any) => ({
+      name: c.name,
+      description: c.description,
+      appearance: c.appearance,
+      image_url: c.image_url,
+    }));
+    const sortedClips = [...clips].sort((a, b) => a.order - b.order);
+    const clipOrder = sortedClips.findIndex((c) => c.id === clip.id);
+    const prevClip = clipOrder > 0 ? sortedClips[clipOrder - 1] : null;
+    const isContinuous = (clip as any).shot_type === 'continuous';
+
+    // Continuous shot → use previous clip's frame as start frame (same scene flowing)
+    // Cut → use this clip's own thumbnail if it exists (re-gen same scene different take)
+    const startFrame = isContinuous
+      ? (prevClip?.thumbnail_url && !prevClip.thumbnail_url.startsWith('data:') ? prevClip.thumbnail_url : undefined)
+      : (clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined);
+
+    const sceneImageUrl = startFrame;
+
     try {
-      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, clip.type);
+      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, clip.type, {
+        clip_order: clipOrder,
+        scene_image_url: sceneImageUrl,
+        characters: characters.length > 0 ? characters : undefined,
+        mood: analysis?.mood,
+        genre: analysis?.genre,
+        shot_type: (clip as any).shot_type || 'cut',
+        is_continuous: isContinuous,
+      });
       updateClip(clip.id, {
         gen_status: 'done',
         generated_media_url: result.media_url,
@@ -127,7 +165,15 @@ function SceneNodeInner({ data }: NodeProps) {
       </div>
 
       <div className="relative group">
-        {clip.generated_media_url && clip.type === 'video' ? (
+        {/* Text overlay — render text card, no image needed */}
+        {clip.type === 'text_overlay' ? (
+          <div className="w-full h-32 mb-2 bg-[#111] flex items-center justify-center px-3">
+            <p className="text-white text-sm font-bold text-center leading-snug line-clamp-4"
+               style={{ fontFamily: 'var(--font-manga)', letterSpacing: '0.05em' }}>
+              {clip.text || clip.prompt || 'Text Overlay'}
+            </p>
+          </div>
+        ) : clip.generated_media_url && clip.type === 'video' ? (
           <video
             src={clip.generated_media_url}
             className="w-full h-32 object-cover mb-2 bg-black"
@@ -136,14 +182,22 @@ function SceneNodeInner({ data }: NodeProps) {
             poster={clip.thumbnail_url}
           />
         ) : clip.thumbnail_url ? (
-          <img src={clip.thumbnail_url} alt="" className="w-full h-32 object-cover mb-2" />
+          <div className="w-full h-32 overflow-hidden mb-2">
+            <img
+              src={clip.thumbnail_url}
+              alt=""
+              className={`w-full h-full object-cover ${
+                ['parallax-tl','parallax-br','parallax-zoom','parallax-pan'][clip.order % 4]
+              }`}
+            />
+          </div>
         ) : (
           <div className="w-full h-32 bg-[#eee] mb-2 flex items-center justify-center manga-halftone">
             <span className="text-[#555] text-xs">No preview</span>
           </div>
         )}
 
-        {clip.gen_status === 'pending' && (
+        {clip.gen_status === 'pending' && clip.type !== 'text_overlay' && clip.type !== 'transition' && (
           <button
             onClick={handleGenerate}
             className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"

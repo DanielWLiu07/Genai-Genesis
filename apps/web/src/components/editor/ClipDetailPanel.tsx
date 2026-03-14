@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
-import { X, Sparkles, RefreshCw, Clock, Type, ArrowRightLeft, Trash2 } from 'lucide-react';
+import { X, Sparkles, RefreshCw, Clock, Type, ArrowRightLeft, Trash2, Upload } from 'lucide-react';
 import gsap from 'gsap';
 
 interface ClipDetailPanelProps {
@@ -16,6 +16,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
   const updateClip = useTimelineStore((s) => s.updateClip);
   const removeClip = useTimelineStore((s) => s.removeClip);
   const panelRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [prompt, setPrompt] = useState(clip?.prompt || '');
   const [feedback, setFeedback] = useState('');
@@ -89,6 +90,23 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
     onClose();
   }, [clipId, removeClip, onClose]);
 
+  const handleUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      updateClip(clipId, {
+        gen_status: 'done',
+        generated_media_url: dataUrl,
+        thumbnail_url: dataUrl,
+      });
+    };
+    reader.readAsDataURL(file);
+    // reset so the same file can be re-selected
+    e.target.value = '';
+  }, [clipId, updateClip]);
+
   if (!clip) return null;
 
   const statusLabel: Record<string, string> = {
@@ -125,22 +143,45 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
           </span>
         </div>
 
-        {/* Preview */}
-        {clip.generated_media_url && clip.type === 'video' ? (
-          <video
-            src={clip.generated_media_url}
-            className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
-            controls
-            preload="metadata"
-            poster={clip.thumbnail_url}
+        {/* Preview + upload */}
+        <div className="relative group">
+          {clip.generated_media_url && clip.type === 'video' ? (
+            <video
+              src={clip.generated_media_url}
+              className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
+              controls
+              preload="metadata"
+              poster={clip.thumbnail_url}
+            />
+          ) : clip.thumbnail_url || clip.generated_media_url ? (
+            <img
+              src={clip.thumbnail_url || clip.generated_media_url}
+              alt=""
+              className="w-full h-48 object-cover border-2 border-[#ccc]"
+            />
+          ) : (
+            <div className="w-full h-48 bg-[#eee] border-2 border-[#ccc] flex items-center justify-center manga-halftone">
+              <span className="text-[#888] text-xs">No preview</span>
+            </div>
+          )}
+
+          {/* Upload overlay — appears on hover */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+          >
+            <Upload size={20} className="text-white" />
+            <span className="text-white text-xs font-medium">Upload Image</span>
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleUpload}
           />
-        ) : clip.thumbnail_url || clip.generated_media_url ? (
-          <img src={clip.thumbnail_url || clip.generated_media_url} alt="" className="w-full h-48 object-cover border-2 border-[#ccc]" />
-        ) : (
-          <div className="w-full h-48 bg-[#eee] border-2 border-[#ccc] flex items-center justify-center manga-halftone">
-            <span className="text-[#888] text-xs">No preview</span>
-          </div>
-        )}
+        </div>
 
         {/* Prompt */}
         <div>

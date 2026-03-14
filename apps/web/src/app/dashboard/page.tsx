@@ -59,8 +59,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (projects.length > 0) {
-      gsap.fromTo('.project-card', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.3, stagger: 0.06, ease: 'power2.out' });
-      gsap.fromTo('.shelf-line', { scaleX: 0, transformOrigin: 'left' }, { scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.2, ease: 'power2.out' });
+      // Delay matches page-transition reveal (~1s) so books animate in after overlay sweeps away
+      gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
+      gsap.fromTo('.shelf-line', { opacity: 0, scaleX: 0, transformOrigin: 'left' }, { opacity: 1, scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.65, ease: 'power2.out' });
 
       const cards = document.querySelectorAll('.project-card');
       cards.forEach((card) => {
@@ -126,25 +127,24 @@ export default function Dashboard() {
                         key={project.id}
                         href={`/project/${project.id}`}
                         className="project-card group flex-shrink-0"
-                        style={{ width: 'calc((100% - 80px) / 5)' }}
+                        style={{ width: 'calc((100% - 80px) / 5)', opacity: 0 }}
                       >
                         <div
                           className="book-card relative aspect-[2/3] overflow-hidden border-2 border-[#111]"
                           style={{ boxShadow: '3px 3px 0px #000', transformOrigin: 'bottom center' }}
                         >
-                          {/* Cover image or generated gradient */}
-                          {project.cover_image_url ? (
-                            <img
-                              src={project.cover_image_url}
-                              alt=""
-                              className="absolute inset-0 w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div
-                              className="absolute inset-0"
-                              style={{ background: coverGradient(project.title) }}
-                            />
-                          )}
+                          {/* Cover image — check localStorage for data URL thumbnails */}
+                          {(() => {
+                            const localThumb = typeof window !== 'undefined'
+                              ? localStorage.getItem(`cover_image_${project.id}`)
+                              : null;
+                            const src = localThumb || project.cover_image_url;
+                            return src ? (
+                              <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <div className="absolute inset-0" style={{ background: coverGradient(project.title) }} />
+                            );
+                          })()}
 
                           {/* Halftone texture overlay */}
                           <div className="absolute inset-0 manga-halftone opacity-[0.08]" />
@@ -184,7 +184,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* Shelf surface */}
-                  <div className="shelf-line relative mx-2">
+                  <div className="shelf-line relative mx-2" style={{ opacity: 0 }}>
                     {/* Shelf plank */}
                     <div className="h-[6px] bg-gradient-to-b from-[#8B7355] to-[#6B5740] rounded-sm" />
                     {/* Shelf shadow */}

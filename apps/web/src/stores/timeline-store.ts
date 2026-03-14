@@ -11,6 +11,8 @@ export interface Clip {
   text?: string;
   text_style?: { font_size: number; color: string; position: string; animation?: string };
   transition_type?: 'fade' | 'dissolve' | 'wipe' | 'cut';
+  shot_type?: 'continuous' | 'cut';   // continuous = same scene flowing; cut = new scene
+  scene_group?: number;               // clips sharing a group are one continuous sequence
   gen_status: 'pending' | 'generating' | 'done' | 'error';
   gen_error?: string;
   position: { x: number; y: number };

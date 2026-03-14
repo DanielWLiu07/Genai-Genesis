@@ -65,10 +65,22 @@ export const api = {
   },
 
   // Render
-  generateClip: (projectId: string, clipId: string, prompt: string, type: string = 'image') =>
+  generateClip: (
+    projectId: string,
+    clipId: string,
+    prompt: string,
+    type: string = 'image',
+    opts?: {
+      clip_order?: number;
+      scene_image_url?: string;
+      characters?: { name: string; description?: string; appearance?: string; image_url?: string }[];
+      mood?: string;
+      genre?: string;
+    }
+  ) =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {
       method: 'POST',
-      body: JSON.stringify({ clip_id: clipId, prompt, type }),
+      body: JSON.stringify({ clip_id: clipId, prompt, type, ...opts }),
     }),
   renderTrailer: (projectId: string) =>
     fetchAPI(`/projects/${projectId}/render`, { method: 'POST' }),

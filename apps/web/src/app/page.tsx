@@ -70,12 +70,30 @@ export default function LandingPage() {
   const ctaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const leavesRef = useRef<HTMLDivElement>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const holyRef = useRef<HTMLDivElement>(null);
   const { navigate } = usePageTransition();
 
   useEffect(() => {
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
+      // Tree slides in from left
+      gsap.fromTo(treeRef.current,
+        { x: '-100%', opacity: 0 },
+        { x: '0%', opacity: 1, duration: 1.8, delay: 0.4, ease: 'power2.out' }
+      );
+
+      // Holy glow — subtle white breathing in and out
+      gsap.set(holyRef.current, { opacity: 0.1 });
+      gsap.to(holyRef.current, {
+        opacity: 0.25,
+        duration: 4,
+        ease: 'sine.inOut',
+        yoyo: true,
+        repeat: -1,
+      });
+
       // Leaves drop down after bg reveals
       gsap.fromTo(leavesRef.current,
         { y: '-100%', opacity: 0 },
@@ -107,19 +125,17 @@ export default function LandingPage() {
         { opacity: 0, y: 10 },
         { opacity: 1, y: 0, duration: 0.6, delay: 1.6, ease: 'power2.out' }
       );
-      // Idle float
-      gsap.to(logoRef.current, { y: -5, duration: 3, delay: 3.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
-      gsap.to(logoRef.current, { rotation: 3, duration: 5, delay: 3.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      // Idle float — bigger movement so it's clearly visible
+      gsap.to(logoRef.current, { y: -18, duration: 2.5, delay: 2.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to(logoRef.current, { rotation: 10, duration: 4, delay: 2.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to(logoRef.current, { scale: 1.08, duration: 3, delay: 2.0, repeat: -1, yoyo: true, ease: 'sine.inOut' });
     });
     return () => ctx.revert();
   }, []);
 
   const handleGetStarted = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((rect.left + rect.width / 2) / window.innerWidth) * 100;
-    const y = ((rect.top + rect.height / 2) / window.innerHeight) * 100;
-    navigate('/dashboard', `${x}%`, `${y}%`);
+    navigate('/dashboard');
   };
 
   return (
@@ -135,10 +151,29 @@ export default function LandingPage() {
               playsInline
               className="w-full h-full object-cover"
             >
+              <source src="/hero-bg.webm" type="video/webm" />
               <source src="/hero-bg.mp4" type="video/mp4" />
             </video>
           </div>
         </NoiseMask>
+      </div>
+
+      {/* Tree overlay — slides in from left, behind leaves */}
+      <div
+        ref={treeRef}
+        className="absolute inset-0 pointer-events-none z-[3]"
+        style={{ opacity: 0 }}
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+          style={{ background: 'transparent' }}
+        >
+          <source src="/tree-overlay.webm" type="video/webm" />
+        </video>
       </div>
 
       {/* Leaves overlay */}
@@ -158,6 +193,16 @@ export default function LandingPage() {
           <source src="/leaves-overlay.webm" type="video/webm" />
         </video>
       </div>
+
+      {/* Holy white overlay — ethereal light wash */}
+      <div
+        ref={holyRef}
+        className="fixed inset-0 w-screen h-screen pointer-events-none z-[6]"
+        style={{
+          opacity: 0,
+          background: 'white',
+        }}
+      />
 
       {/* Content — right-aligned */}
       <div className="relative z-10 flex flex-col items-end text-right pr-[8vw]" style={{ marginTop: '-4vh' }}>

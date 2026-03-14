@@ -139,7 +139,7 @@ export default function LandingPage() {
       <div
         ref={leavesRef}
         className="absolute inset-0 pointer-events-none z-[5]"
-        style={{ opacity: 0, mixBlendMode: 'screen' }}
+        style={{ opacity: 0 }}
       >
         <video
           autoPlay

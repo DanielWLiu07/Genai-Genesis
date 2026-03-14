@@ -24,10 +24,10 @@ class AnalyzeRequest(BaseModel):
 
 @router.post("/analyze")
 async def analyze(data: AnalyzeRequest):
-    if not data.book_text or len(data.book_text.strip()) < 50:
+    if not data.book_text or len(data.book_text.strip()) < 1:
         raise HTTPException(
             status_code=400,
-            detail="Book text is too short. Provide at least 50 characters of story content.",
+            detail="No story text provided.",
         )
 
     logger.info(f"Analyzing story for project {data.project_id} ({len(data.book_text)} chars)")

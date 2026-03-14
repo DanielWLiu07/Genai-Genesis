@@ -42,9 +42,10 @@ async def upload_book(project_id: str, file: UploadFile = File(...)):
     except Exception:
         file_url = None  # storage may not be configured — continue anyway
 
-    # Store book_text in analysis JSONB so it survives restarts
+    # Store book_text in the dedicated column AND in analysis JSONB as backup
     db.table("projects").update({
         "book_file_url": file_url,
+        "book_text": text,
         "status": "uploaded",
         "analysis": {"book_text": text},
     }).eq("id", project_id).execute()

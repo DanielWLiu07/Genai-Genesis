@@ -34,8 +34,11 @@ export const api = {
   },
 
   // AI
-  analyzeStory: (projectId: string, bookText: string) =>
-    fetchAPI(`/projects/${projectId}/analyze`, { method: 'POST', body: JSON.stringify({ book_text: bookText }) }),
+  analyzeStory: (projectId: string, bookText: string, opts?: { characters?: any[]; uploaded_images?: string[] }) =>
+    fetchAPI(`/projects/${projectId}/analyze`, {
+      method: 'POST',
+      body: JSON.stringify({ book_text: bookText, ...opts }),
+    }),
   planTrailer: (projectId: string, opts?: { analysis?: any; style?: string; pacing?: string }) =>
     fetchAPI(`/projects/${projectId}/plan-trailer`, { method: 'POST', body: JSON.stringify(opts || {}) }),
   getSuggestions: (projectId: string, timeline: any, analysis?: any) =>

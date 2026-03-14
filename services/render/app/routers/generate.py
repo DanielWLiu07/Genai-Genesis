@@ -7,6 +7,7 @@ from typing import Optional
 import httpx
 
 from app.services.kling import generate_image, generate_video, download_media
+from app.services.gemini_image import generate_image_gemini
 from app.services.media import create_thumbnail
 from app.config import get_settings
 
@@ -102,20 +103,17 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
     Starts generation in the background and returns immediately.
     Progress is reported via callback to the API service.
     """
-    # If no Kling API key, try sync generation (returns placeholder)
+    # If no Kling API key, fall back to Gemini image generation
     settings = get_settings()
     if not settings.kling_api_key:
-        if data.type == "video":
-            result = await generate_video(data.prompt, data.duration_ms / 1000, data.aspect_ratio)
-        else:
-            result = await generate_image(data.prompt, data.aspect_ratio)
-
+        # Video clips fall back to image (Gemini doesn't do video)
+        result = await generate_image_gemini(data.prompt, data.aspect_ratio)
         return GenerateResponse(
             clip_id=data.clip_id,
             media_url=result.get("url"),
             thumbnail_url=result.get("thumbnail_url"),
             status=result.get("status", "error"),
-            message=result.get("message", "Kling API key not configured"),
+            message=result.get("message"),
         )
 
     # With API key configured, run generation in background

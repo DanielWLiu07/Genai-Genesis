@@ -37,8 +37,10 @@ def analyze_audio(audio_bytes: bytes, filename: str) -> dict:
         tmp_path = f.name
 
     try:
-        # Load mono at native sample rate for accuracy
-        y, sr = librosa.load(tmp_path, sr=None, mono=True)
+        # Downsample to 22050 Hz for speed (sufficient for BPM/beat/energy analysis)
+        TARGET_SR = 22050
+        MAX_DURATION_S = 90  # analyse first 90 s only — enough for full characterisation
+        y, sr = librosa.load(tmp_path, sr=TARGET_SR, mono=True, duration=MAX_DURATION_S)
         duration = float(librosa.get_duration(y=y, sr=sr))
         hop_length = 512
 
@@ -70,7 +72,7 @@ def analyze_audio(audio_bytes: bytes, filename: str) -> dict:
             "energy_curve": energy_curve,
             "section_boundaries": section_boundaries,
             "duration_s": duration,
-            "sample_rate": sr,
+            "sample_rate": sr,  # always TARGET_SR (22050)
         }
 
     except Exception as exc:

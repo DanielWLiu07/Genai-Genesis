@@ -45,9 +45,9 @@ def get_model(system_instruction: str = "", tools=None):
 def get_json_model(system_instruction: str = ""):
     """Get a model configured for JSON output.
 
-    Uses gemini-2.5-flash (not a thinking model) so response.text contains
-    only the JSON output — no interleaved thought tokens that break parsing.
-    Token limit raised to 16 384 to avoid truncation of large analysis objects.
+    Uses gemini-2.5-flash with a raised token limit to avoid truncation.
+    _extract_text handles thinking-model responses where response.text may
+    include internal thought tokens before the actual JSON.
     """
     _ensure_configured()
     return genai.GenerativeModel(
@@ -65,13 +65,11 @@ def parse_json_response(text: str) -> dict:
     """Robustly parse JSON from Gemini response, handling markdown fences."""
     cleaned = text.strip()
 
-    # Try direct parse first
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
 
-    # Strip markdown code fences
     match = re.search(r"```(?:json)?\s*\n?(.*?)```", cleaned, re.DOTALL)
     if match:
         try:
@@ -79,7 +77,6 @@ def parse_json_response(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Try to find JSON object in text
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if match:
         try:
@@ -90,6 +87,28 @@ def parse_json_response(text: str) -> dict:
     raise ValueError(f"Could not parse JSON from response: {cleaned[:200]}...")
 
 
+def _extract_text(response) -> str:
+    """Extract text from a Gemini response, handling thinking models."""
+    try:
+        text = response.text
+        if text and text.strip():
+            return text
+    except Exception:
+        pass
+
+    # Fallback: grab the last non-empty text part (skips thought tokens)
+    try:
+        for candidate in response.candidates:
+            for part in reversed(candidate.content.parts):
+                t = getattr(part, "text", None)
+                if t and t.strip():
+                    return t
+    except Exception:
+        pass
+
+    raise ValueError("Gemini returned an empty response (possibly blocked or over budget)")
+
+
 async def generate_json(prompt: str, system_instruction: str = "", retries: int = 2) -> dict:
     """Generate a JSON response from Gemini with retry logic and rate limit handling."""
     model = get_json_model(system_instruction)
@@ -98,10 +117,11 @@ async def generate_json(prompt: str, system_instruction: str = "", retries: int 
     for attempt in range(retries + 1):
         try:
             response = model.generate_content(prompt)
-            return parse_json_response(response.text)
+            text = _extract_text(response)
+            return parse_json_response(text)
         except ResourceExhausted as e:
             last_error = e
-            wait = min(2 ** attempt * 5, 30)  # 5s, 10s, 20s
+            wait = min(2 ** attempt * 5, 30)
             logger.warning(f"Rate limited, waiting {wait}s before retry {attempt + 1}")
             await asyncio.sleep(wait)
         except Exception as e:

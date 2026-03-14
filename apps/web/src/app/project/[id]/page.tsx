@@ -7,7 +7,7 @@ import { ChatPanel } from '@/components/chat/ChatPanel';
 import {
   Film, ArrowLeft, Play, Download, Loader2, Sparkles, BookOpen, Clapperboard,
   Lightbulb, Palette, Settings, Users, BarChart2, Plus, Trash2, Check,
-  RotateCcw, RefreshCw, X, Edit2, Upload, ChevronLeft, ChevronRight, Zap,
+  RotateCcw, RefreshCw, X, Edit2, Upload, ChevronLeft, ChevronRight, Zap, Music,
 } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import { api } from '@/lib/api';
@@ -19,7 +19,7 @@ import { ImageCropper } from '@/components/ImageCropper';
 import gsap from 'gsap';
 
 type GenerationStep = 'idle' | 'analyzing' | 'planning' | 'done' | 'error';
-type SidebarTab = 'story' | 'chars';
+type SidebarTab = 'story' | 'chars' | 'audio';
 type WorkflowPhase = 'plan' | 'images' | 'videos' | 'effects';
 
 const STYLES = ['cinematic', 'manga', 'noir', 'horror', 'romance', 'fantasy', 'sci-fi', 'comic'];
@@ -289,16 +289,31 @@ export default function EditorPage() {
       if (!analysis) {
         if (!bookText) { setGenError('No story uploaded yet.'); setGenStep('error'); return; }
         setGenStep('analyzing');
-        analysis = await api.analyzeStory(id, bookText, {
+        const rawAnalysis: any = await api.analyzeStory(id, bookText, {
           characters: characters.length > 0 ? characters : undefined,
           uploaded_images: uploadedImages.length > 0 ? uploadedImages.map((i: any) => i.url) : undefined,
         });
+        if (rawAnalysis?.status === 'ai_service_unavailable') {
+          throw new Error('AI service is not running. Start it on port 8001.');
+        }
+        if (rawAnalysis?.error) {
+          throw new Error(`Story analysis failed: ${rawAnalysis.error}`);
+        }
+        analysis = rawAnalysis;
         updateProject(id, { analysis, status: 'planning' });
       }
 
       setGenStep('planning');
       const timeline: any = await api.planTrailer(id, { analysis, style: selectedStyle });
-      if (!timeline?.clips?.length) throw new Error('AI returned empty trailer plan.');
+      if (timeline?.status === 'ai_service_unavailable') {
+        throw new Error('AI service is not running. Start it on port 8001.');
+      }
+      if (timeline?.error) {
+        throw new Error(`AI planning failed: ${timeline.error}`);
+      }
+      if (!timeline?.clips?.length) {
+        throw new Error('AI returned an empty trailer plan. Check the AI service logs.');
+      }
 
       loadTimeline(timeline);
       updateProject(id, { status: 'editing' });
@@ -715,6 +730,7 @@ export default function EditorPage() {
                   {([
                     { key: 'story', icon: <BarChart2 size={12} />, label: 'STORY' },
                     { key: 'chars', icon: <Users size={12} />, label: 'CHARS' },
+                    ...(currentProject.audio_analysis ? [{ key: 'audio' as const, icon: <Music size={12} />, label: 'AUDIO' }] : []),
                   ] as const).map(({ key, icon, label }) => (
                     <button
                       key={key}
@@ -778,6 +794,56 @@ export default function EditorPage() {
                       </div>
                     </>
                   )}
+
+                  {/* AUDIO TAB */}
+                  {activeTab === 'audio' && currentProject.audio_analysis && (() => {
+                    const a = currentProject.audio_analysis as any;
+                    const energyCurve: number[] = a.energy_curve || [];
+                    const beats: number[] = a.beat_timestamps || [];
+                    const sections: number[] = a.section_boundaries || [];
+                    return (
+                      <div className="space-y-4">
+                        <div>
+                          <span className="manga-accent-bar text-[0.6rem]">AUDIO</span>
+                          <div className="mt-2 space-y-1 text-xs text-[#666]">
+                            <p><span className="font-medium text-[#111]">BPM:</span> {a.bpm?.toFixed(1)}</p>
+                            <p><span className="font-medium text-[#111]">Duration:</span> {a.duration_s?.toFixed(1)}s</p>
+                            <p><span className="font-medium text-[#111]">Beats:</span> {beats.length}</p>
+                            <p><span className="font-medium text-[#111]">Sections:</span> {sections.length}</p>
+                          </div>
+                        </div>
+
+                        {energyCurve.length > 0 && (
+                          <div>
+                            <span className="manga-accent-bar text-[0.6rem]">ENERGY</span>
+                            <div className="mt-2 flex items-end gap-px h-12 w-full">
+                              {energyCurve.map((v, i) => (
+                                <div
+                                  key={i}
+                                  className="flex-1 bg-[#111] min-w-0"
+                                  style={{ height: `${Math.max(2, v * 100)}%`, opacity: 0.4 + v * 0.6 }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {sections.length > 0 && (
+                          <div>
+                            <span className="manga-accent-bar text-[0.6rem]">SECTIONS</span>
+                            <div className="mt-2 space-y-0.5">
+                              {sections.map((t, i) => (
+                                <div key={i} className="flex items-center gap-2 text-[0.6rem] text-[#666]">
+                                  <div className="w-1.5 h-1.5 bg-[#111] shrink-0" />
+                                  <span>{t.toFixed(1)}s — Section {i + 1}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* CHARS TAB */}
                   {activeTab === 'chars' && (
@@ -1160,9 +1226,9 @@ export default function EditorPage() {
                 {genStep === 'error' && genError && (
                   <div className="mb-6 p-3 bg-red-500/10 border-2 border-red-500/30">
                     <p className="text-red-400 text-sm">{genError}</p>
-                    {!hasBook && (
+                    {(!hasBook || /short|minimum|upload|story/i.test(genError)) && (
                       <Link href={`/project/${id}/upload`} className="text-[#111] text-sm underline mt-2 block">
-                        Go to Upload Page
+                        Edit story content →
                       </Link>
                     )}
                   </div>

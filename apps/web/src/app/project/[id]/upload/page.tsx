@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Upload, FileText, Image as ImageIcon, Users, X, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Upload, FileText, Image as ImageIcon, Users, X, Plus, Trash2, Music } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import * as Tabs from '@radix-ui/react-tabs';
 import { useProjectStore, type CharacterEntry } from '@/stores/project-store';
@@ -20,6 +20,14 @@ export default function UploadPage() {
   const [textUploaded, setTextUploaded] = useState(false);
   const [activeTab, setActiveTab] = useState('story');
 
+  // Audio state
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioDragging, setAudioDragging] = useState(false);
+  const [audioUploading, setAudioUploading] = useState(false);
+  const [audioAnalysis, setAudioAnalysis] = useState<Record<string, any> | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+
   // Images state
   const [images, setImages] = useState<{ id: string; file: File; url: string; description: string }[]>([]);
   const [prevImageCount, setPrevImageCount] = useState(0);
@@ -29,10 +37,62 @@ export default function UploadPage() {
   const [prevCharCount, setPrevCharCount] = useState(0);
 
   // Store
-  const { addCharacter, addUploadedImage, setStoryText: storeSetStoryText } = useProjectStore();
+  const { addCharacter, addUploadedImage, setStoryText: storeSetStoryText, currentProject } = useProjectStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Restore previously saved content on mount ──
+  useEffect(() => {
+    // Story text — sessionStorage first, then project store
+    const savedText = sessionStorage.getItem(`book_text_${id}`);
+    if (savedText) {
+      setStoryText(savedText);
+      setTextUploaded(true);
+    } else if (currentProject?.book_text) {
+      setStoryText(currentProject.book_text);
+      setTextUploaded(true);
+    }
+
+    // Images — object URLs remain valid within the same tab session
+    try {
+      const savedImgs = sessionStorage.getItem(`uploaded_images_${id}`);
+      if (savedImgs) {
+        const parsed = JSON.parse(savedImgs);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Wrap back into the shape the component expects (no File, but url is still live)
+          setImages(parsed.map((i: any) => ({
+            id: i.id || crypto.randomUUID(),
+            file: new File([], i.file_name || 'image'),
+            url: i.url,
+            description: i.description || '',
+          })));
+        }
+      }
+    } catch {}
+
+    // Characters — sessionStorage first, then project store
+    try {
+      const savedChars = sessionStorage.getItem(`characters_${id}`);
+      if (savedChars) {
+        const parsed = JSON.parse(savedChars);
+        if (Array.isArray(parsed) && parsed.length > 0) setCharacters(parsed);
+      } else if (currentProject?.characters?.length) {
+        setCharacters(currentProject.characters.map((c: any) => ({
+          id: c.id || crypto.randomUUID(),
+          name: c.name || '',
+          description: c.description || '',
+          reference_image_url: c.reference_image_url,
+        })));
+      }
+    } catch {}
+
+    // Audio — analysis result from project store (the file object can't be restored)
+    if (currentProject?.audio_analysis) {
+      setAudioAnalysis(currentProject.audio_analysis as Record<string, any>);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // GSAP refs
   const pageRef = useRef<HTMLDivElement>(null);
@@ -116,6 +176,26 @@ export default function UploadPage() {
     }
     setPrevCharCount(characters.length);
   }, [characters.length, prevCharCount]);
+
+  // ── Audio Handlers ──
+  const handleAudioUpload = useCallback(async (file: File) => {
+    setAudioFile(file);
+    setAudioError(null);
+    setAudioUploading(true);
+    try {
+      const result: any = await api.uploadAudio(id, file);
+      setAudioAnalysis(result.audio_analysis ?? result);
+    } catch (err: any) {
+      setAudioError(err?.message ?? 'Audio analysis failed');
+    } finally {
+      setAudioUploading(false);
+    }
+  }, [id]);
+
+  const formatFileSize = (bytes: number) =>
+    bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
   // ── Story Text Handlers ──
   const handleFileUpload = useCallback(async (file: File) => {
@@ -267,6 +347,9 @@ export default function UploadPage() {
               </Tabs.Trigger>
               <Tabs.Trigger value="characters" className="manga-tab flex items-center gap-2">
                 <Users size={16} /> Characters
+              </Tabs.Trigger>
+              <Tabs.Trigger value="audio" className="manga-tab flex items-center gap-2">
+                <Music size={16} /> Audio
               </Tabs.Trigger>
             </Tabs.List>
           </div>
@@ -492,6 +575,99 @@ export default function UploadPage() {
               </button>
             </div>
           </Tabs.Content>
+          {/* ── Audio Tab ── */}
+          <Tabs.Content value="audio" className={`manga-panel p-6 border-t-0 ${activeTab === 'audio' ? 'tab-content-active' : ''}`}>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-[#111] font-medium mb-1">Trailer Audio</h3>
+                <p className="text-[#888] text-sm mb-4">
+                  Upload a music clip and we'll extract BPM, beat timestamps, energy curve, and section boundaries to sync your trailer.
+                </p>
+
+                <input
+                  ref={audioInputRef}
+                  type="file"
+                  accept=".mp3,.wav,.ogg,.flac,.aac,.m4a"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAudioUpload(f); }}
+                />
+
+                {!audioFile ? (
+                  <div
+                    className={`manga-dropzone p-8 text-center cursor-pointer transition-colors ${audioDragging ? 'border-[#a855f7] bg-purple-50' : ''}`}
+                    onClick={() => audioInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); setAudioDragging(true); }}
+                    onDragLeave={() => setAudioDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setAudioDragging(false);
+                      const f = e.dataTransfer.files[0];
+                      if (f && f.type.startsWith('audio/')) handleAudioUpload(f);
+                    }}
+                  >
+                    <Music size={32} className="mx-auto mb-3 text-[#555]" />
+                    <p className="text-[#888]">Drop an audio file here or click to browse</p>
+                    <p className="text-xs text-[#555] mt-1">MP3, WAV, OGG, FLAC, AAC, M4A</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* File info row */}
+                    <div className="border-2 border-[#111] p-4 flex items-center gap-3 bg-[#f9f9f9]">
+                      <Music size={20} className="text-[#a855f7] shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#111] truncate">{audioFile.name}</p>
+                        <p className="text-xs text-[#888]">{formatFileSize(audioFile.size)}</p>
+                      </div>
+                      {audioUploading && <span className="text-xs text-[#888]">Analysing…</span>}
+                      {audioAnalysis && <span className="manga-badge bg-green-600 text-white text-[0.6rem]">Analysed</span>}
+                      {audioError && <span className="manga-badge bg-red-600 text-white text-[0.6rem]">Error</span>}
+                      <button
+                        onClick={() => {
+                          setAudioFile(null);
+                          setAudioAnalysis(null);
+                          setAudioError(null);
+                          if (audioInputRef.current) audioInputRef.current.value = '';
+                        }}
+                        className="text-[#888] hover:text-[#111] transition-colors shrink-0"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {/* Error */}
+                    {audioError && (
+                      <p className="text-red-500 text-sm">{audioError}</p>
+                    )}
+
+                    {/* Analysis results */}
+                    {audioAnalysis && (
+                      <div className="manga-panel p-4 space-y-2">
+                        <h4 className="text-xs text-[#888] uppercase tracking-wider mb-3">Analysis Results</h4>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-[#888] text-xs">BPM</span>
+                            <p className="font-medium text-[#111]">{audioAnalysis.bpm?.toFixed(1)}</p>
+                          </div>
+                          <div>
+                            <span className="text-[#888] text-xs">Duration</span>
+                            <p className="font-medium text-[#111]">{audioAnalysis.duration_s?.toFixed(1)}s</p>
+                          </div>
+                          <div>
+                            <span className="text-[#888] text-xs">Beats detected</span>
+                            <p className="font-medium text-[#111]">{audioAnalysis.beat_timestamps?.length ?? 0}</p>
+                          </div>
+                          <div>
+                            <span className="text-[#888] text-xs">Sections</span>
+                            <p className="font-medium text-[#111]">{audioAnalysis.section_boundaries?.length ?? 0}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Tabs.Content>
         </Tabs.Root>
 
         {/* Footer */}
@@ -500,6 +676,7 @@ export default function UploadPage() {
             {hasStoryContent ? 'Story content ready' : 'Upload or paste story text to continue'}
             {images.length > 0 && ` · ${images.length} image${images.length > 1 ? 's' : ''}`}
             {characters.filter((c) => c.name.trim()).length > 0 && ` · ${characters.filter((c) => c.name.trim()).length} character${characters.filter((c) => c.name.trim()).length > 1 ? 's' : ''}`}
+            {audioAnalysis && ' · audio analysed'}
           </p>
           <button
             ref={continueButtonRef}

@@ -1,3 +1,5 @@
+import asyncio
+from functools import partial
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.db import get_supabase
 from app.state import store_book_text, update_project_mem
@@ -82,9 +84,12 @@ async def upload_audio(project_id: str, file: UploadFile = File(...)):
 
     content = await file.read()
 
-    # Run analysis (CPU-bound but acceptable at hackathon scale)
+    # Run analysis in thread pool — CPU-bound, would block event loop otherwise
     try:
-        analysis = analyze_audio(content, file.filename or "audio.mp3")
+        loop = asyncio.get_event_loop()
+        analysis = await loop.run_in_executor(
+            None, partial(analyze_audio, content, file.filename or "audio.mp3")
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

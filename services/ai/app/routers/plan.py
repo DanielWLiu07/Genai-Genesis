@@ -23,6 +23,7 @@ class PlanRequest(BaseModel):
     settings: Optional[dict] = None
     style: Optional[str] = None  # horror, romance, thriller, fantasy, manga, etc.
     pacing: str = "balanced"  # fast, balanced, slow
+    music_track: Optional[dict] = None  # {name, url, bpm, mood, genre}
 
 
 class PipelineRequest(BaseModel):
@@ -44,7 +45,7 @@ async def plan(data: PlanRequest):
         )
 
     logger.info(f"Planning trailer for project {data.project_id}, style={data.style}, pacing={data.pacing}")
-    result = await plan_trailer(data.analysis, style=data.style, pacing=data.pacing)
+    result = await plan_trailer(data.analysis, style=data.style, pacing=data.pacing, music_track=data.music_track)
 
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])

@@ -134,6 +134,8 @@ async def plan_trailer(project_id: str, body: Optional[dict] = None):
             payload["style"] = body["style"]
         if "pacing" in body:
             payload["pacing"] = body["pacing"]
+        if "music_track" in body:
+            payload["music_track"] = body["music_track"]
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:

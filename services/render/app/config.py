@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     fal_api_key: str = ""
     api_service_url: str = "http://localhost:8000"
+    render_service_url: str = "http://localhost:8002"
     supabase_url: str = ""
     supabase_service_key: str = ""
     render_output_dir: str = os.environ.get("RENDER_OUTPUT_DIR", "/tmp/renders")

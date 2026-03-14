@@ -40,6 +40,7 @@ async function getCroppedDataUrl(image: HTMLImageElement, crop: PixelCrop): Prom
 export function ImageCropper({ src, aspect, onConfirm, onCancel }: ImageCropperProps) {
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [effectiveAspect, setEffectiveAspect] = useState<number | undefined>(aspect);
   const imgRef = useRef<HTMLImageElement>(null);
   const [mounted, setMounted] = useState(false);
   // Use a blob URL for external images to avoid tainted-canvas CORS errors
@@ -61,13 +62,11 @@ export function ImageCropper({ src, aspect, onConfirm, onCancel }: ImageCropperP
   }, [src]);
 
   const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    const { width, height } = e.currentTarget;
-    if (aspect) {
-      setCrop(centerAspectCrop(width, height, aspect));
-    } else {
-      // Free crop — default to full image selected
-      setCrop({ unit: '%', x: 5, y: 5, width: 90, height: 90 });
-    }
+    const { width, height, naturalWidth, naturalHeight } = e.currentTarget;
+    // Use provided aspect, or lock to the image's own natural aspect ratio
+    const resolved = aspect ?? (naturalWidth / naturalHeight);
+    setEffectiveAspect(resolved);
+    setCrop(centerAspectCrop(width, height, resolved));
   }, [aspect]);
 
   const handleConfirm = useCallback(async () => {
@@ -105,7 +104,7 @@ export function ImageCropper({ src, aspect, onConfirm, onCancel }: ImageCropperP
             crop={crop}
             onChange={(c) => setCrop(c)}
             onComplete={(c) => setCompletedCrop(c)}
-            aspect={aspect}
+            aspect={effectiveAspect}
           >
             <img
               ref={imgRef}

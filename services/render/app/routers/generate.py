@@ -49,6 +49,9 @@ class GenerateRequest(BaseModel):
     prev_scene_prompt: Optional[str] = None    # previous clip's prompt (continuity)
     next_scene_prompt: Optional[str] = None    # next clip's prompt (exit framing)
     feedback: Optional[str] = None             # user refinement notes
+    reference_image_url: Optional[str] = None  # previous panel image for visual continuity
+    music_timestamp_ms: Optional[int] = None   # clip's position in the music timeline
+    music_energy: Optional[float] = None       # 0-1 energy level at this timestamp (from beat map)
 
 
 class GenerateResponse(BaseModel):
@@ -179,16 +182,30 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
                 f"in mist, or burning in the air). The text is part of the scene, not a UI overlay."
             )
 
+        # Inject music energy into mood context
+        mood = data.mood or ""
+        if data.music_energy is not None:
+            if data.music_energy >= 0.8:
+                mood = f"{mood}, PEAK INTENSITY — maximum explosive action, full power unleashed".strip(", ")
+            elif data.music_energy >= 0.5:
+                mood = f"{mood}, building tension, charged energy, motion accelerating".strip(", ")
+            elif data.music_energy <= 0.2:
+                mood = f"{mood}, quiet moment, stillness before storm, emotional weight".strip(", ")
+
         prompt = build_image_prompt(
             base_prompt,
             characters=chars,
-            mood=data.mood,
+            mood=mood,
             style_seed=data.style_seed,
             clip_order=data.clip_order,
             clip_total=data.clip_total,
             prev_scene_prompt=data.prev_scene_prompt,
         )
-        result = await generate_image_gemini(prompt, data.aspect_ratio)
+        result = await generate_image_gemini(
+            prompt,
+            data.aspect_ratio,
+            reference_image_url=data.reference_image_url,
+        )
         return GenerateResponse(
             clip_id=data.clip_id,
             media_url=result.get("url"),

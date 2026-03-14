@@ -3,6 +3,7 @@ from app.models.render import GenerateClipRequest, RenderRequest, RenderJobRespo
 from app.config import get_settings
 from app.db import get_supabase
 from app.routers.ws import manager
+import asyncio
 import httpx
 import uuid
 from datetime import datetime
@@ -183,7 +184,7 @@ async def render_trailer(project_id: str, data: RenderRequest = None):
     if data and data.beat_map:
         compose_payload["beat_map"] = data.beat_map
 
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             resp = await client.post(
                 f"{settings.render_service_url}/render/compose",
@@ -198,8 +199,32 @@ async def render_trailer(project_id: str, data: RenderRequest = None):
                     pass
             return _render_unavailable()
 
+    render_job_id = result.get("job_id", job_id)
+
+    # Compose runs in background on render service — poll until done
+    status = result.get("status", "queued")
     output_url = result.get("output_url")
-    status = result.get("status", "done")
+    max_polls = 120  # 10 minutes
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for _ in range(max_polls):
+            if status in ("done", "error"):
+                break
+            await asyncio.sleep(5)
+            try:
+                r = await client.get(f"{settings.render_service_url}/render/jobs/{render_job_id}")
+                job = r.json()
+                status = job.get("status", status)
+                output_url = job.get("output_url") or output_url
+                progress = job.get("progress", 0)
+                await manager.broadcast(project_id, {
+                    "type": "render_progress",
+                    "job_id": job_id,
+                    "status": status,
+                    "progress": progress,
+                    "output_url": output_url,
+                })
+            except Exception:
+                pass
 
     # Update render_job record
     if db is not None:
@@ -209,7 +234,8 @@ async def render_trailer(project_id: str, data: RenderRequest = None):
                 "progress": 100,
                 "output_url": output_url,
             }).eq("id", job_id).execute()
-            db.table("projects").update({"status": "done"}).eq("id", project_id).execute()
+            if status == "done":
+                db.table("projects").update({"status": "done"}).eq("id", project_id).execute()
         except Exception:
             pass
 

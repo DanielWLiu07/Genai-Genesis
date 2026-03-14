@@ -15,12 +15,15 @@ from typing import Optional
 # ── AMV / Manga motion style layers ─────────────────────────────────────────
 
 _AMV_STYLE = (
-    "anime AMV style, sakuga-quality fluid motion, "
-    "dynamic speed lines radiating from action, "
-    "cel-shaded with bold ink outlines, "
-    "vibrant saturated colors, dramatic chiaroscuro lighting, "
-    "manga impact frames, motion smear on fast movement, "
-    "cinematic depth of field, volumetric atmosphere"
+    "manga AMV style, sakuga-quality extreme motion, "
+    "MASSIVE full-body action in frame — heavy sword swings, explosive power releases, dramatic leaps, "
+    "bodies in full extension at peak of motion, weight and impact visible in every frame, "
+    "thick bold ink lines, heavy black shadows, high contrast ink wash, "
+    "speed lines bursting from impact point, motion blur streaks across limbs, "
+    "manga impact frames with onomatopoeia energy, shockwave distortion rings, "
+    "debris and environmental destruction from force, dust clouds and sparks, "
+    "Dutch angles and extreme perspectives amplifying scale, "
+    "fast-cut AMV pacing — each frame a frozen peak-action moment"
 )
 
 # Genre-aware negative prompt components
@@ -39,18 +42,18 @@ _NEGATIVE_GENRE_EXTRAS: dict[str, str] = {
     "thriller": "comedy, bright pastel colors, childish",
 }
 
-# Camera motion per clip position in the trailer
+# Camera motion per clip position in the trailer — all biased toward action/impact
 _CAMERA_MOTIONS = [
-    "slow dramatic push-in, camera easing toward subject",
-    "sweeping panoramic arc, camera orbiting slowly",
-    "handheld energy, slight camera shake, dynamic",
-    "fast zoom-in impact cut, speed ramp",
-    "pull-back reveal, subject emerging from foreground",
-    "low angle upward tilt, heroic framing",
-    "tracking shot following subject, parallax background",
-    "extreme close-up with micro shake, intense",
-    "bird's eye tilt-down, overhead drama",
-    "Dutch angle roll, disorienting tension",
+    "extreme low angle looking up at subject mid-swing, heroic scale",
+    "whip-pan crash zoom into impact, speed ramp on contact",
+    "handheld violent shake on impact, camera recoil from shockwave",
+    "Dutch angle snap, environment tilting from force of movement",
+    "tight over-shoulder tracking shot, subject lunging into foreground",
+    "pull-back explosive reveal, subject bursting through foreground debris",
+    "bird's eye tilt-down crash — subject landing with crater impact",
+    "extreme close-up eye or hand at peak tension, micro tremor",
+    "wide shot with full silhouette against light source, giant scale",
+    "barrel roll orbit around subject at peak power charge",
 ]
 
 
@@ -218,6 +221,18 @@ def build_image_prompt(
     """
     parts = []
 
+    # Style seed FIRST — Gemini weights earlier tokens most heavily.
+    # Locking in art style, palette, and character look before any scene content
+    # is the key to visual consistency across all clips.
+    if style_seed:
+        parts.append(style_seed)
+    else:
+        # Fallback base style when no seed provided
+        parts.append(
+            "ART STYLE: hand-drawn manga illustration, bold black ink outlines, "
+            "dramatic chiaroscuro shading, flat cel-shading, no photorealism, no 3D CGI"
+        )
+
     # Narrative position gives Imagen pacing context
     if clip_total > 0:
         parts.append(f"Scene {clip_order + 1} of {clip_total}")
@@ -229,7 +244,6 @@ def build_image_prompt(
             name = c.get("name", "")
             if not name:
                 continue
-            # Prefer visual_description, then appearance, then first sentence of description
             visual = (
                 c.get("visual_description")
                 or c.get("appearance")
@@ -254,13 +268,4 @@ def build_image_prompt(
     if mood:
         parts.append(f"{mood} mood")
 
-    # Style seed — consistent visual anchor across all clips in the sequence
-    if style_seed:
-        parts.append(style_seed)
-
-    # Base art style
-    parts.append(
-        "manga illustration style, bold ink lines, dramatic chiaroscuro shading, "
-        "cinematic composition, consistent color palette, high detail, professional quality"
-    )
     return ". ".join(p.rstrip(". ") for p in parts if p)

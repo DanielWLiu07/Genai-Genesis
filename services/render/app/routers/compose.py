@@ -197,11 +197,18 @@ async def _compose_background(data: ComposeRequest, job_id: str):
             preview_path = os.path.join(output_dir, f"{job_id}_preview.mp4")
             await generate_preview(output_path, preview_path)
 
+            # Convert local paths to public URLs served by /outputs static mount
+            render_base = settings.render_service_url
+            output_dir_base = settings.render_output_dir.rstrip("/")
+            def to_public_url(path: str) -> str:
+                rel = path[len(output_dir_base):].lstrip("/")
+                return f"{render_base}/outputs/{rel}"
+
             _render_jobs[job_id].update({
                 "status": "done",
                 "progress": 100,
-                "output_url": output_path,
-                "preview_url": preview_path,
+                "output_url": to_public_url(output_path),
+                "preview_url": to_public_url(preview_path),
                 "duration_ms": result.get("duration_ms", 0),
                 "message": result.get("message", ""),
             })

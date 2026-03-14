@@ -8,6 +8,8 @@ import os
 import shutil
 import logging
 import tempfile
+import asyncio
+import httpx
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -59,13 +61,14 @@ def _create_clip_video(
     """Convert a single image/video to a standardized clip with exact duration."""
     duration_sec = duration_ms / 1000.0
 
+    scale_filter = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,fps={fps}"
     if is_video:
         cmd = [
             "ffmpeg", "-y",
             "-i", media_path,
             "-t", str(duration_sec),
-            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,fps={fps}",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-vf", scale_filter,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-an",
             "-pix_fmt", "yuv420p",
             output_path,
@@ -76,8 +79,8 @@ def _create_clip_video(
             "-loop", "1",
             "-i", media_path,
             "-t", str(duration_sec),
-            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,fps={fps}",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-vf", scale_filter,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-pix_fmt", "yuv420p",
             output_path,
         ]
@@ -325,13 +328,36 @@ async def compose_trailer(
     tmpdir = tempfile.mkdtemp(prefix="frameflow_render_")
 
     try:
+        # Step 0: Download all remote URLs in parallel to avoid sequential fetches
+        if progress_callback:
+            await progress_callback(5, "Downloading clips...")
+
+        async def _download(clip: dict, idx: int) -> str:
+            url = clip.get("local_media_path") or clip.get("generated_media_url", "")
+            if not url or not url.startswith("http"):
+                return url
+            ext = ".mp4" if clip.get("type") == "video" else ".jpg"
+            dest = os.path.join(tmpdir, f"dl_{idx:03d}{ext}")
+            try:
+                async with httpx.AsyncClient(timeout=120) as client:
+                    r = await client.get(url)
+                    r.raise_for_status()
+                    with open(dest, "wb") as f:
+                        f.write(r.content)
+                return dest
+            except Exception as e:
+                logger.warning("Failed to download clip %d (%s): %s", idx, url, e)
+                return url  # fall back to URL, FFmpeg will try
+
+        local_paths = await asyncio.gather(*[_download(c, i) for i, c in enumerate(playable_clips)])
+
         # Step 1: Create standardized clips
         if progress_callback:
             await progress_callback(10, "Preparing clips...")
 
         clip_video_paths = []
         for i, clip in enumerate(playable_clips):
-            media_path = clip.get("local_media_path") or clip.get("generated_media_url", "")
+            media_path = local_paths[i]
             clip_output = os.path.join(tmpdir, f"clip_{i:03d}.mp4")
             is_video = clip.get("type") == "video"
 

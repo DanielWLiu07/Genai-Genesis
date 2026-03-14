@@ -259,18 +259,10 @@ function SceneNodeInner({ data }: NodeProps) {
           </div>
         )}
 
-        {/* Text overlay with generated scene — show image if generated, else text placeholder */}
+        {/* Text overlay — text is baked into the generated image by Gemini, show image only */}
         {clip.type === 'text_overlay' && clip.thumbnail_url ? (
-          <div className="w-full h-32 overflow-hidden mb-2 relative">
+          <div className="w-full h-32 overflow-hidden mb-2">
             <img src={clip.thumbnail_url} alt="" className="w-full h-full object-cover" />
-            {clip.text && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/30 px-2">
-                <p className="text-white text-xs font-bold text-center leading-snug line-clamp-3 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]"
-                   style={{ fontFamily: 'var(--font-manga)', letterSpacing: '0.05em' }}>
-                  {clip.text}
-                </p>
-              </div>
-            )}
           </div>
         ) : clip.type === 'text_overlay' ? (
           <div className="w-full h-32 mb-2 bg-[#111] flex items-center justify-center px-3">

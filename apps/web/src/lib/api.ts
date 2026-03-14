@@ -37,6 +37,17 @@ export const api = {
     return res.json();
   },
 
+  uploadAudio: async (projectId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/upload-audio`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Audio upload error: ${res.status}`);
+    return res.json();
+  },
+
   // AI
   analyzeStory: (projectId: string, bookText: string, opts?: { characters?: any[]; uploaded_images?: string[] }) =>
     fetchAPI(`/projects/${projectId}/analyze`, {

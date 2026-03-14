@@ -25,7 +25,8 @@ def create_project_mem(title: str, author: str, description: str) -> dict:
     pid = str(uuid.uuid4())
     p = {"id": pid, "title": title, "author": author, "description": description,
          "status": "uploading", "analysis": None, "book_file_url": None,
-         "cover_image_url": None, "created_at": _now(), "updated_at": _now()}
+         "cover_image_url": None, "audio_file_url": None, "audio_analysis": None,
+         "created_at": _now(), "updated_at": _now()}
     _projects[pid] = p
     return p
 

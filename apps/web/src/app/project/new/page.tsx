@@ -2,51 +2,48 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Sparkles, Music, X, Upload } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import { api } from '@/lib/api';
 import gsap from 'gsap';
+
+const ACCEPTED_AUDIO = '.mp3,.wav,.ogg,.flac,.aac,.m4a';
 
 export default function NewProject() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioDragging, setAudioDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState('');
   const mainRef = useRef<HTMLElement>(null);
   const createBtnRef = useRef<HTMLButtonElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   // Page entrance animations
   useEffect(() => {
     const ctx = gsap.context(() => {
-      // Header speedlines section slides down from top with bounce
       gsap.fromTo(
         '.new-project-header',
         { y: -80, opacity: 0 },
         { y: 0, opacity: 1, duration: 0.7, ease: 'bounce.out' }
       );
-
-      // Title slams in with scale and rotation
       gsap.fromTo(
         '.new-project-title',
         { scale: 2, rotateZ: -5, opacity: 0 },
         { scale: 1, rotateZ: 0, opacity: 1, duration: 0.6, delay: 0.2, ease: 'back.out(1.4)' }
       );
-
-      // Subtitle fades in
       gsap.fromTo(
         '.new-project-subtitle',
         { y: 20, opacity: 0 },
         { y: 0, opacity: 1, duration: 0.4, delay: 0.5, ease: 'power2.out' }
       );
-
-      // Form fields stagger in from left
       gsap.fromTo(
         '.form-field',
         { x: -60, opacity: 0 },
         { x: 0, opacity: 1, duration: 0.5, stagger: 0.1, delay: 0.4, ease: 'power3.out' }
       );
-
-      // Create button punches in from bottom
       gsap.fromTo(
         '.create-btn',
         { y: 50, opacity: 0 },
@@ -57,10 +54,26 @@ export default function NewProject() {
     return () => ctx.revert();
   }, []);
 
+  const handleAudioDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setAudioDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('audio/')) setAudioFile(file);
+  };
+
+  const handleAudioInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setAudioFile(file);
+  };
+
+  const formatFileSize = (bytes: number) =>
+    bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
   const handleCreate = async () => {
     if (!title.trim()) return;
 
-    // Pulse animation on button before loading
     if (createBtnRef.current) {
       gsap.fromTo(
         createBtnRef.current,
@@ -71,13 +84,28 @@ export default function NewProject() {
 
     setLoading(true);
     try {
-      const project: any = await api.createProject({ title: title.trim(), description: description.trim() || undefined });
+      setLoadingStep('Creating project…');
+      const project: any = await api.createProject({
+        title: title.trim(),
+        description: description.trim() || undefined,
+      });
+
+      if (audioFile) {
+        setLoadingStep('Analysing audio…');
+        try {
+          await api.uploadAudio(project.id, audioFile);
+        } catch (err) {
+          console.error('Audio analysis failed (continuing):', err);
+        }
+      }
+
       router.push(`/project/${project.id}/upload`);
     } catch (err) {
       console.error(err);
       alert('Failed to create project. Please try again.');
     } finally {
       setLoading(false);
+      setLoadingStep('');
     }
   };
 
@@ -118,13 +146,63 @@ export default function NewProject() {
             />
           </div>
 
+          {/* Audio upload */}
+          <div className="form-field">
+            <label className="manga-accent-bar text-sm mb-3 block">
+              Trailer Audio <span className="text-[#aaa] font-normal ml-1">(optional)</span>
+            </label>
+            <p className="text-xs text-[#888] mb-3">
+              Upload a music clip and we'll extract BPM, beats, energy curve, and section boundaries to sync your trailer.
+            </p>
+
+            {audioFile ? (
+              <div className="border-2 border-[#111] p-4 flex items-center gap-3 bg-[#f9f9f9]">
+                <Music size={20} className="text-[#a855f7] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#111] truncate">{audioFile.name}</p>
+                  <p className="text-xs text-[#888]">{formatFileSize(audioFile.size)}</p>
+                </div>
+                <button
+                  onClick={() => { setAudioFile(null); if (audioInputRef.current) audioInputRef.current.value = ''; }}
+                  className="text-[#888] hover:text-[#111] transition-colors shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setAudioDragging(true); }}
+                onDragLeave={() => setAudioDragging(false)}
+                onDrop={handleAudioDrop}
+                onClick={() => audioInputRef.current?.click()}
+                className={`border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
+                  audioDragging
+                    ? 'border-[#a855f7] bg-purple-50'
+                    : 'border-[#ccc] hover:border-[#111] hover:bg-[#f9f9f9]'
+                }`}
+              >
+                <Upload size={24} className="mx-auto mb-2 text-[#aaa]" />
+                <p className="text-sm text-[#666]">Drop an audio file here or <span className="underline">browse</span></p>
+                <p className="text-xs text-[#aaa] mt-1">MP3, WAV, OGG, FLAC, AAC, M4A</p>
+              </div>
+            )}
+
+            <input
+              ref={audioInputRef}
+              type="file"
+              accept={ACCEPTED_AUDIO}
+              className="hidden"
+              onChange={handleAudioInput}
+            />
+          </div>
+
           <button
             ref={createBtnRef}
             onClick={handleCreate}
             disabled={!title.trim() || loading}
             className="create-btn manga-btn w-full bg-[#111] text-white py-3 px-6 text-lg"
           >
-            {loading ? 'Creating...' : 'Create Project'}
+            {loading ? loadingStep : 'Create Project'}
           </button>
         </div>
       </div>

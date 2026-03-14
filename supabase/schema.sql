@@ -10,11 +10,17 @@ CREATE TABLE IF NOT EXISTS projects (
   book_file_url TEXT,
   book_text TEXT,
   cover_image_url TEXT,
+  audio_file_url TEXT,
+  audio_analysis JSONB,
   status TEXT DEFAULT 'uploading',
   analysis JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Migration: add audio columns to existing tables
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS audio_file_url TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS audio_analysis JSONB;
 
 -- Timelines table (one per project)
 CREATE TABLE IF NOT EXISTS timelines (

@@ -71,7 +71,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ book_text: bookText, ...opts }),
     }),
-  planTrailer: (projectId: string, opts?: { analysis?: any; style?: string; pacing?: string }) =>
+  planTrailer: (projectId: string, opts?: { analysis?: any; style?: string; pacing?: string; music_track?: any }) =>
     fetchAPI(`/projects/${projectId}/plan-trailer`, { method: 'POST', body: JSON.stringify(opts || {}) }),
   getSuggestions: (projectId: string, timeline: any, analysis?: any) =>
     fetchAPI(`/projects/${projectId}/suggest`, {

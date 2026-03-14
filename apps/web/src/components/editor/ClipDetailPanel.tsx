@@ -384,7 +384,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
             <RefreshCw size={13} />
             {clip.gen_status === 'pending' ? 'Gen Image' : 'Regen Image'}
           </button>
-          {clip.type !== 'transition' && clip.type !== 'text_overlay' && (
+          {clip.type !== 'transition' && (
             <button
               onClick={handleGenerateVideo}
               disabled={clip.gen_status === 'generating' || generatingVideo}

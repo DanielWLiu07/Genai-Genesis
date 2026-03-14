@@ -301,7 +301,7 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
           <button
             onClick={() => {
               const maxOrder = sortedClips.length > 0 ? Math.max(...sortedClips.map(c => c.order)) + 1 : 0;
-              addClip({ type: 'image', duration_ms: 3000, prompt: '', gen_status: 'pending' });
+              addClip({ type: 'image', duration_ms: 1500, prompt: '', gen_status: 'pending' });
               setFocusedIdx(sortedClips.length); // jump to new clip
             }}
             className="manga-btn bg-[#111] text-white px-2 py-2"

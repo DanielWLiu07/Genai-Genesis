@@ -318,7 +318,7 @@ function SceneNodeInner({ data }: NodeProps) {
         {clip.gen_status === 'pending' && clip.type !== 'transition' && (
           <button
             onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
-            className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"
+            className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"
           >
             <Sparkles size={18} className="text-white" />
             <span className="text-xs font-medium text-white" style={{ fontFamily: 'var(--font-manga)' }}>
@@ -328,7 +328,7 @@ function SceneNodeInner({ data }: NodeProps) {
         )}
 
         {clip.gen_status === 'generating' && (
-          <div className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1">
+          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
             <Loader2 size={18} className="text-blue-400 animate-spin" />
             <span className="text-xs text-blue-300">Generating...</span>
           </div>
@@ -337,7 +337,7 @@ function SceneNodeInner({ data }: NodeProps) {
         {clip.gen_status === 'error' && (
           <button
             onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
-            className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-red-600/30 transition-colors cursor-pointer"
+            className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-red-600/30 transition-colors cursor-pointer"
           >
             <AlertCircle size={18} className="text-red-400" />
             <span className="text-xs text-red-300">Retry</span>
@@ -345,7 +345,7 @@ function SceneNodeInner({ data }: NodeProps) {
         )}
 
         {clip.gen_status === 'done' && clip.type === 'video' && (
-          <div className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
             <button
               onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
               className="flex flex-col items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/25 border border-white/30 transition-colors"
@@ -363,8 +363,8 @@ function SceneNodeInner({ data }: NodeProps) {
           </div>
         )}
 
-        {clip.gen_status === 'done' && clip.type !== 'video' && clip.type !== 'text_overlay' && (
-          <div className="absolute inset-0 mb-2 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
+        {clip.gen_status === 'done' && clip.type !== 'video' && (
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
             <button
               onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
               className="flex flex-col items-center gap-1 px-3 py-2 bg-white/10 hover:bg-white/25 border border-white/30 transition-colors"
@@ -383,11 +383,16 @@ function SceneNodeInner({ data }: NodeProps) {
         )}
       </div>
 
-      <p className="text-xs text-[#666] line-clamp-3 leading-relaxed">{clip.prompt}</p>
-
-      {clip.text && (
-        <p className="text-xs text-[#111] mt-1 italic">&quot;{clip.text}&quot;</p>
-      )}
+      <div className="bg-[#111] border-t-2 border-[#111] px-2 py-1.5 -mx-4 -mb-4 mt-0">
+        <p className="text-[0.65rem] text-white/90 line-clamp-3 leading-relaxed">
+          {clip.prompt}
+        </p>
+        {clip.text && (
+          <p className="text-[0.65rem] text-[#a855f7] mt-1 italic line-clamp-1">
+            &quot;{clip.text}&quot;
+          </p>
+        )}
+      </div>
 
       <Handle type="source" position={Position.Right} className="!bg-[#111]" />
     </div>

@@ -30,6 +30,7 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str = "16:9"
     duration_ms: int = 3000
     clip_order: int = 0
+    clip_total: int = 0
     # Scene context for better generation
     scene_image_url: Optional[str] = None      # existing still to use as start frame
     characters: Optional[list[CharacterInfo]] = None
@@ -38,6 +39,7 @@ class GenerateRequest(BaseModel):
     shot_type: str = "cut"                     # "continuous" or "cut"
     is_continuous: bool = False
     negative_prompt: str = ""
+    style_seed: Optional[str] = None           # consistent visual anchor across all clips
     callback_url: Optional[str] = None
 
 
@@ -144,7 +146,14 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
 
     # Images: always use Gemini (synchronous, returns URL immediately)
     if data.type != "video":
-        prompt = build_image_prompt(data.prompt, characters=chars, mood=data.mood)
+        prompt = build_image_prompt(
+            data.prompt,
+            characters=chars,
+            mood=data.mood,
+            style_seed=data.style_seed,
+            clip_order=data.clip_order,
+            clip_total=data.clip_total,
+        )
         result = await generate_image_gemini(prompt, data.aspect_ratio)
         return GenerateResponse(
             clip_id=data.clip_id,

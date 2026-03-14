@@ -143,7 +143,7 @@ return a brief JSON summary:
     TrailerPipelineAgent = rt.agent_node(
         name="Trailer Pipeline Orchestrator",
         tool_nodes={analyze_node, plan_node, quality_node},
-        llm_model=GeminiLLM("gemini-2.5-flash"),
+        llm=GeminiLLM("gemini-2.5-flash"),
         system_message=SystemMessage(_PIPELINE_SYSTEM),
         max_tool_calls=6,
     )

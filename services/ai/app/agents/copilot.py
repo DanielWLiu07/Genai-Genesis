@@ -177,7 +177,7 @@ PROMPTS: always include camera angle, lighting, mood, color palette, atmosphere,
             set_shot_type, add_amv_effect, remove_amv_effect, set_bpm,
             auto_amv, trigger_generate_clip, bulk_update_clips,
         },
-        llm_model=GeminiLLM("gemini-2.5-flash"),
+        llm=GeminiLLM("gemini-2.5-flash"),
         system_message=SystemMessage(_SYSTEM),
         max_tool_calls=20,
     )

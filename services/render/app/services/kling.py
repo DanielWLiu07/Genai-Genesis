@@ -182,12 +182,12 @@ async def generate_video(
     if use_img2vid:
         # image-to-video: much better temporal consistency
         body: dict = {
-            "model_name": "kling-v1-6",  # latest model with img2vid
+            "model_name": "kling-v1",  # standard model, lower cost
             "image_url": start_frame_url,
             "prompt": prompt,
             "duration": duration,
             "aspect_ratio": aspect_ratio,
-            "mode": "pro",  # pro mode = higher quality motion
+            "mode": "std",  # std mode = lower cost, still good quality
             "cfg_scale": 0.5,
         }
         if negative_prompt:
@@ -197,7 +197,7 @@ async def generate_video(
     else:
         # text-to-video fallback
         body = {
-            "model_name": "kling-v1-6",
+            "model_name": "kling-v1",
             "prompt": prompt,
             "duration": duration,
             "aspect_ratio": aspect_ratio,

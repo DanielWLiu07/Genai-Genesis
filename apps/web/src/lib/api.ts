@@ -85,12 +85,14 @@ export const api = {
     type: string = 'image',
     opts?: {
       clip_order?: number;
+      clip_total?: number;
       scene_image_url?: string;
       characters?: { name: string; description?: string; appearance?: string; image_url?: string }[];
       mood?: string;
       genre?: string;
       shot_type?: string;
       is_continuous?: boolean;
+      style_seed?: string;
     }
   ) =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {

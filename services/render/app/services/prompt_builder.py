@@ -122,14 +122,48 @@ def build_image_prompt(
     scene_prompt: str,
     characters: Optional[list[dict]] = None,
     mood: Optional[str] = None,
+    style_seed: Optional[str] = None,
+    clip_order: int = 0,
+    clip_total: int = 0,
 ) -> str:
-    """Build a Gemini image generation prompt — slightly different style."""
-    char_block = _build_character_block(characters or [], scene_prompt)
-    parts = [char_block, scene_prompt.strip()]
+    """Build a Gemini/Imagen image generation prompt.
+
+    Always includes all character descriptions (not just mentioned ones) for
+    visual consistency across the sequence. style_seed anchors the palette and
+    art style identically for every clip so Imagen outputs cohesive frames.
+    """
+    parts = []
+
+    # Narrative position gives Imagen pacing context
+    if clip_total > 0:
+        parts.append(f"Scene {clip_order + 1} of {clip_total}")
+
+    # Always describe ALL characters so appearance stays consistent across clips
+    if characters:
+        char_descs = []
+        for c in characters:
+            name = c.get("name", "")
+            if not name:
+                continue
+            appearance = c.get("appearance") or (c.get("description", "").split(".")[0] if c.get("description") else "")
+            char_descs.append(f"{name}: {appearance}" if appearance else name)
+        if char_descs:
+            parts.append("Characters — " + "; ".join(char_descs))
+
+    # Core scene
+    parts.append(scene_prompt.strip())
+
+    # Mood
     if mood:
         parts.append(f"{mood} mood")
+
+    # Style seed — consistent visual anchor across all clips in the sequence
+    if style_seed:
+        parts.append(style_seed)
+
+    # Base art style
     parts.append(
-        "manga illustration style, bold ink lines, dramatic shading, "
-        "cinematic composition, high detail, professional quality"
+        "manga illustration style, bold ink lines, dramatic chiaroscuro shading, "
+        "cinematic composition, consistent color palette, high detail, professional quality"
     )
     return ". ".join(p.rstrip(". ") for p in parts if p)

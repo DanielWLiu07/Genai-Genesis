@@ -63,6 +63,7 @@ export default function EditorPage() {
   const [editThumbnail, setEditThumbnail] = useState('');
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [generatingThumb, setGeneratingThumb] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
   const loadTimeline = useTimelineStore((s) => s.loadTimeline);
@@ -383,38 +384,72 @@ export default function EditorPage() {
     }
   }, [id, removeProject, router]);
 
-  // Batch generate scene images for all pending clips
+  // Batch generate scene images sequentially for visual cohesion
   const handleGenerateAllImages = useCallback(async () => {
     if (!id) return;
     const analysis = currentProject?.analysis;
     const chars = (analysis?.characters as any[] || []).map((c: any) => ({
       name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
     }));
+
+    // Build a style seed — a consistent visual anchor sent with every clip so Imagen
+    // outputs frames with the same palette, character appearances, and art direction.
+    const styleSeedParts: string[] = [];
+    if (analysis?.genre) styleSeedParts.push(`${analysis.genre} story`);
+    if (analysis?.mood) styleSeedParts.push(`${analysis.mood} atmosphere`);
+    chars.forEach((c: any) => {
+      if (c.appearance) styleSeedParts.push(`${c.name}: ${c.appearance}`);
+    });
+    styleSeedParts.push('same color palette throughout, consistent character designs, unified lighting and shadow style');
+    const styleSeed = styleSeedParts.join(', ');
+
     const sorted = [...clips].sort((a, b) => a.order - b.order);
-    const pending = sorted.filter(c =>
-      c.type !== 'text_overlay' && c.type !== 'transition' &&
-      (c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.generated_media_url))
+    const playable = sorted.filter(c => c.type !== 'text_overlay' && c.type !== 'transition');
+    const pending = playable.filter(c =>
+      c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.generated_media_url)
     );
-    pending.forEach((clip) => {
+
+    // Seed the consistency chain with the existing thumbnail so clip 1 is grounded
+    // in the same visual world as the cover. Falls back to nearest already-done clip.
+    const existingThumb = currentProject?.cover_image_url;
+    let prevUrl: string | undefined = (existingThumb && !existingThumb.startsWith('data:')) ? existingThumb : undefined;
+
+    // Generate one at a time — each clip passes the previous frame as scene_image_url
+    // so the video pipeline later can use it as an image-to-video start frame.
+    for (const clip of pending) {
       const order = sorted.findIndex(c => c.id === clip.id);
+      // If chain hasn't started yet, look for the nearest already-done clip before this one
+      if (!prevUrl) {
+        const prevDone = sorted.slice(0, order).reverse().find(
+          c => c.type !== 'text_overlay' && c.type !== 'transition' && c.generated_media_url && !c.generated_media_url.startsWith('data:')
+        );
+        if (prevDone) prevUrl = prevDone.generated_media_url!;
+      }
+
       updateClip(clip.id, { gen_status: 'generating' });
-      api.generateClip(id, clip.id, clip.prompt, 'image', {
-        clip_order: order,
-        characters: chars.length > 0 ? chars : undefined,
-        mood: analysis?.mood,
-        genre: analysis?.genre,
-      }).then((result: any) => {
+      try {
+        const result: any = await api.generateClip(id, clip.id, clip.prompt, 'image', {
+          clip_order: order,
+          clip_total: playable.length,
+          scene_image_url: prevUrl,
+          characters: chars.length > 0 ? chars : undefined,
+          mood: analysis?.mood,
+          genre: analysis?.genre,
+          style_seed: styleSeed,
+        });
         const url = result.media_url || result.output_url || result.generated_media_url;
         if (url) {
-          // Sync result (Gemini fallback) — URL came back immediately
           updateClip(clip.id, { gen_status: 'done', generated_media_url: url, thumbnail_url: result.thumbnail_url || url });
+          prevUrl = url;
         } else if (result.status === 'generating') {
-          // Async result (Kling) — stays 'generating', WebSocket callback will update when done
+          // Async — WebSocket callback will update; don't block sequence on it
         } else {
           updateClip(clip.id, { gen_status: 'error', gen_error: result.message || 'No image returned' });
         }
-      }).catch((err: any) => updateClip(clip.id, { gen_status: 'error', gen_error: String(err) }));
-    });
+      } catch (err: any) {
+        updateClip(clip.id, { gen_status: 'error', gen_error: String(err) });
+      }
+    }
   }, [id, clips, currentProject, updateClip]);
 
   // Compile all scene images → Kling videos (sequential)
@@ -909,6 +944,57 @@ export default function EditorPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Book Thumbnail</label>
+                    <button
+                      onClick={async () => {
+                        if (!currentProject) return;
+                        setGeneratingThumb(true);
+                        try {
+                          const analysis = currentProject.analysis;
+                          const chars = (analysis?.characters as any[] || []).map((c: any) => ({
+                            name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+                          }));
+
+                          // Same style seed used for scene generation — ensures cover shares
+                          // the same palette, character designs, and art direction as the clips.
+                          const styleSeedParts: string[] = [];
+                          if (analysis?.genre) styleSeedParts.push(`${analysis.genre} story`);
+                          if (analysis?.mood) styleSeedParts.push(`${analysis.mood} atmosphere`);
+                          chars.forEach((c: any) => { if (c.appearance) styleSeedParts.push(`${c.name}: ${c.appearance}`); });
+                          styleSeedParts.push('same color palette throughout, consistent character designs, unified lighting and shadow style');
+                          const styleSeed = styleSeedParts.join(', ');
+
+                          // Pull scene descriptions from already-generated clips to ground
+                          // the thumbnail in the visual world that has been established.
+                          const sortedClips = [...clips].sort((a, b) => a.order - b.order);
+                          const generatedScenes = sortedClips
+                            .filter(c => c.gen_status === 'done' && c.generated_media_url && c.prompt)
+                            .slice(0, 4)
+                            .map(c => c.prompt)
+                            .join('; ');
+
+                          const prompt = [
+                            `Epic book cover for "${currentProject.title}"`,
+                            currentProject.description || '',
+                            generatedScenes ? `Scenes established in this story: ${generatedScenes}` : '',
+                            'Dramatic full-bleed cover art, iconic hero composition, bold manga linework',
+                          ].filter(Boolean).join('. ');
+
+                          const result: any = await api.generateClip(id, 'thumb-' + Date.now(), prompt, 'image', {
+                            characters: chars.length > 0 ? chars : undefined,
+                            mood: analysis?.mood,
+                            genre: analysis?.genre,
+                            style_seed: styleSeed,
+                          });
+                          const url = result.media_url || result.url || result.output_url;
+                          if (url) setEditThumbnail(url);
+                        } catch (e) { console.error(e); } finally { setGeneratingThumb(false); }
+                      }}
+                      disabled={generatingThumb}
+                      className="manga-btn bg-purple-600 text-white px-2 py-0.5 text-[0.6rem] flex items-center gap-1 border-purple-600"
+                    >
+                      {generatingThumb ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                      {generatingThumb ? 'Generating...' : 'AI Generate'}
+                    </button>
                   </div>
 
                   {editThumbnail ? (

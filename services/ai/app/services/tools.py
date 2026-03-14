@@ -182,6 +182,7 @@ TOOL_DEFINITIONS = [
                     "description": "Frames per second (24, 30, or 60)",
                 },
             },
+            "required": [],
         },
     },
     {
@@ -271,6 +272,7 @@ TOOL_DEFINITIONS = [
                     "description": "aggressive = every beat, smooth = every 2 beats, minimal = every 4 beats",
                 },
             },
+            "required": [],
         },
     },
     {

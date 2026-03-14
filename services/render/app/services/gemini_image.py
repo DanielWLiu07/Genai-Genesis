@@ -1,4 +1,4 @@
-"""Image generation using Imagen 4 (google-genai SDK)."""
+"""Image generation using Imagen 4 Fast (google-genai SDK)."""
 import base64
 import logging
 import os
@@ -10,12 +10,11 @@ logger = logging.getLogger(__name__)
 
 _cache: dict[str, dict] = {}
 
+RENDER_SERVICE_URL = "http://localhost:8002"
+
 
 async def generate_image_gemini(prompt: str, aspect_ratio: str = "16:9") -> dict:
-    """Generate an image using Imagen 4 Fast.
-
-    Returns dict with keys: status, url, thumbnail_url, message
-    """
+    """Generate an image using Imagen 4 Fast. Returns a static HTTP URL."""
     settings = get_settings()
     if not settings.gemini_api_key:
         return {"status": "error", "message": "No GEMINI_API_KEY configured"}
@@ -36,7 +35,6 @@ async def generate_image_gemini(prompt: str, aspect_ratio: str = "16:9") -> dict
             "bold ink lines, dramatic shading, professional quality."
         )
 
-        # Map aspect ratio string to Imagen-supported value
         ar_map = {"16:9": "16:9", "9:16": "9:16", "1:1": "1:1", "4:3": "4:3", "3:4": "3:4"}
         ar = ar_map.get(aspect_ratio, "16:9")
 
@@ -53,16 +51,17 @@ async def generate_image_gemini(prompt: str, aspect_ratio: str = "16:9") -> dict
 
         output_dir = settings.render_output_dir
         os.makedirs(output_dir, exist_ok=True)
-        filepath = os.path.join(output_dir, f"imagen_{cache_key[:16]}.png")
+        filename = f"imagen_{cache_key[:16]}.png"
+        filepath = os.path.join(output_dir, filename)
         with open(filepath, "wb") as f:
             f.write(raw)
 
-        b64 = base64.b64encode(raw).decode()
-        data_url = f"data:image/png;base64,{b64}"
+        # Return a static HTTP URL — small, cacheable, no base64 bloat in DB
+        url = f"{RENDER_SERVICE_URL}/outputs/{filename}"
 
-        result = {"status": "done", "url": data_url, "thumbnail_url": data_url}
+        result = {"status": "done", "url": url, "thumbnail_url": url}
         _cache[cache_key] = result
-        logger.info("Imagen image generated: %d bytes", len(raw))
+        logger.info("Imagen image saved: %s (%d bytes)", filename, len(raw))
         return result
 
     except Exception as e:

@@ -1,7 +1,9 @@
 import logging
 import shutil
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.routers import generate, compose
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -18,6 +20,11 @@ app.add_middleware(
 app.include_router(generate.router)
 app.include_router(compose.router)
 
+# Serve generated images/videos as static files — avoids storing huge base64 in DB
+_output_dir = os.environ.get("RENDER_OUTPUT_DIR", "/tmp/renders")
+os.makedirs(_output_dir, exist_ok=True)
+app.mount("/outputs", StaticFiles(directory=_output_dir), name="outputs")
+
 
 @app.get("/")
 async def root():
@@ -27,7 +34,4 @@ async def root():
 @app.get("/health")
 async def health():
     ffmpeg_available = shutil.which("ffmpeg") is not None
-    return {
-        "status": "healthy",
-        "ffmpeg": ffmpeg_available,
-    }
+    return {"status": "healthy", "ffmpeg": ffmpeg_available}

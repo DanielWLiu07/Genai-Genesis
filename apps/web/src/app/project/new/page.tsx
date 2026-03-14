@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
+import Image from 'next/image';
 import { api } from '@/lib/api';
 import gsap from 'gsap';
 
@@ -45,6 +46,21 @@ export default function NewProject() {
       );
     }, mainRef);
 
+    // Decorative elements
+    gsap.fromTo('.decor-item',
+      { opacity: 0, scale: 0.7 },
+      { opacity: 0.5, scale: 1, duration: 1, stagger: 0.12, delay: 0.3, ease: 'power2.out' }
+    );
+    gsap.fromTo('.decor-sun',
+      { opacity: 0, scale: 0.5 },
+      { opacity: 0.45, scale: 1, duration: 1.2, delay: 0.5, ease: 'power2.out' }
+    );
+    gsap.to('.decor-sun', { y: -20, duration: 1.4, delay: 1.5, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+    gsap.to('.decor-sun', { rotation: 360, duration: 30, delay: 1.5, repeat: -1, ease: 'none' });
+    document.querySelectorAll('.decor-item').forEach((el, i) => {
+      gsap.to(el, { rotation: '+=6', y: '+=5', duration: 2.8 + i * 0.6, delay: 1.2 + i * 0.35, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+    });
+
     return () => ctx.revert();
   }, []);
 
@@ -75,8 +91,17 @@ export default function NewProject() {
   };
 
   return (
-    <main ref={mainRef} className="min-h-screen bg-white/80 backdrop-blur-sm">
-      <div className="max-w-2xl mx-auto px-6 py-12">
+    <main ref={mainRef} className="min-h-screen relative" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+      {/* Decorative corner images */}
+      <Image src="/stylized_imgs/stone2.png" alt="" width={160} height={220} className="decor-item fixed -top-6 -right-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.2))', transform: 'rotate(12deg)' }} />
+      <Image src="/stylized_imgs/leaf4.png" alt="" width={140} height={120} className="decor-item fixed top-10 -left-8 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
+      <Image src="/stylized_imgs/flower4.png" alt="" width={150} height={150} className="decor-item fixed -bottom-4 -left-4 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-20deg)' }} />
+      <Image src="/stylized_imgs/pine.png" alt="" width={120} height={200} className="decor-item fixed -bottom-10 -right-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(5deg)' }} />
+      <Image src="/stylized_imgs/sun.png" alt="" width={180} height={170} className="decor-sun fixed top-24 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
+      <img src="/stylized_imgs/oni.png" alt="" className="fixed bottom-0 left-[53%] -translate-x-1/2 w-[900px] pointer-events-none select-none z-[3]" style={{ opacity: 0.15 }} />
+
+      <div className="max-w-2xl mx-auto px-6 py-12 relative z-10">
+        <div className="bg-white/85 backdrop-blur-sm border-2 border-[#e8e8e8] p-8 shadow-[6px_6px_0px_rgba(0,0,0,0.08)]">
         <Link href="/dashboard" className="text-[#888] hover:text-[#111] flex items-center gap-2 mb-8 text-sm transition-colors">
           <ArrowLeft size={16} /> Back to Dashboard
         </Link>
@@ -119,6 +144,7 @@ export default function NewProject() {
           >
             {loading ? 'Creating…' : 'Create Project'}
           </button>
+        </div>
         </div>
       </div>
     </main>

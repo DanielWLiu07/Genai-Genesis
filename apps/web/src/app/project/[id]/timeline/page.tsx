@@ -61,6 +61,19 @@ function getPreviewStyle(type: EffectType, active: boolean): React.CSSProperties
 export default function TimelinePage() {
   const { id } = useParams<{ id: string }>();
 
+  // Load timeline from API if store is empty (direct navigation)
+  const loadTimeline = useTimelineStore((s) => s.loadTimeline);
+  const setProjectId = useTimelineStore((s) => s.setProjectId);
+  useEffect(() => {
+    if (!id) return;
+    setProjectId(id);
+    if (useTimelineStore.getState().clips.length === 0) {
+      import('@/lib/api').then(({ api }) => {
+        api.getTimeline(id).then((tl: any) => loadTimeline(tl)).catch(() => {});
+      });
+    }
+  }, [id, setProjectId, loadTimeline]);
+
   const clips      = useTimelineStore((s) => s.clips);
   const effects    = useTimelineStore((s) => s.effects);
   const beatMap    = useTimelineStore((s) => s.beatMap);

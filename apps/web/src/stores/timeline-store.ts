@@ -18,11 +18,39 @@ export interface Clip {
   position: { x: number; y: number };
 }
 
+export type EffectType =
+  | 'flash_white' | 'flash_black'    // frame flash
+  | 'zoom_burst'                      // sudden zoom in/out
+  | 'shake'                           // camera shake
+  | 'echo'                            // ghost repeat of frame
+  | 'speed_ramp'                      // slow → fast ramp
+  | 'chromatic'                       // chromatic aberration RGB split
+  | 'panel_split'                     // manga multi-panel split
+  | 'reverse'                         // brief reverse playback
+  | 'glitch'                          // digital glitch artifact
+  | 'strobe';                         // rapid strobe flash
+
+export interface Effect {
+  id: string;
+  type: EffectType;
+  timestamp_ms: number;    // when this effect fires (global timeline time)
+  duration_ms: number;     // how long it lasts
+  intensity: number;       // 0-1
+}
+
+export interface BeatMap {
+  bpm: number;
+  offset_ms: number;
+  beats: number[];         // beat timestamps in ms
+}
+
 interface TimelineState {
   projectId: string | null;
   clips: Clip[];
   musicTrack: { url: string; name: string; duration_ms: number; volume: number } | null;
   settings: { resolution: string; aspect_ratio: string; fps: number };
+  effects: Effect[];
+  beatMap: BeatMap | null;
 
   // Actions
   setProjectId: (id: string) => void;
@@ -34,6 +62,12 @@ interface TimelineState {
   setMusicTrack: (track: TimelineState['musicTrack']) => void;
   updateSettings: (settings: Partial<TimelineState['settings']>) => void;
   loadTimeline: (timeline: any) => void;
+  addEffect: (effect: Effect) => void;
+  removeEffect: (effectId: string) => void;
+  updateEffect: (effectId: string, updates: Partial<Effect>) => void;
+  setBeatMap: (beatMap: BeatMap | null) => void;
+  setEffects: (effects: Effect[]) => void;
+  clearEffects: () => void;
 }
 
 export const useTimelineStore = create<TimelineState>((set) => ({
@@ -41,6 +75,8 @@ export const useTimelineStore = create<TimelineState>((set) => ({
   clips: [],
   musicTrack: null,
   settings: { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
+  effects: [],
+  beatMap: null,
 
   setProjectId: (id) => set({ projectId: id }),
 
@@ -105,4 +141,22 @@ export const useTimelineStore = create<TimelineState>((set) => ({
       settings: timeline.settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
     });
   },
+
+  addEffect: (effect) => set((state) => ({
+    effects: [...state.effects, effect],
+  })),
+
+  removeEffect: (effectId) => set((state) => ({
+    effects: state.effects.filter((e) => e.id !== effectId),
+  })),
+
+  updateEffect: (effectId, updates) => set((state) => ({
+    effects: state.effects.map((e) => (e.id === effectId ? { ...e, ...updates } : e)),
+  })),
+
+  setBeatMap: (beatMap) => set({ beatMap }),
+
+  setEffects: (effects) => set({ effects }),
+
+  clearEffects: () => set({ effects: [] }),
 }));

@@ -134,7 +134,8 @@ function SceneNodeInner({ data }: NodeProps) {
     const sceneImageUrl = startFrame;
 
     try {
-      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, clip.type, {
+      // Always generate as image in the scene editor — video compilation is a separate batch step
+      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, 'image', {
         clip_order: clipOrder,
         scene_image_url: sceneImageUrl,
         characters: characters.length > 0 ? characters : undefined,
@@ -160,7 +161,15 @@ function SceneNodeInner({ data }: NodeProps) {
 
       <div className="flex items-center gap-2 mb-2">
         <div ref={statusDotRef} className={`w-2 h-2 rounded-full ${statusColors[clip.gen_status]}`} />
-        <span className="text-xs text-[#888] uppercase font-bold tracking-wider" style={{ fontFamily: 'var(--font-manga)' }}>{clip.type}</span>
+        <span className="text-xs text-[#888] uppercase font-bold tracking-wider" style={{ fontFamily: 'var(--font-manga)' }}>
+          {clip.type === 'video' ? 'scene' : clip.type}
+        </span>
+        {clip.type === 'video' && (
+          <span className="text-[0.5rem] text-blue-500 bg-blue-50 border border-blue-200 px-1 py-0.5 leading-none" style={{ fontFamily: 'var(--font-manga)' }}>→ VID</span>
+        )}
+        {(clip as any).shot_type === 'continuous' && (
+          <span className="text-[0.5rem] text-green-600 bg-green-50 border border-green-200 px-1 py-0.5 leading-none" style={{ fontFamily: 'var(--font-manga)' }}>∿</span>
+        )}
         <span className="text-xs text-[#555] ml-auto">{(clip.duration_ms / 1000).toFixed(1)}s</span>
       </div>
 
@@ -203,7 +212,7 @@ function SceneNodeInner({ data }: NodeProps) {
             className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"
           >
             <Sparkles size={18} className="text-white" />
-            <span className="text-xs font-medium text-white" style={{ fontFamily: 'var(--font-manga)' }}>Generate</span>
+            <span className="text-xs font-medium text-white" style={{ fontFamily: 'var(--font-manga)' }}>Scene Image</span>
           </button>
         )}
 

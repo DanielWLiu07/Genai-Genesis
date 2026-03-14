@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTimelineStore } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
-import { Send, Bot, User } from 'lucide-react';
+import { Send, Bot, User, ChevronRight } from 'lucide-react';
 import gsap from 'gsap';
 
 interface Message {
@@ -14,9 +14,10 @@ interface Message {
 
 interface ChatPanelProps {
   projectId: string;
+  onCollapse?: () => void;
 }
 
-export function ChatPanel({ projectId }: ChatPanelProps) {
+export function ChatPanel({ projectId, onCollapse }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -212,11 +213,16 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
 
   return (
     <div className="flex flex-col h-full bg-white/80 border-l-3 border-[#ccc]">
-      <div className="p-3 border-b-2 border-[#ccc]">
+      <div className="p-3 border-b-2 border-[#ccc] flex items-center justify-between">
         <h3 className="text-sm flex items-center gap-2">
           <Bot size={16} className="text-[#111]" />
           <span className="manga-accent-bar text-xs">AI Copilot</span>
         </h3>
+        {onCollapse && (
+          <button onClick={onCollapse} className="text-[#888] hover:text-[#111] transition-colors" title="Collapse panel">
+            <ChevronRight size={14} />
+          </button>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">

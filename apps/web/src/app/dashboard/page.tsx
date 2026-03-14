@@ -89,7 +89,10 @@ export default function Dashboard() {
           <div className="hero-title flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <Image src="/logo.png" alt="" width={28} height={28} className="drop-shadow-[0_0_8px_rgba(0,0,0,0.15)]" />
-              <h1 className="manga-title text-xl text-[#111]">MangaMate</h1>
+              <h1
+                className="manga-title text-xl"
+                style={{ color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000' }}
+              >MangaMate</h1>
             </Link>
             <div className="h-4 w-px bg-[#ccc]" />
             <p className="text-[0.7rem] text-[#888]">Upload stories. AI builds cinematic trailers. You edit with a visual copilot.</p>
@@ -139,8 +142,10 @@ export default function Dashboard() {
                               ? localStorage.getItem(`cover_image_${project.id}`)
                               : null;
                             const src = localThumb || project.cover_image_url;
+                            const focusRaw = typeof window !== 'undefined' ? localStorage.getItem(`cover_focus_${project.id}`) : null;
+                            const focus = focusRaw ? JSON.parse(focusRaw) as { x: number; y: number } : { x: 50, y: 50 };
                             return src ? (
-                              <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                              <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: `${focus.x}% ${focus.y}%` }} />
                             ) : (
                               <div className="absolute inset-0" style={{ background: coverGradient(project.title) }} />
                             );

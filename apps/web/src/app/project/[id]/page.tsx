@@ -15,10 +15,12 @@ import { useTimelineStore } from '@/stores/timeline-store';
 import { useProjectStore, type CharacterEntry } from '@/stores/project-store';
 import { ClipDetailPanel } from '@/components/editor/ClipDetailPanel';
 import { TimelineStrip } from '@/components/editor/TimelineStrip';
+import { ImageCropper } from '@/components/ImageCropper';
 import gsap from 'gsap';
 
 type GenerationStep = 'idle' | 'analyzing' | 'planning' | 'done' | 'error';
 type SidebarTab = 'story' | 'chars';
+type WorkflowPhase = 'plan' | 'images' | 'videos' | 'effects';
 
 const STYLES = ['cinematic', 'manga', 'noir', 'horror', 'romance', 'fantasy', 'sci-fi', 'comic'];
 
@@ -33,6 +35,8 @@ export default function EditorPage() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [generatingVideos, setGeneratingVideos] = useState(false);
+  const [videoGenProgress, setVideoGenProgress] = useState({ done: 0, total: 0 });
   const [selectedStyle, setSelectedStyle] = useState('cinematic');
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -54,6 +58,7 @@ export default function EditorPage() {
   const [editDesc, setEditDesc] = useState('');
   const [editStoryText, setEditStoryText] = useState('');
   const [editThumbnail, setEditThumbnail] = useState('');
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +77,7 @@ export default function EditorPage() {
   const onboardingCardRef = useRef<HTMLDivElement>(null);
   const generateBtnRef = useRef<HTMLButtonElement>(null);
   const editorHeaderRef = useRef<HTMLDivElement>(null);
+  const leftSidebarRef = useRef<HTMLDivElement>(null);
   const flashOverlayRef = useRef<HTMLDivElement>(null);
   const prevGenStepRef = useRef<GenerationStep>('idle');
   const hadClipsRef = useRef(false);
@@ -209,6 +215,22 @@ export default function EditorPage() {
     }
   }, [clips.length]);
 
+  const openLeft = useCallback(() => {
+    setLeftOpen(true);
+    requestAnimationFrame(() => {
+      if (leftSidebarRef.current)
+        gsap.fromTo(leftSidebarRef.current, { width: 24 }, { width: 220, duration: 0.32, ease: 'power3.out', overwrite: true });
+    });
+  }, []);
+
+  const closeLeft = useCallback(() => {
+    if (leftSidebarRef.current)
+      gsap.to(leftSidebarRef.current, {
+        width: 24, duration: 0.22, ease: 'power3.in', overwrite: true,
+        onComplete: () => setLeftOpen(false),
+      });
+  }, []);
+
   const handleExport = useCallback(async () => {
     if (!id || exporting) return;
     setExporting(true);
@@ -344,6 +366,72 @@ export default function EditorPage() {
     } catch { setSuggestions([]); } finally { setLoadingSuggestions(false); }
   }, [id, clips, currentProject, loadingSuggestions]);
 
+  // Batch generate scene images for all pending clips
+  const handleGenerateAllImages = useCallback(async () => {
+    if (!id) return;
+    const analysis = currentProject?.analysis;
+    const chars = (analysis?.characters as any[] || []).map((c: any) => ({
+      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+    }));
+    const sorted = [...clips].sort((a, b) => a.order - b.order);
+    const pending = sorted.filter(c => c.type !== 'text_overlay' && c.type !== 'transition' && c.gen_status === 'pending');
+    pending.forEach((clip) => {
+      const order = sorted.findIndex(c => c.id === clip.id);
+      updateClip(clip.id, { gen_status: 'generating' });
+      api.generateClip(id, clip.id, clip.prompt, 'image', {
+        clip_order: order,
+        characters: chars.length > 0 ? chars : undefined,
+        mood: analysis?.mood,
+        genre: analysis?.genre,
+      }).then((result: any) => {
+        updateClip(clip.id, { gen_status: 'done', generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url });
+      }).catch(() => updateClip(clip.id, { gen_status: 'error' }));
+    });
+  }, [id, clips, currentProject, updateClip]);
+
+  // Compile all scene images → Kling videos (sequential)
+  const handleGenerateAllVideos = useCallback(async () => {
+    if (!id || generatingVideos) return;
+    const analysis = currentProject?.analysis;
+    const chars = (analysis?.characters as any[] || []).map((c: any) => ({
+      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+    }));
+    const sorted = [...clips].sort((a, b) => a.order - b.order);
+    const toConvert = sorted.filter(c => c.type !== 'text_overlay' && c.type !== 'transition' && c.thumbnail_url);
+    setGeneratingVideos(true);
+    setVideoGenProgress({ done: 0, total: toConvert.length });
+    for (let i = 0; i < toConvert.length; i++) {
+      const clip = toConvert[i];
+      const order = sorted.findIndex(c => c.id === clip.id);
+      const isCont = (clip as any).shot_type === 'continuous';
+      const prev = order > 0 ? sorted[order - 1] : null;
+      const startFrame = isCont
+        ? (prev?.thumbnail_url && !prev.thumbnail_url.startsWith('data:') ? prev.thumbnail_url : clip.thumbnail_url)
+        : (clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined);
+      updateClip(clip.id, { gen_status: 'generating' });
+      try {
+        const result: any = await api.generateClip(id, clip.id, clip.prompt, 'video', {
+          clip_order: order,
+          scene_image_url: startFrame,
+          characters: chars.length > 0 ? chars : undefined,
+          mood: analysis?.mood,
+          genre: analysis?.genre,
+          shot_type: (clip as any).shot_type || 'cut',
+          is_continuous: isCont,
+        });
+        updateClip(clip.id, {
+          gen_status: 'done', type: 'video' as any,
+          generated_media_url: result.media_url,
+          thumbnail_url: result.thumbnail_url || clip.thumbnail_url,
+        });
+      } catch {
+        updateClip(clip.id, { gen_status: 'error' });
+      }
+      setVideoGenProgress({ done: i + 1, total: toConvert.length });
+    }
+    setGeneratingVideos(false);
+  }, [id, clips, currentProject, updateClip, generatingVideos]);
+
   const handleStartAddChar = () => { setAddingChar(true); setNewCharName(''); setNewCharDesc(''); };
   const handleConfirmAddChar = () => {
     if (!newCharName.trim()) return;
@@ -368,6 +456,23 @@ export default function EditorPage() {
   const alreadyEditing = ['editing', 'rendering', 'done'].includes(currentProject?.status || '');
   const showOnboarding = !loading && !error && clips.length === 0 && hasBook && genStep !== 'done' && !alreadyEditing;
   const isGenerating = genStep === 'analyzing' || genStep === 'planning';
+
+  // Workflow phase detection
+  const playableClips = clips.filter(c => c.type !== 'text_overlay' && c.type !== 'transition');
+  const imagesAllDone = playableClips.length > 0 && playableClips.every(c => c.gen_status === 'done' || c.gen_status === 'error');
+  const anyGenerating = playableClips.some(c => c.gen_status === 'generating');
+  const videosExist = playableClips.some(c => c.type === 'video' && c.gen_status === 'done' && c.generated_media_url);
+  const workflowPhase: WorkflowPhase =
+    clips.length === 0 ? 'plan' :
+    !imagesAllDone ? 'images' :
+    !videosExist ? 'videos' :
+    'effects';
+  const WORKFLOW_STEPS: { key: WorkflowPhase; label: string }[] = [
+    { key: 'plan', label: 'PLAN SCENES' },
+    { key: 'images', label: 'GEN IMAGES' },
+    { key: 'videos', label: 'GEN VIDEOS' },
+    { key: 'effects', label: 'ADD EFFECTS' },
+  ];
 
   // All characters: project characters + any AI-detected ones not already in the list
   const projectChars = currentProject?.characters || [];
@@ -406,11 +511,11 @@ export default function EditorPage() {
         <Link href="/dashboard" className="text-[#888] hover:text-[#111] transition-colors">
           <ArrowLeft size={18} />
         </Link>
-        <div ref={editorHeaderRef} className="flex items-center gap-2">
-          <Film size={18} className="text-[#111]" />
+        <div ref={editorHeaderRef} className="flex items-center gap-2 min-w-0">
+          <Film size={18} className="text-[#111] shrink-0" />
           <span
-            className="font-bold text-base truncate max-w-[280px]"
-            style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '1.5px #111', paintOrder: 'stroke fill', textShadow: '2px 2px 0px #000' }}
+            className="font-bold text-base"
+            style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '1.5px #111', paintOrder: 'stroke fill', textShadow: '2px 2px 0px #000', whiteSpace: 'nowrap' }}
           >
             {currentProject?.title || 'MangaMate Editor'}
           </span>
@@ -427,21 +532,37 @@ export default function EditorPage() {
           )}
           {clips.length > 0 && (
             <button onClick={handleGetSuggestions} disabled={loadingSuggestions} className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
-              {loadingSuggestions ? <Loader2 size={14} className="animate-spin" /> : <Lightbulb size={14} />} Suggestions
+              {loadingSuggestions ? <Loader2 size={14} className="animate-spin" /> : <Lightbulb size={14} />} Suggest
             </button>
           )}
-          {clips.length > 0 && (
-            <Link href={`/project/${id}/timeline`} className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
-              <Zap size={14} /> Edit
+          {/* Phase-aware primary CTA */}
+          {workflowPhase === 'images' && !anyGenerating && playableClips.some(c => c.gen_status === 'pending') && (
+            <button onClick={handleGenerateAllImages} className="manga-btn bg-purple-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-purple-600">
+              <Sparkles size={14} /> Generate All Images
+            </button>
+          )}
+          {workflowPhase === 'videos' && (
+            <button
+              onClick={handleGenerateAllVideos}
+              disabled={generatingVideos}
+              className="manga-btn bg-blue-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-blue-600"
+            >
+              {generatingVideos
+                ? <><Loader2 size={14} className="animate-spin" /> {videoGenProgress.done}/{videoGenProgress.total} Videos...</>
+                : <><Clapperboard size={14} /> Compile Videos</>
+              }
+            </button>
+          )}
+          {workflowPhase === 'effects' && (
+            <Link href={`/project/${id}/timeline`} className="manga-btn bg-[#fbbf24] text-black px-3 py-1.5 text-sm flex items-center gap-1.5 border-[#fbbf24] font-bold">
+              <Zap size={14} /> Add Effects
             </Link>
           )}
-          <button className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
-            <Play size={14} /> Preview
-          </button>
-          <button onClick={handleExport} disabled={exporting} className="manga-btn bg-[#111] text-white px-3 py-1.5 text-sm flex items-center gap-1.5">
-            {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            {exportStatus || (exporting ? 'Exporting...' : 'Export')}
-          </button>
+          {clips.length > 0 && workflowPhase !== 'effects' && (
+            <Link href={`/project/${id}/timeline`} className="manga-btn bg-white text-[#888] px-2.5 py-1.5 text-sm flex items-center gap-1.5">
+              <Zap size={14} />
+            </Link>
+          )}
           {!rightOpen && (
             <button onClick={() => setRightOpen(true)} className="text-[#888] hover:text-[#111] transition-colors" title="Open panel">
               <ChevronLeft size={16} />
@@ -450,30 +571,71 @@ export default function EditorPage() {
         </div>
       </header>
 
+      {/* Workflow phase strip */}
+      {clips.length > 0 && (
+        <div className="h-7 border-b border-[#e5e5e5] bg-[#fafafa] flex items-center px-4 gap-0 shrink-0 overflow-x-auto">
+          {WORKFLOW_STEPS.map(({ key, label }, i) => {
+            const stepIdx = WORKFLOW_STEPS.findIndex(s => s.key === workflowPhase);
+            const done = i < stepIdx;
+            const active = key === workflowPhase;
+            return (
+              <div key={key} className="flex items-center">
+                <div
+                  className={`flex items-center gap-1 px-2.5 py-0.5 text-[0.55rem] font-bold tracking-widest transition-colors ${
+                    active ? 'bg-[#111] text-white' :
+                    done ? 'text-[#111]' : 'text-[#bbb]'
+                  }`}
+                  style={{ fontFamily: 'var(--font-manga)' }}
+                >
+                  {done ? (
+                    <Check size={8} strokeWidth={3} />
+                  ) : (
+                    <span>{i + 1}.</span>
+                  )}
+                  {label}
+                </div>
+                {i < WORKFLOW_STEPS.length - 1 && (
+                  <span className="text-[#ccc] text-xs mx-0.5">›</span>
+                )}
+              </div>
+            );
+          })}
+          {generatingVideos && (
+            <span className="ml-3 text-[0.55rem] text-blue-600 font-bold" style={{ fontFamily: 'var(--font-manga)' }}>
+              COMPILING {videoGenProgress.done}/{videoGenProgress.total}...
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Main */}
       <div className="flex-1 flex overflow-hidden relative">
 
         {/* Left sidebar — tabbed */}
         {currentProject && clips.length > 0 && (
-          <>
-            {/* Collapsed strip — proper sibling, takes own 24px */}
+          <div
+            ref={leftSidebarRef}
+            className="shrink-0 border-r-2 border-[#ccc] bg-white flex flex-col overflow-hidden"
+            style={{ width: leftOpen ? 220 : 24 }}
+          >
+            {/* Collapsed strip */}
             {!leftOpen && (
               <button
-                onClick={() => setLeftOpen(true)}
-                className="shrink-0 w-6 border-r-2 border-[#ccc] bg-white hover:bg-[#f0f0f0] transition-colors flex items-center justify-center text-[#888] hover:text-[#111]"
+                onClick={openLeft}
+                className="flex-1 flex items-center justify-center text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors"
                 title="Expand sidebar"
               >
                 <ChevronRight size={13} />
               </button>
             )}
 
-            {/* Open sidebar */}
+            {/* Open sidebar content */}
             {leftOpen && (
-          <div className="shrink-0 w-[220px] border-r-2 border-[#ccc] bg-white flex flex-col overflow-hidden">
+              <>
                 {/* Tab buttons */}
                 <div className="flex border-b-2 border-[#ccc] shrink-0">
                   <button
-                    onClick={() => setLeftOpen(false)}
+                    onClick={closeLeft}
                     className="px-2 flex items-center justify-center text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors border-r border-[#eee]"
                     title="Collapse"
                   >
@@ -661,145 +823,11 @@ export default function EditorPage() {
                     </>
                   )}
 
-                  {/* SETTINGS TAB */}
-                  {activeTab === 'settings' && (
-                    <>
-                      <div className="space-y-3">
-                        <div>
-                          <span className="manga-accent-bar text-[0.6rem]">PROJECT INFO</span>
-                          <div className="mt-2 space-y-2">
-
-                            {/* Book Thumbnail */}
-                            <div>
-                              <label className="text-[0.6rem] text-[#888] uppercase tracking-wider block mb-1">Book Thumbnail</label>
-                              <div
-                                onClick={() => thumbnailInputRef.current?.click()}
-                                className="relative group w-full h-28 border-2 border-dashed border-[#ccc] cursor-pointer hover:border-[#111] transition-colors overflow-hidden"
-                              >
-                                {editThumbnail ? (
-                                  <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex flex-col items-center justify-center gap-1 manga-halftone">
-                                    <Upload size={18} className="text-[#aaa]" />
-                                    <span className="text-[0.6rem] text-[#aaa]">Click to upload</span>
-                                  </div>
-                                )}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                  <span className="text-white text-[0.6rem] font-medium">Change Image</span>
-                                </div>
-                              </div>
-                              {editThumbnail && (
-                                <button
-                                  onClick={() => setEditThumbnail('')}
-                                  className="text-[0.55rem] text-red-400 hover:text-red-600 mt-0.5"
-                                >
-                                  Remove thumbnail
-                                </button>
-                              )}
-                              <input
-                                ref={thumbnailInputRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  const reader = new FileReader();
-                                  reader.onload = () => setEditThumbnail(reader.result as string);
-                                  reader.readAsDataURL(file);
-                                  e.target.value = '';
-                                }}
-                              />
-                            </div>
-
-                            <div>
-                              <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Title</label>
-                              <input
-                                value={editTitle}
-                                onChange={(e) => setEditTitle(e.target.value)}
-                                className="manga-input w-full text-xs mt-1 py-1"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Description</label>
-                              <textarea
-                                value={editDesc}
-                                onChange={(e) => setEditDesc(e.target.value)}
-                                rows={2}
-                                className="manga-input w-full text-xs mt-1 resize-none"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Original Story Prompt</label>
-                          <textarea
-                            value={editStoryText}
-                            onChange={(e) => setEditStoryText(e.target.value)}
-                            rows={5}
-                            placeholder="Your story text or prompt..."
-                            className="manga-input w-full text-xs mt-1 resize-none"
-                          />
-                          <p className="text-[0.55rem] text-[#aaa] mt-0.5">Used for regeneration</p>
-                        </div>
-
-                        <button
-                          onClick={handleSaveSettings}
-                          disabled={savingSettings}
-                          className="manga-btn w-full bg-white text-[#111] py-1.5 text-xs flex items-center justify-center gap-1"
-                        >
-                          {savingSettings ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
-                          Save Settings
-                        </button>
-                      </div>
-
-                      <div className="border-t-2 border-[#eee] pt-3 space-y-2">
-                        <span className="manga-accent-bar text-[0.6rem]">TRAILER STYLE</span>
-                        <div className="grid grid-cols-2 gap-1 mt-2">
-                          {STYLES.map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => setSelectedStyle(s)}
-                              className={`text-[0.6rem] py-1 px-1.5 border-2 transition-colors capitalize ${
-                                selectedStyle === s ? 'border-[#111] bg-[#111] text-white' : 'border-[#ccc] text-[#666] hover:border-[#888]'
-                              }`}
-                            >
-                              {s}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="border-t-2 border-[#eee] pt-3 space-y-2">
-                        <span className="manga-accent-bar text-[0.6rem]">REGENERATION</span>
-                        <button
-                          onClick={handleReplan}
-                          disabled={isGenerating}
-                          className="manga-btn w-full bg-white text-[#111] py-1.5 text-xs flex items-center justify-center gap-1.5"
-                        >
-                          {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                          Re-plan with {selectedStyle} style
-                        </button>
-                        <button
-                          onClick={handleRegenFromScratch}
-                          disabled={isGenerating}
-                          className="manga-btn w-full bg-[#111] text-white py-1.5 text-xs flex items-center justify-center gap-1.5"
-                        >
-                          {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-                          Regenerate from Scratch
-                        </button>
-                        <p className="text-[0.55rem] text-[#aaa] text-center leading-snug">
-                          Re-plan keeps analysis. Regen from scratch re-analyzes the story.
-                        </p>
-                      </div>
-                    </>
-                  )}
 
                 </div>
-              </div>
+              </>
             )}
-          </>
+          </div>
         )}
 
         {/* Center: React Flow + Timeline Strip */}
@@ -833,22 +861,40 @@ export default function EditorPage() {
               </div>
               <div className="p-4 space-y-4">
                 <div>
-                  <label className="text-[0.6rem] text-[#888] uppercase tracking-wider block mb-1">Book Thumbnail</label>
-                  <div onClick={() => thumbnailInputRef.current?.click()} className="relative group w-full h-32 border-2 border-dashed border-[#ccc] cursor-pointer hover:border-[#111] transition-colors overflow-hidden">
-                    {editThumbnail ? (
-                      <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 manga-halftone">
-                        <Upload size={20} className="text-[#aaa]" />
-                        <span className="text-xs text-[#aaa]">Click to upload</span>
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-white text-xs font-medium">Change Image</span>
-                    </div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Book Thumbnail</label>
                   </div>
-                  {editThumbnail && <button onClick={() => setEditThumbnail('')} className="text-[0.6rem] text-red-400 hover:text-red-600 mt-0.5">Remove thumbnail</button>}
-                  <input ref={thumbnailInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setEditThumbnail(reader.result as string); reader.readAsDataURL(file); e.target.value = ''; }} />
+
+                  {editThumbnail ? (
+                    <div className="relative group w-full h-40 border-2 border-[#ccc] overflow-hidden">
+                      <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button onClick={() => thumbnailInputRef.current?.click()} className="manga-btn bg-white text-[#111] px-3 py-1 text-xs">
+                          Replace
+                        </button>
+                        <button onClick={() => { setEditThumbnail(''); }} className="manga-btn bg-white text-red-500 px-3 py-1 text-xs">
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => thumbnailInputRef.current?.click()}
+                      className="w-full h-32 border-2 border-dashed border-[#ccc] cursor-pointer hover:border-[#111] transition-colors flex flex-col items-center justify-center gap-1 manga-halftone"
+                    >
+                      <Upload size={20} className="text-[#aaa]" />
+                      <span className="text-xs text-[#aaa]">Click to upload</span>
+                    </div>
+                  )}
+
+                  <input ref={thumbnailInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => setCropSrc(reader.result as string);
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }} />
                 </div>
                 <div>
                   <label className="text-[0.6rem] text-[#888] uppercase tracking-wider">Title</label>
@@ -887,6 +933,16 @@ export default function EditorPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Image crop modal */}
+        {cropSrc && (
+          <ImageCropper
+            src={cropSrc}
+            aspect={2 / 3}
+            onConfirm={(dataUrl) => { setEditThumbnail(dataUrl); setCropSrc(null); }}
+            onCancel={() => setCropSrc(null)}
+          />
         )}
 
         {/* Onboarding overlay */}

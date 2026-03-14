@@ -84,6 +84,11 @@ export const api = {
     }),
   renderTrailer: (projectId: string) =>
     fetchAPI(`/projects/${projectId}/render`, { method: 'POST' }),
+  renderWithEffects: (projectId: string, effects: any[], beatMap: any) =>
+    fetchAPI(`/projects/${projectId}/render`, {
+      method: 'POST',
+      body: JSON.stringify({ effects, beat_map: beatMap }),
+    }),
   getRenderStatus: (projectId: string, jobId: string) =>
     fetchAPI(`/projects/${projectId}/render/${jobId}`),
 };

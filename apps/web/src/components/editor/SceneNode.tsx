@@ -104,7 +104,7 @@ function SceneNodeInner({ data }: NodeProps) {
     updateClip(clip.id, { gen_status: 'generating' });
 
     try {
-      const result: any = await api.generateClip(projectId, clip.id, clip.prompt);
+      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, clip.type);
       updateClip(clip.id, {
         gen_status: 'done',
         generated_media_url: result.media_url,
@@ -114,7 +114,7 @@ function SceneNodeInner({ data }: NodeProps) {
       console.error('Clip generation failed:', err);
       updateClip(clip.id, { gen_status: 'error', gen_error: String(err) });
     }
-  }, [clip.id, clip.prompt, updateClip]);
+  }, [clip.id, clip.prompt, clip.type, updateClip]);
 
   return (
     <div ref={nodeRef} className="manga-panel p-3 min-w-[200px]">
@@ -130,7 +130,7 @@ function SceneNodeInner({ data }: NodeProps) {
         {clip.thumbnail_url ? (
           <img src={clip.thumbnail_url} alt="" className="w-full h-24 object-cover mb-2" />
         ) : (
-          <div className="w-full h-24 bg-[#f5f5f5] mb-2 flex items-center justify-center manga-halftone">
+          <div className="w-full h-24 bg-[#eee] mb-2 flex items-center justify-center manga-halftone">
             <span className="text-[#555] text-xs">No preview</span>
           </div>
         )}
@@ -140,8 +140,8 @@ function SceneNodeInner({ data }: NodeProps) {
             onClick={handleGenerate}
             className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"
           >
-            <Sparkles size={18} className="text-[#111]" />
-            <span className="text-xs font-medium text-[#111]" style={{ fontFamily: 'var(--font-manga)' }}>Generate</span>
+            <Sparkles size={18} className="text-white" />
+            <span className="text-xs font-medium text-white" style={{ fontFamily: 'var(--font-manga)' }}>Generate</span>
           </button>
         )}
 
@@ -173,7 +173,7 @@ function SceneNodeInner({ data }: NodeProps) {
         )}
       </div>
 
-      <p className="text-xs text-[#ccc] line-clamp-2">{clip.prompt}</p>
+      <p className="text-xs text-[#666] line-clamp-2">{clip.prompt}</p>
 
       {clip.text && (
         <p className="text-xs text-[#111] mt-1 italic">&quot;{clip.text}&quot;</p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -8,6 +8,8 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   addEdge,
   type Node,
   type Edge,
@@ -18,7 +20,6 @@ import '@xyflow/react/dist/style.css';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
 import { SceneNode } from './SceneNode';
-import gsap from 'gsap';
 
 const nodeTypes: NodeTypes = {
   scene: SceneNode,
@@ -28,7 +29,7 @@ function clipsToNodes(clips: Clip[]): Node[] {
   return clips.map((clip) => ({
     id: clip.id,
     type: 'scene',
-    position: clip.position,
+    position: clip.position || { x: clip.order * 280, y: 100 },
     data: { clip },
   }));
 }
@@ -49,66 +50,45 @@ function clipsToEdges(clips: Clip[]): Edge[] {
   return edges;
 }
 
-export function FlowEditor() {
-  const clips = useTimelineStore((s) => s.clips);
-  const initialNodes = useMemo(() => clipsToNodes(clips), [clips]);
-  const initialEdges = useMemo(() => clipsToEdges(clips), [clips]);
-  const prevClipCount = useRef(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+interface FlowEditorInnerProps {
+  onNodeClick?: (clipId: string) => void;
+}
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
+  const clips = useTimelineStore((s) => s.clips);
+  const prevClipIds = useRef<string>('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { fitView } = useReactFlow();
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
   );
 
-  // Sync when clips change
-  useEffect(() => {
-    setNodes(clipsToNodes(clips));
-    setEdges(clipsToEdges(clips));
-  }, [clips, setNodes, setEdges]);
+  const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    onNodeClick?.(node.id);
+  }, [onNodeClick]);
 
-  // Animate nodes staggering in when clips first appear or new ones are added
+  // Sync React Flow state whenever clips change
   useEffect(() => {
-    if (clips.length > 0 && clips.length > prevClipCount.current) {
-      // Small delay to let React Flow render the DOM nodes
-      requestAnimationFrame(() => {
-        const nodeElements = containerRef.current?.querySelectorAll('.react-flow__node');
-        if (nodeElements && nodeElements.length > 0) {
-          // Only animate new nodes
-          const startIdx = prevClipCount.current;
-          const newNodes = Array.from(nodeElements).slice(startIdx);
-          if (newNodes.length > 0) {
-            gsap.fromTo(newNodes,
-              { opacity: 0, scale: 0.8, y: 20 },
-              { opacity: 1, scale: 1, y: 0, duration: 0.4, stagger: 0.06, ease: 'back.out(1.3)' }
-            );
-          }
-        }
-      });
+    const newNodes = clipsToNodes(clips);
+    const newEdges = clipsToEdges(clips);
+    setNodes(newNodes);
+    setEdges(newEdges);
+
+    // Fit view when clip count changes (add/remove/reorder/initial load)
+    const clipIds = clips.map((c) => c.id).join(',');
+    if (clipIds !== prevClipIds.current && clips.length > 0) {
+      // Small delay so React Flow has time to render nodes before fitting
+      setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 100);
     }
-    prevClipCount.current = clips.length;
-  }, [clips.length]);
+    prevClipIds.current = clipIds;
+  }, [clips, setNodes, setEdges, fitView]);
 
-  // Animate controls and minimap on mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!containerRef.current) return;
-      const controls = containerRef.current.querySelector('.react-flow__controls');
-      const minimap = containerRef.current.querySelector('.react-flow__minimap');
-      if (controls) {
-        gsap.fromTo(controls, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.4, ease: 'power2.out' });
-      }
-      if (minimap) {
-        gsap.fromTo(minimap, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, delay: 0.1, ease: 'power2.out' });
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Debounced auto-save when clips change
+  // Debounced auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const projectId = useTimelineStore.getState().projectId;
@@ -116,7 +96,8 @@ export function FlowEditor() {
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      api.updateTimeline(projectId, { clips }).catch((err) =>
+      const { musicTrack, settings } = useTimelineStore.getState();
+      api.updateTimeline(projectId, { clips, music_track: musicTrack, settings }).catch((err) =>
         console.error('Auto-save failed:', err)
       );
     }, 2000);
@@ -134,14 +115,31 @@ export function FlowEditor() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={handleNodeClick}
         nodeTypes={nodeTypes}
         fitView
-        className="bg-[#f5f5f5]"
+        fitViewOptions={{ padding: 0.2 }}
+        className="bg-white/60"
+        minZoom={0.2}
+        maxZoom={2}
+        defaultEdgeOptions={{ animated: true }}
       >
         <Background color="#ddd" gap={20} />
         <Controls className="!bg-white !border-2 !border-[#ccc] !rounded-none [&>button]:!bg-white [&>button]:!border-[#ccc] [&>button]:!text-[#888] [&>button:hover]:!bg-[#f0f0f0]" />
         <MiniMap className="!bg-white !border-2 !border-[#ccc]" />
       </ReactFlow>
     </div>
+  );
+}
+
+interface FlowEditorProps {
+  onNodeClick?: (clipId: string) => void;
+}
+
+export function FlowEditor({ onNodeClick }: FlowEditorProps) {
+  return (
+    <ReactFlowProvider>
+      <FlowEditorInner onNodeClick={onNodeClick} />
+    </ReactFlowProvider>
   );
 }

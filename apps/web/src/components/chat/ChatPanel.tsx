@@ -211,7 +211,7 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#f5f5f5] border-l-3 border-[#ccc]">
+    <div className="flex flex-col h-full bg-white/80 border-l-3 border-[#ccc]">
       <div className="p-3 border-b-2 border-[#ccc]">
         <h3 className="text-sm flex items-center gap-2">
           <Bot size={16} className="text-[#111]" />
@@ -241,7 +241,7 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
               {msg.tool_calls && msg.tool_calls.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {msg.tool_calls.map((tc, j) => (
-                    <div key={j} data-tool-badge={j} className="text-xs bg-[#f5f5f5] border border-[#ccc] px-2 py-1 font-mono text-[#111]">
+                    <div key={j} data-tool-badge={j} className="text-xs bg-white/80 border border-[#ccc] px-2 py-1 font-mono text-[#111]">
                       {tc.tool_name}({JSON.stringify(tc.arguments)})
                     </div>
                   ))}

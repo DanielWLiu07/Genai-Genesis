@@ -85,9 +85,21 @@ export const useTimelineStore = create<TimelineState>((set) => ({
     settings: { ...state.settings, ...settings },
   })),
 
-  loadTimeline: (timeline) => set({
-    clips: timeline.clips || [],
-    musicTrack: timeline.music_track || null,
-    settings: timeline.settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
-  }),
+  loadTimeline: (timeline) => {
+    // Ensure all clips have valid positions and orders
+    const rawClips = timeline.clips || [];
+    const clips = rawClips.map((c: any, i: number) => ({
+      ...c,
+      order: c.order ?? i,
+      position: c.position && c.position.x !== undefined
+        ? c.position
+        : { x: (c.order ?? i) * 280, y: 100 },
+      gen_status: c.gen_status || 'pending',
+    }));
+    return set({
+      clips,
+      musicTrack: timeline.music_track || null,
+      settings: timeline.settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
+    });
+  },
 }));

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
-import { X, Sparkles, RefreshCw, Clock, Type, ArrowRightLeft, Trash2, Upload } from 'lucide-react';
+import { X, Sparkles, RefreshCw, Clock, Type, ArrowRightLeft, Trash2, Upload, Film, ImageIcon } from 'lucide-react';
 import gsap from 'gsap';
 
 interface ClipDetailPanelProps {
@@ -23,6 +23,12 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
   const [durationMs, setDurationMs] = useState(clip?.duration_ms || 3000);
   const [text, setText] = useState(clip?.text || '');
   const [transition, setTransition] = useState<string>(clip?.transition_type || 'fade');
+  const [activeTab, setActiveTab] = useState<'image' | 'video'>('image');
+  const [generatingVideo, setGeneratingVideo] = useState(false);
+
+  const hasVideo = !!(clip?.generated_media_url && clip?.type === 'video');
+  const hasImage = !!clip?.thumbnail_url;
+  const showTabs = hasVideo && hasImage;
 
   // Slide in on mount
   useEffect(() => {
@@ -107,6 +113,26 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
     e.target.value = '';
   }, [clipId, updateClip]);
 
+  const handleGenerateVideo = useCallback(async () => {
+    const projectId = useTimelineStore.getState().projectId;
+    if (!projectId || !clip) return;
+    setGeneratingVideo(true);
+    updateClip(clipId, { gen_status: 'generating' });
+    try {
+      const result: any = await api.generateClip(projectId, clipId, clip.prompt, 'video', {
+        scene_image_url: clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined,
+      });
+      if (result.media_url) {
+        updateClip(clipId, { gen_status: 'done', type: 'video' as any, generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url || clip.thumbnail_url });
+        setActiveTab('video');
+      }
+    } catch (err) {
+      updateClip(clipId, { gen_status: 'error', gen_error: String(err) });
+    } finally {
+      setGeneratingVideo(false);
+    }
+  }, [clipId, clip, updateClip]);
+
   if (!clip) return null;
 
   const statusLabel: Record<string, string> = {
@@ -144,43 +170,77 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
         </div>
 
         {/* Preview + upload */}
-        <div className="relative group">
-          {clip.generated_media_url && clip.type === 'video' ? (
-            <video
-              src={clip.generated_media_url}
-              className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
-              controls
-              preload="metadata"
-              poster={clip.thumbnail_url}
-            />
-          ) : clip.thumbnail_url || clip.generated_media_url ? (
-            <img
-              src={clip.thumbnail_url || clip.generated_media_url}
-              alt=""
-              className="w-full h-48 object-cover border-2 border-[#ccc]"
-            />
-          ) : (
-            <div className="w-full h-48 bg-[#eee] border-2 border-[#ccc] flex items-center justify-center manga-halftone">
-              <span className="text-[#888] text-xs">No preview</span>
+        <div>
+          {/* Tabs */}
+          {showTabs && (
+            <div className="flex border-b-2 border-[#ccc] mb-0">
+              <button
+                onClick={() => setActiveTab('image')}
+                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-bold transition-colors ${activeTab === 'image' ? 'bg-[#111] text-white' : 'text-[#888] hover:text-[#111]'}`}
+                style={{ fontFamily: 'var(--font-manga)' }}
+              >
+                <ImageIcon size={11} /> IMAGE
+              </button>
+              <button
+                onClick={() => setActiveTab('video')}
+                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-bold transition-colors ${activeTab === 'video' ? 'bg-blue-600 text-white' : 'text-[#888] hover:text-[#111]'}`}
+                style={{ fontFamily: 'var(--font-manga)' }}
+              >
+                <Film size={11} /> VIDEO
+              </button>
             </div>
           )}
 
-          {/* Upload overlay — appears on hover */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            <Upload size={20} className="text-white" />
-            <span className="text-white text-xs font-medium">Upload Image</span>
-          </button>
+          <div className="relative group">
+            {showTabs && activeTab === 'video' ? (
+              <video
+                key={clip.generated_media_url}
+                src={clip.generated_media_url!}
+                className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
+                controls
+                autoPlay
+                preload="metadata"
+                poster={clip.thumbnail_url}
+              />
+            ) : clip.generated_media_url && clip.type === 'video' && !hasImage ? (
+              <video
+                src={clip.generated_media_url}
+                className="w-full h-48 object-cover border-2 border-[#ccc] bg-black"
+                controls
+                preload="metadata"
+                poster={clip.thumbnail_url}
+              />
+            ) : clip.thumbnail_url || clip.generated_media_url ? (
+              <img
+                src={clip.thumbnail_url || clip.generated_media_url}
+                alt=""
+                className="w-full h-48 object-cover border-2 border-[#ccc]"
+              />
+            ) : (
+              <div className="w-full h-48 bg-[#eee] border-2 border-[#ccc] flex items-center justify-center manga-halftone">
+                <span className="text-[#888] text-xs">No preview</span>
+              </div>
+            )}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleUpload}
-          />
+            {/* Upload overlay — appears on hover */}
+            {(!showTabs || activeTab === 'image') && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              >
+                <Upload size={20} className="text-white" />
+                <span className="text-white text-xs font-medium">Upload Image</span>
+              </button>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleUpload}
+            />
+          </div>
         </div>
 
         {/* Prompt */}
@@ -272,14 +332,26 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
 
       {/* Actions */}
       <div className="p-3 border-t-2 border-[#ccc] space-y-2">
-        <button
-          onClick={handleRegenerate}
-          disabled={clip.gen_status === 'generating'}
-          className="manga-btn w-full bg-[#111] text-white py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <RefreshCw size={14} />
-          {clip.gen_status === 'pending' ? 'Generate' : 'Regenerate'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleRegenerate}
+            disabled={clip.gen_status === 'generating'}
+            className="manga-btn flex-1 bg-[#111] text-white py-2 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <RefreshCw size={13} />
+            {clip.gen_status === 'pending' ? 'Gen Image' : 'Regen Image'}
+          </button>
+          {clip.type !== 'transition' && clip.type !== 'text_overlay' && (
+            <button
+              onClick={handleGenerateVideo}
+              disabled={clip.gen_status === 'generating' || generatingVideo}
+              className="manga-btn flex-1 bg-blue-600 text-white border-blue-700 py-2 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50 hover:bg-blue-700"
+            >
+              <Film size={13} />
+              {generatingVideo ? 'Generating...' : 'Gen Video'}
+            </button>
+          )}
+        </div>
         <button
           onClick={handleDelete}
           className="manga-btn w-full bg-white text-red-600 border-red-300 py-2 text-sm flex items-center justify-center gap-2 hover:bg-red-50"

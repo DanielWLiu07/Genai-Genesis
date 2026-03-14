@@ -166,7 +166,7 @@ export default function Dashboard() {
       <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item fixed -bottom-6 -left-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
       <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item fixed -bottom-16 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
       <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun fixed top-28 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
-      <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 left-1/2 -translate-x-1/2 w-[1100px] pointer-events-none select-none z-[3]" style={{ opacity: 0.22 }} />
+      <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 left-[52.5%] -translate-x-1/2 w-[1100px] pointer-events-none select-none z-[3]" style={{ opacity: 0.22 }} />
 
       {/* Top bar */}
       <div className="shrink-0 border-b-2 border-[#ddd] relative overflow-hidden bg-white/90 backdrop-blur-sm z-[20]">

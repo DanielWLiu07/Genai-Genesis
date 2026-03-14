@@ -6,6 +6,7 @@ import os
 class Settings(BaseSettings):
     kling_api_key: str = ""
     kling_api_secret: str = ""
+    gemini_api_key: str = ""
     api_service_url: str = "http://localhost:8000"
     supabase_url: str = ""
     supabase_service_key: str = ""

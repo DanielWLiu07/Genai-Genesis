@@ -1267,13 +1267,8 @@ export default function EditorPage() {
                             'Dramatic full-bleed cover art, iconic hero composition, bold manga linework',
                           ].filter(Boolean).join('. ');
 
-                          const result: any = await api.generateClip(id, 'thumb-' + Date.now(), prompt, 'image', {
-                            characters: chars.length > 0 ? chars : undefined,
-                            mood: analysis?.mood,
-                            genre: analysis?.genre,
-                            style_seed: styleSeed,
-                          });
-                          const url = result.media_url || result.url || result.output_url;
+                          const result: any = await api.generateImage(prompt);
+                          const url = result.url || result.media_url || result.output_url;
                           if (url) setEditThumbnail(url);
                         } catch (e) { console.error(e); } finally { setGeneratingThumb(false); }
                       }}

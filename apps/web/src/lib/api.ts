@@ -83,6 +83,17 @@ export const api = {
   getPresets: () => fetchAPI('/presets'),
   getPreset: (style: string) => fetchAPI(`/presets/${style}`),
 
+  // Image generation — served via Next.js API route -> Gemini directly (works on Vercel)
+  generateImage: async (prompt: string, aspectRatio = '16:9') => {
+    const res = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, aspect_ratio: aspectRatio }),
+    });
+    if (!res.ok) throw new Error(`Image generation error: ${res.status}`);
+    return res.json();
+  },
+
   // Chat — served via Next.js API route -> Gemini directly
   chat: async (projectId: string, message: string, timeline: any, history: any[]) => {
     const res = await fetch(`/api/projects/${projectId}/chat`, {

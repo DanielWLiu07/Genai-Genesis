@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import {
-  ArrowLeft, Zap, Play, Download, Loader2, Trash2, ZoomIn, ZoomOut, Music, MessageSquare,
+  ArrowLeft, Zap, Play, Pause, Download, Loader2, Trash2, ZoomIn, ZoomOut, Music, MessageSquare,
 } from 'lucide-react';
-import { useTimelineStore, type Effect, type EffectType, type BeatMap } from '@/stores/timeline-store';
+import { useTimelineStore, type Clip, type Effect, type EffectType, type BeatMap } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 
@@ -26,20 +26,68 @@ const EFFECT_META: Record<EffectType, { label: string; color: string; desc: stri
   strobe:       { label: 'STROBE',     color: '#e2e8f0', desc: 'Rapid strobe flash sequence' },
 };
 
-const EFFECT_TYPES = Object.keys(EFFECT_META) as EffectType[];
+const FLASH_META = { label: 'FLASH', color: '#ffffff', desc: 'Sudden frame flash for strong beat hits' };
+EFFECT_META.flash_white = FLASH_META;
+EFFECT_META.flash_black = FLASH_META;
+
+const EFFECT_TYPES: EffectType[] = [
+  'flash_white',
+  'zoom_burst',
+  'shake',
+  'echo',
+  'speed_ramp',
+  'chromatic',
+  'panel_split',
+  'reverse',
+  'glitch',
+  'strobe',
+];
+
+const DEMO_PROJECT_ID = 'local-test-video';
+const DEMO_QUERY_VALUE = 'test-video';
+const DEMO_CLIP_ID = 'demo-test-video-clip';
+const DEMO_VIDEO_URL = '/test_video.mp4';
+
+function createDemoTimeline(): {
+  clips: Clip[];
+  music_track: null;
+  settings: { resolution: string; aspect_ratio: string; fps: number };
+} {
+  const demoClip: Clip = {
+    id: DEMO_CLIP_ID,
+    order: 0,
+    type: 'video',
+    duration_ms: 30000,
+    prompt: 'Local timing test video',
+    generated_media_url: DEMO_VIDEO_URL,
+    shot_type: 'continuous',
+    scene_group: 0,
+    gen_status: 'done',
+    position: { x: 0, y: 100 },
+  };
+
+  return {
+    clips: [demoClip],
+    music_track: null,
+    settings: { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
+  };
+}
+
+function formatPreviewTime(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function normalizeEffectType(type: EffectType): EffectType {
+  return type === 'flash_black' ? 'flash_white' : type;
+}
 
 // ─── Transition metadata ──────────────────────────────────────────────────────
 
-type TransitionType = 'cut' | 'fade' | 'dissolve' | 'wipe';
 
-const TRANSITION_META: Record<TransitionType, { label: string; color: string; desc: string }> = {
-  cut:     { label: 'CUT',   color: '#6b7280', desc: 'Hard cut — instant switch' },
-  fade:    { label: 'FADE',  color: '#3b82f6', desc: 'Fade to/from black' },
-  dissolve:{ label: 'DISS',  color: '#10b981', desc: 'Cross-dissolve blend' },
-  wipe:    { label: 'WIPE',  color: '#f97316', desc: 'Directional wipe' },
-};
 
-const TRANSITION_CYCLE: TransitionType[] = ['cut', 'fade', 'dissolve', 'wipe'];
 
 // ─── Clip colors by type ─────────────────────────────────────────────────────
 
@@ -47,7 +95,6 @@ const CLIP_COLORS: Record<string, string> = {
   image: '#374151',
   video: '#1e3a5f',
   text_overlay: '#3b1f6e',
-  transition: '#1a3a2a',
 };
 
 // ─── CSS preview animation styles ────────────────────────────────────────────
@@ -55,8 +102,9 @@ const CLIP_COLORS: Record<string, string> = {
 function getPreviewStyle(type: EffectType, active: boolean): React.CSSProperties {
   if (!active) return {};
   switch (type) {
-    case 'flash_white':  return { animation: 'amv-flash-white 0.3s ease-out infinite' };
-    case 'flash_black':  return { animation: 'amv-flash-black 0.3s ease-out infinite' };
+    case 'flash_white':
+    case 'flash_black':
+      return { animation: 'amv-flash-white 0.3s ease-out infinite' };
     case 'zoom_burst':   return { animation: 'amv-zoom 0.4s ease-out infinite' };
     case 'shake':        return { animation: 'amv-shake 0.2s linear infinite' };
     case 'echo':         return { animation: 'amv-echo 0.6s ease-out infinite' };
@@ -74,25 +122,36 @@ function getPreviewStyle(type: EffectType, active: boolean): React.CSSProperties
 
 export default function TimelinePage() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const isDemoMode = id === DEMO_PROJECT_ID || searchParams.get('demo') === DEMO_QUERY_VALUE;
 
   // Load timeline from API if store is empty (direct navigation)
   const loadTimeline = useTimelineStore((s) => s.loadTimeline);
   const setProjectId = useTimelineStore((s) => s.setProjectId);
+  const storeProjectId = useTimelineStore((s) => s.projectId);
   useEffect(() => {
     if (!id) return;
+    const shouldBootstrap = storeProjectId !== id || useTimelineStore.getState().clips.length === 0;
     setProjectId(id);
-    if (useTimelineStore.getState().clips.length === 0) {
-      import('@/lib/api').then(({ api }) => {
-        api.getTimeline(id).then((tl: any) => loadTimeline(tl)).catch(() => {});
-      });
+    if (!shouldBootstrap) return;
+    useTimelineStore.getState().clearEffects();
+
+    if (isDemoMode) {
+      loadTimeline(createDemoTimeline());
+      return;
     }
-  }, [id, setProjectId, loadTimeline]);
+
+    import('@/lib/api').then(({ api }) => {
+      api.getTimeline(id).then((tl: any) => loadTimeline(tl)).catch(() => {});
+    });
+  }, [id, isDemoMode, loadTimeline, setProjectId, storeProjectId]);
 
   const clips        = useTimelineStore((s) => s.clips);
   const effects      = useTimelineStore((s) => s.effects);
   const beatMap      = useTimelineStore((s) => s.beatMap);
   const addEffect    = useTimelineStore((s) => s.addEffect);
   const removeEffect = useTimelineStore((s) => s.removeEffect);
+  const updateEffect = useTimelineStore((s) => s.updateEffect);
   const setBeatMap   = useTimelineStore((s) => s.setBeatMap);
   const setEffects   = useTimelineStore((s) => s.setEffects);
   const clearEffects = useTimelineStore((s) => s.clearEffects);
@@ -108,13 +167,18 @@ export default function TimelinePage() {
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [previewLoadError, setPreviewLoadError] = useState<string | null>(null);
 
   const timelineRef   = useRef<HTMLDivElement>(null);
   const containerRef  = useRef<HTMLDivElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
 
   // ── Derived values ──────────────────────────────────────────────────────
 
-  const sortedClips = [...clips].sort((a, b) => a.order - b.order);
+  const fallbackClips = isDemoMode && clips.length === 0 ? createDemoTimeline().clips : [];
+  const timelineClips = fallbackClips.length > 0 ? fallbackClips : clips;
+  const sortedClips = [...timelineClips].sort((a, b) => a.order - b.order);
   const totalMs = sortedClips.reduce((sum, c) => sum + (c.duration_ms || 3000), 0) || 30000;
 
   // Compute clip start times
@@ -158,7 +222,7 @@ export default function TimelinePage() {
     clearEffects();
 
     const newEffects: Effect[] = [];
-    const beatEffects: EffectType[] = ['flash_white', 'flash_black', 'zoom_burst', 'shake'];
+    const beatEffects: EffectType[] = ['flash_white', 'zoom_burst', 'shake'];
     const strongBeatEffects: EffectType[] = ['zoom_burst', 'panel_split'];
     const everyEighthEffects: EffectType[] = ['echo', 'reverse'];
 
@@ -222,8 +286,12 @@ export default function TimelinePage() {
   const handleTimelineClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left + e.currentTarget.scrollLeft;
-    const timestamp_ms = Math.round(x / pxPerMs);
-    if (timestamp_ms < 0 || timestamp_ms > totalMs + 2000) return;
+    const timestamp_ms = Math.max(0, Math.min(totalMs, Math.round(x / pxPerMs)));
+    if (previewVideoRef.current && !previewVideoRef.current.paused) {
+      previewVideoRef.current.pause();
+      setIsPlaying(false);
+    }
+    setPlayheadMs(timestamp_ms);
 
     addEffect({
       id: crypto.randomUUID(),
@@ -232,15 +300,10 @@ export default function TimelinePage() {
       duration_ms: 200,
       intensity: 0.8,
     });
-  }, [pxPerMs, selectedType, totalMs, addEffect]);
+  }, [addEffect, pxPerMs, selectedType, totalMs]);
 
   // ── Cycle transition type on a clip ─────────────────────────────────────
 
-  const handleCycleTransition = useCallback((clipId: string, current: TransitionType) => {
-    const idx = TRANSITION_CYCLE.indexOf(current);
-    const next = TRANSITION_CYCLE[(idx + 1) % TRANSITION_CYCLE.length];
-    updateClip(clipId, { transition_type: next });
-  }, [updateClip]);
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -298,7 +361,99 @@ export default function TimelinePage() {
   // Beat ruler ticks
   const beatTicks = beatMap?.beats ?? [];
 
-  const previewType = hoveredType ?? selectedType;
+  const activeClip = sortedClips.find((clip) => {
+    const start = clipStartMs[clip.id] || 0;
+    const end = start + (clip.duration_ms || 3000);
+    return playheadMs >= start && playheadMs < end;
+  }) ?? sortedClips[0] ?? null;
+  const activeClipStartMs = activeClip ? (clipStartMs[activeClip.id] || 0) : 0;
+  const activeClipDurationMs = activeClip?.duration_ms || 3000;
+  const activeClipOffsetMs = activeClip ? Math.max(0, playheadMs - activeClipStartMs) : 0;
+  const activeEffect = effects.find(
+    (effect) => playheadMs >= effect.timestamp_ms && playheadMs <= effect.timestamp_ms + effect.duration_ms
+  ) ?? null;
+  const selectedEffect = selectedEffectId
+    ? effects.find((effect) => effect.id === selectedEffectId) ?? null
+    : null;
+  const previewInfoType = normalizeEffectType(hoveredType ?? selectedEffect?.type ?? selectedType);
+  const previewEffectType = activeEffect ? normalizeEffectType(activeEffect.type) : null;
+  const activeClipMediaUrl = activeClip?.generated_media_url || activeClip?.thumbnail_url || null;
+  const canPreviewPlayback = activeClip?.type === 'video' && !!activeClip.generated_media_url;
+
+  const handlePreviewPlayToggle = useCallback(async () => {
+    const video = previewVideoRef.current;
+    if (!video || !activeClip || activeClip.type !== 'video') return;
+
+    if (video.paused) {
+      const clipEndMs = activeClipStartMs + activeClipDurationMs;
+      if (playheadMs >= clipEndMs - 50) {
+        video.currentTime = 0;
+        setPlayheadMs(activeClipStartMs);
+      } else {
+        video.currentTime = Math.max(0, Math.min(activeClipOffsetMs, activeClipDurationMs)) / 1000;
+      }
+      try {
+        await video.play();
+      } catch (error) {
+        console.error('Preview playback failed:', error);
+      }
+      return;
+    }
+
+    video.pause();
+  }, [activeClip, activeClipDurationMs, activeClipOffsetMs, activeClipStartMs, playheadMs]);
+
+  const handlePreviewSeek = useCallback((nextMs: number) => {
+    const clampedMs = Math.max(0, Math.min(totalMs, nextMs));
+    const video = previewVideoRef.current;
+    if (video) {
+      if (!video.paused) {
+        video.pause();
+      }
+      const targetSeconds = Math.max(0, Math.min(clampedMs - activeClipStartMs, activeClipDurationMs)) / 1000;
+      if (activeClip?.type === 'video') {
+        video.currentTime = targetSeconds;
+      }
+    }
+    setIsPlaying(false);
+    setPlayheadMs(clampedMs);
+  }, [activeClip?.type, activeClipDurationMs, activeClipStartMs, totalMs]);
+
+  useEffect(() => {
+    const video = previewVideoRef.current;
+    if (!video || !activeClip || activeClip.type !== 'video' || isPlaying) return;
+    const targetSeconds = Math.max(0, Math.min(activeClipOffsetMs, activeClipDurationMs)) / 1000;
+    if (Math.abs(video.currentTime - targetSeconds) > 0.05) {
+      video.currentTime = targetSeconds;
+    }
+  }, [activeClip, activeClipDurationMs, activeClipOffsetMs, isPlaying]);
+
+  useEffect(() => {
+    setPreviewLoadError(null);
+  }, [activeClip?.id, activeClip?.generated_media_url]);
+
+  useEffect(() => {
+    if (selectedEffectId && !selectedEffect) {
+      setSelectedEffectId(null);
+    }
+  }, [selectedEffect, selectedEffectId]);
+
+  useEffect(() => {
+    if (!selectedEffect) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName;
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target?.isContentEditable) return;
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      event.preventDefault();
+      removeEffect(selectedEffect.id);
+      setSelectedEffectId(null);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [removeEffect, selectedEffect]);
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a] text-white overflow-hidden">
@@ -319,6 +474,9 @@ export default function TimelinePage() {
         .timeline-scroll::-webkit-scrollbar { height: 6px; }
         .timeline-scroll::-webkit-scrollbar-track { background: #111; }
         .timeline-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        .palette-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .palette-scroll::-webkit-scrollbar-track { background: #111; }
+        .palette-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 999px; }
       `}</style>
 
       {/* ── TOP BAR ──────────────────────────────────────────────────────── */}
@@ -396,14 +554,13 @@ export default function TimelinePage() {
       </header>
 
       {/* ── MAIN CONTENT ────────────────────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* Timeline content */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto overflow-x-hidden">
 
         {/* ── PREVIEW AREA ─────────────────────────────────────────────── */}
-        <div className="h-40 border-b border-[#333] bg-[#0f0f0f] flex items-center justify-center gap-8 px-6 shrink-0">
-          {/* Animated preview box */}
-          <div className="relative w-48 h-28 border border-[#333] bg-[#1a1a1a] flex items-center justify-center overflow-hidden">
+        <div className="min-h-[13rem] border-b border-[#333] bg-[#0f0f0f] flex flex-wrap items-center justify-center gap-6 px-6 py-4 shrink-0 lg:min-h-[15rem] lg:flex-nowrap lg:gap-10">
+          <div className="relative h-[12.375rem] w-[22rem] border border-[#333] bg-[#1a1a1a] overflow-hidden lg:h-[15.75rem] lg:w-[28rem]">
             {/* Manga halftone bg */}
             <div
               className="absolute inset-0"
@@ -412,83 +569,225 @@ export default function TimelinePage() {
                 backgroundSize: '8px 8px',
               }}
             />
-            {/* Effect preview overlay */}
             <div
-              className="absolute inset-0"
-              style={getPreviewStyle(previewType, true)}
-            />
-            {/* Effect type label */}
-            <span
-              className="relative z-10 text-lg tracking-widest text-white font-bold"
-              style={{ fontFamily: 'var(--font-manga)', textShadow: `0 0 20px ${EFFECT_META[previewType].color}` }}
+              className="absolute inset-0 overflow-hidden"
+              style={previewEffectType ? getPreviewStyle(previewEffectType, true) : {}}
             >
-              {EFFECT_META[previewType].label}
-            </span>
+              {activeClip?.type === 'video' && activeClip.generated_media_url ? (
+                <video
+                  key={`${activeClip.id}-${activeClip.generated_media_url}`}
+                  ref={previewVideoRef}
+                  src={activeClip.generated_media_url}
+                  className="h-full w-full object-cover"
+                  playsInline
+                  preload="metadata"
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onTimeUpdate={(event) => {
+                    const nextMs = activeClipStartMs + Math.round(event.currentTarget.currentTime * 1000);
+                    setPlayheadMs(Math.min(totalMs, nextMs));
+                  }}
+                  onCanPlay={() => setPreviewLoadError(null)}
+                  onError={() => {
+                    setIsPlaying(false);
+                    setPreviewLoadError(`Failed to load ${activeClip.generated_media_url}`);
+                  }}
+                  onLoadedMetadata={(event) => {
+                    if (activeClip.id !== DEMO_CLIP_ID) return;
+                    const durationMs = Math.max(1000, Math.round(event.currentTarget.duration * 1000));
+                    if (Math.abs(durationMs - activeClip.duration_ms) > 250) {
+                      updateClip(activeClip.id, { duration_ms: durationMs });
+                    }
+                  }}
+                />
+              ) : activeClipMediaUrl ? (
+                <img
+                  src={activeClipMediaUrl}
+                  alt={activeClip?.prompt || 'Timeline preview'}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span
+                    className="text-2xl tracking-[0.2em] text-white font-bold"
+                    style={{ fontFamily: 'var(--font-manga)', textShadow: `0 0 20px ${EFFECT_META[previewInfoType].color}` }}
+                  >
+                    {EFFECT_META[previewInfoType].label}
+                  </span>
+                </div>
+              )}
+            </div>
+            {previewLoadError && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/75 px-4 text-center">
+                <span className="text-[0.65rem] text-red-300">{previewLoadError}</span>
+              </div>
+            )}
+            {canPreviewPlayback && !previewLoadError && (
+              <button
+                onClick={handlePreviewPlayToggle}
+                className="absolute left-4 top-4 z-20 flex items-center gap-2 border border-white/20 bg-black/70 px-3 py-2 text-[0.75rem] font-bold tracking-[0.18em] text-white backdrop-blur-sm transition-colors hover:border-[#fbbf24] hover:text-[#fbbf24]"
+                style={{ fontFamily: 'var(--font-manga)' }}
+              >
+                {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                {isPlaying ? 'PAUSE' : 'PLAY'}
+              </button>
+            )}
+            {previewEffectType && (previewEffectType === 'flash_white' || previewEffectType === 'strobe') && (
+              <div className="absolute inset-0 pointer-events-none" style={getPreviewStyle(previewEffectType, true)} />
+            )}
             {/* Color accent border */}
             <div
               className="absolute inset-0 border-2 pointer-events-none"
-              style={{ borderColor: EFFECT_META[previewType].color, opacity: 0.6 }}
+              style={{ borderColor: EFFECT_META[previewInfoType].color, opacity: previewEffectType ? 0.8 : 0.35 }}
             />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/55 to-transparent px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[0.72rem] tracking-[0.22em] text-white/70" style={{ fontFamily: 'var(--font-manga)' }}>
+                  {isDemoMode ? 'DEMO VIDEO' : activeClip ? activeClip.type.toUpperCase() : 'PREVIEW'}
+                </span>
+                <span className="text-[0.72rem] text-white/70">
+                  {(playheadMs / 1000).toFixed(2)}s / {(totalMs / 1000).toFixed(2)}s
+                </span>
+              </div>
+              <p className="truncate text-[0.8rem] text-white/80">
+                {activeClip?.prompt || 'Place an effect on the timeline to preview it during playback.'}
+              </p>
+            </div>
           </div>
 
           {/* Effect info */}
-          <div className="flex flex-col gap-2 min-w-[200px]">
+          <div className="flex flex-col gap-3 min-w-[280px]">
             <div className="flex items-center gap-2">
               <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: EFFECT_META[previewType].color }}
+                className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: EFFECT_META[previewInfoType].color }}
               />
               <span
-                className="text-sm font-bold tracking-wider text-white"
+                className="text-lg font-bold tracking-[0.16em] text-white"
                 style={{ fontFamily: 'var(--font-manga)' }}
               >
-                {EFFECT_META[previewType].label}
+                {EFFECT_META[previewInfoType].label}
               </span>
             </div>
-            <p className="text-xs text-[#888] leading-relaxed max-w-[220px]">
-              {EFFECT_META[previewType].desc}
+            <p className="max-w-[280px] text-sm text-[#888] leading-relaxed">
+              {EFFECT_META[previewInfoType].desc}
             </p>
-            <div className="flex items-center gap-3 text-xs text-[#666]">
-              <span>{effects.filter((e) => e.type === previewType).length} placed</span>
-              <span>•</span>
-              <span>click timeline to add</span>
+            <div className="w-full max-w-[360px]">
+              <input
+                type="range"
+                min={0}
+                max={Math.max(totalMs, 1)}
+                step={50}
+                value={Math.min(playheadMs, totalMs)}
+                onChange={(e) => handlePreviewSeek(Number(e.target.value))}
+                className="w-full cursor-pointer accent-[#fbbf24]"
+              />
+              <div className="mt-1 flex items-center justify-between text-xs text-[#666]">
+                <span>{formatPreviewTime(playheadMs)}</span>
+                <span>{activeClip ? `${formatPreviewTime(activeClipOffsetMs)} in clip` : 'no clip'}</span>
+                <span>{formatPreviewTime(totalMs)}</span>
+              </div>
             </div>
+            {selectedEffect && (
+              <div className="w-full max-w-[360px] border border-[#333] bg-[#111] px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[0.72rem] tracking-[0.18em] text-[#888]" style={{ fontFamily: 'var(--font-manga)' }}>
+                      EFFECT DURATION
+                    </span>
+                    <span className="text-sm text-[#fbbf24]">
+                      {(selectedEffect.duration_ms / 1000).toFixed(2)}s
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      removeEffect(selectedEffect.id);
+                      setSelectedEffectId(null);
+                    }}
+                    className="flex items-center gap-1.5 border border-red-500/40 px-2.5 py-1.5 text-[0.72rem] text-red-300 transition-colors hover:border-red-400 hover:text-red-200"
+                    style={{ fontFamily: 'var(--font-manga)' }}
+                  >
+                    <Trash2 size={12} />
+                    DELETE
+                  </button>
+                </div>
+                <input
+                  type="range"
+                  min={50}
+                  max={2000}
+                  step={25}
+                  value={selectedEffect.duration_ms}
+                  onChange={(e) => updateEffect(selectedEffect.id, { duration_ms: Number(e.target.value) })}
+                  className="mt-2 w-full cursor-pointer accent-[#fbbf24]"
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs text-[#666]">ms</span>
+                  <input
+                    type="number"
+                    min={50}
+                    max={5000}
+                    step={25}
+                    value={selectedEffect.duration_ms}
+                    onChange={(e) => {
+                      const value = Math.max(50, Math.min(5000, Number(e.target.value) || 50));
+                      updateEffect(selectedEffect.id, { duration_ms: value });
+                    }}
+                    className="w-28 bg-[#1a1a1a] border border-[#333] px-2 py-1.5 text-sm text-white focus:outline-none focus:border-[#555]"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-3 text-sm text-[#666]">
+              <span>{effects.filter((e) => normalizeEffectType(e.type) === previewInfoType).length} placed</span>
+              <span>•</span>
+              <span>{activeClip ? `clip ${(activeClip.order ?? 0) + 1}` : 'no clip'}</span>
+            </div>
+            {isDemoMode && (
+              <p className="text-sm text-[#fbbf24]">
+                Loaded from <span className="text-white">/test_video.mp4</span>
+              </p>
+            )}
           </div>
 
           {/* Zoom controls */}
           <div className="ml-auto flex flex-col gap-1.5 items-center">
-            <span className="text-[0.6rem] text-[#555] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>ZOOM</span>
+            <span className="text-xs text-[#555] tracking-[0.18em]" style={{ fontFamily: 'var(--font-manga)' }}>ZOOM</span>
             <button
               onClick={() => setPxPerMs((p) => Math.min(0.5, p * 1.3))}
-              className="w-7 h-7 flex items-center justify-center border border-[#333] bg-[#1a1a1a] hover:bg-[#2a2a2a] text-[#888] hover:text-white transition-colors"
+              className="w-8 h-8 flex items-center justify-center border border-[#333] bg-[#1a1a1a] hover:bg-[#2a2a2a] text-[#888] hover:text-white transition-colors"
             >
-              <ZoomIn size={13} />
+              <ZoomIn size={15} />
             </button>
             <button
               onClick={() => setPxPerMs((p) => Math.max(0.02, p / 1.3))}
-              className="w-7 h-7 flex items-center justify-center border border-[#333] bg-[#1a1a1a] hover:bg-[#2a2a2a] text-[#888] hover:text-white transition-colors"
+              className="w-8 h-8 flex items-center justify-center border border-[#333] bg-[#1a1a1a] hover:bg-[#2a2a2a] text-[#888] hover:text-white transition-colors"
             >
-              <ZoomOut size={13} />
+              <ZoomOut size={15} />
             </button>
-            <span className="text-[0.6rem] text-[#555]">{(pxPerMs * 1000).toFixed(0)}px/s</span>
+            <span className="text-xs text-[#555]">{(pxPerMs * 1000).toFixed(0)}px/s</span>
           </div>
         </div>
 
         {/* ── EFFECTS PALETTE ───────────────────────────────────────────── */}
-        <div className="h-16 border-b border-[#333] bg-[#111] flex items-center px-3 gap-1.5 shrink-0 overflow-x-auto">
-          <span className="text-[0.6rem] text-[#555] tracking-widest mr-2 shrink-0" style={{ fontFamily: 'var(--font-manga)' }}>FX</span>
+        <div className="max-h-[5.5rem] border-b border-[#333] bg-[#111] flex flex-wrap content-start items-center px-4 py-2 gap-2.5 shrink-0 overflow-y-auto palette-scroll">
+          <div className="mr-2 flex min-w-[5.5rem] flex-col self-stretch justify-center">
+            <span className="text-xs text-[#555] tracking-[0.22em]" style={{ fontFamily: 'var(--font-manga)' }}>FX</span>
+            <span className="text-[0.62rem] text-[#444] tracking-[0.12em]" style={{ fontFamily: 'var(--font-manga)' }}>
+              PICK THEN PLACE
+            </span>
+          </div>
           {EFFECT_TYPES.map((type) => {
             const meta = EFFECT_META[type];
             const isSelected = selectedType === type;
             const isHovered = hoveredType === type;
-            const count = effects.filter((e) => e.type === type).length;
+            const count = effects.filter((e) => normalizeEffectType(e.type) === type).length;
             return (
               <button
                 key={type}
                 onClick={() => setSelectedType(type)}
                 onMouseEnter={() => setHoveredType(type)}
                 onMouseLeave={() => setHoveredType(null)}
-                className="relative shrink-0 flex flex-col items-center gap-0.5 px-2.5 py-1.5 border transition-all"
+                className="relative shrink-0 flex min-w-[5.5rem] flex-col items-center gap-1.5 px-3 py-2.5 border transition-all"
                 style={{
                   borderColor: isSelected ? meta.color : '#333',
                   backgroundColor: isSelected ? `${meta.color}22` : isHovered ? '#1a1a1a' : '#0f0f0f',
@@ -496,7 +795,7 @@ export default function TimelinePage() {
                 }}
               >
                 <div
-                  className="w-4 h-4 rounded-sm"
+                  className="w-5 h-5 rounded-sm"
                   style={{
                     backgroundColor: meta.color,
                     boxShadow: isSelected || isHovered ? `0 0 8px ${meta.color}88` : 'none',
@@ -504,7 +803,7 @@ export default function TimelinePage() {
                   }}
                 />
                 <span
-                  className="text-[0.5rem] tracking-wider"
+                  className="text-[0.74rem] tracking-[0.16em]"
                   style={{
                     fontFamily: 'var(--font-manga)',
                     color: isSelected ? meta.color : '#666',
@@ -514,7 +813,7 @@ export default function TimelinePage() {
                 </span>
                 {count > 0 && (
                   <span
-                    className="absolute -top-1 -right-1 text-[0.45rem] px-1 py-0 rounded-full font-bold"
+                    className="absolute -top-1.5 -right-1.5 text-[0.58rem] px-1.5 py-0.5 rounded-full font-bold"
                     style={{ backgroundColor: meta.color, color: type === 'flash_white' || type === 'strobe' ? '#000' : '#fff' }}
                   >
                     {count}
@@ -526,7 +825,7 @@ export default function TimelinePage() {
         </div>
 
         {/* ── TIMELINE ──────────────────────────────────────────────────── */}
-        <div ref={containerRef} className="flex-1 overflow-hidden flex flex-col bg-[#0a0a0a]">
+        <div ref={containerRef} className="min-h-[14rem] flex-1 overflow-hidden flex flex-col bg-[#0a0a0a]">
           {/* Track labels column */}
           <div className="flex flex-1 overflow-hidden">
             {/* Left labels */}
@@ -534,13 +833,10 @@ export default function TimelinePage() {
               <div className="h-6 border-b border-[#222] flex items-center px-2">
                 <span className="text-[0.5rem] text-[#444] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>TIME</span>
               </div>
-              <div className="h-16 border-b border-[#222] flex items-center px-2">
+              <div className="h-16 border-b border-[#222] flex items-center px-2" style={{ order: 2 }}>
                 <span className="text-[0.5rem] text-[#555] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>CLIPS</span>
               </div>
-              <div className="h-8 border-b border-[#222] flex items-center px-2">
-                <span className="text-[0.5rem] text-[#555] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>TRANS</span>
-              </div>
-              <div className="flex-1 flex items-center px-2">
+              <div className="flex-1 flex items-center px-2" style={{ order: 1 }}>
                 <span className="text-[0.5rem] text-[#555] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>FX</span>
               </div>
             </div>
@@ -600,7 +896,7 @@ export default function TimelinePage() {
                 {/* ── Clips track ──────────────────────────────────────── */}
                 <div
                   className="h-16 border-b border-[#222] relative shrink-0 bg-[#0e0e0e] cursor-crosshair"
-                  style={{ width: timelineWidth + 100 }}
+                  style={{ width: timelineWidth + 100, order: 2 }}
                   onClick={handleTimelineClick}
                 >
                   {sortedClips.map((clip, idx) => {
@@ -670,55 +966,11 @@ export default function TimelinePage() {
                 </div>
 
                 {/* ── Transitions track ────────────────────────────────── */}
-                <div
-                  className="h-8 border-b border-[#222] relative shrink-0 bg-[#0c0c0c]"
-                  style={{ width: timelineWidth + 100 }}
-                >
-                  {sortedClips.map((clip, idx) => {
-                    if (idx === 0) return null; // no transition before first clip
-                    const x = clipStartMs[clip.id] * pxPerMs;
-                    const transType = (clip.transition_type || 'cut') as TransitionType;
-                    const meta = TRANSITION_META[transType] || TRANSITION_META.cut;
-                    return (
-                      <button
-                        key={clip.id}
-                        onClick={() => handleCycleTransition(clip.id, transType)}
-                        className="absolute top-1 bottom-1 -translate-x-1/2 flex items-center justify-center z-10 group"
-                        style={{ left: x }}
-                        title={`${meta.desc} — click to cycle`}
-                      >
-                        {/* Vertical boundary line */}
-                        <div
-                          className="absolute w-px h-full opacity-40"
-                          style={{ backgroundColor: meta.color }}
-                        />
-                        {/* Label badge */}
-                        <div
-                          className="relative px-1.5 py-0.5 text-[0.45rem] font-bold tracking-widest border transition-all group-hover:scale-110"
-                          style={{
-                            fontFamily: 'var(--font-manga)',
-                            backgroundColor: `${meta.color}22`,
-                            borderColor: meta.color,
-                            color: meta.color,
-                            boxShadow: `0 0 6px ${meta.color}44`,
-                          }}
-                        >
-                          {meta.label}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {/* Playhead */}
-                  <div
-                    className="absolute top-0 h-full w-0.5 bg-white/30 z-20 pointer-events-none"
-                    style={{ left: playheadMs * pxPerMs }}
-                  />
-                </div>
 
                 {/* ── Effects track ─────────────────────────────────────── */}
                 <div
                   className="flex-1 relative bg-[#080808] cursor-crosshair"
-                  style={{ width: timelineWidth + 100, minHeight: 60 }}
+                  style={{ width: timelineWidth + 100, minHeight: 60, order: 1 }}
                   onClick={handleTimelineClick}
                 >
                   {/* Beat grid lines */}
@@ -741,7 +993,7 @@ export default function TimelinePage() {
                   {effects.map((effect) => {
                     const x    = effect.timestamp_ms * pxPerMs;
                     const w    = Math.max(effect.duration_ms * pxPerMs, 3);
-                    const meta = EFFECT_META[effect.type];
+                    const meta = EFFECT_META[normalizeEffectType(effect.type)];
                     const isSelected = selectedEffectId === effect.id;
                     return (
                       <div
@@ -758,14 +1010,9 @@ export default function TimelinePage() {
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isSelected) {
-                            removeEffect(effect.id);
-                            setSelectedEffectId(null);
-                          } else {
-                            setSelectedEffectId(effect.id);
-                          }
+                          setSelectedEffectId(isSelected ? null : effect.id);
                         }}
-                        title={`${meta.label} @ ${(effect.timestamp_ms / 1000).toFixed(2)}s — click to select, click again to delete`}
+                        title={`${meta.label} @ ${(effect.timestamp_ms / 1000).toFixed(2)}s — click to select`}
                       >
                         {/* Intensity indicator */}
                         <div
@@ -800,27 +1047,22 @@ export default function TimelinePage() {
           </div>
 
           {/* ── Status bar ──────────────────────────────────────────────── */}
-          <div className="h-6 border-t border-[#222] bg-[#0d0d0d] flex items-center px-4 gap-4 shrink-0">
-            <span className="text-[0.5rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
+          <div className="min-h-[2.75rem] border-t border-[#222] bg-[#0d0d0d] flex flex-wrap items-center px-4 py-2 gap-x-5 gap-y-1 shrink-0">
+            <span className="text-[0.68rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
               SELECTED: <span className="text-[#666]">{EFFECT_META[selectedType].label}</span>
             </span>
-            <span className="text-[0.5rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
+            <span className="text-[0.68rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
               TOTAL: <span className="text-[#666]">{(totalMs / 1000).toFixed(1)}s</span>
             </span>
-            <span className="text-[0.5rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
+            <span className="text-[0.68rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
               BPM: <span className="text-[#666]">{bpm}</span>
             </span>
-            <span className="text-[0.5rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
+            <span className="text-[0.68rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
               BEATS: <span className="text-[#666]">{beatTicks.length}</span>
             </span>
-            {selectedEffectId && (
-              <span className="text-[0.5rem] text-[#fbbf24]" style={{ fontFamily: 'var(--font-manga)' }}>
-                EFFECT SELECTED — CLICK AGAIN TO DELETE
-              </span>
-            )}
-            {!selectedEffectId && sortedClips.length > 1 && (
-              <span className="text-[0.5rem] text-[#333]" style={{ fontFamily: 'var(--font-manga)' }}>
-                TRANS TRACK: CLICK BADGE TO CYCLE CUT › FADE › DISS › WIPE
+            {selectedEffect && (
+              <span className="text-[0.68rem] text-[#fbbf24]" style={{ fontFamily: 'var(--font-manga)' }}>
+                EFFECT SELECTED - ADJUST DURATION ABOVE OR PRESS DELETE
               </span>
             )}
           </div>
@@ -830,10 +1072,11 @@ export default function TimelinePage() {
         {/* Chat panel */}
         {chatOpen && (
           <div className="w-72 shrink-0 border-l border-[#222]">
-            <ChatPanel projectId={id!} onCollapse={() => setChatOpen(false)} dark />
+            <ChatPanel projectId={id!} onCollapse={() => setChatOpen(false)} dark mode="effects" />
           </div>
         )}
       </div>
     </div>
   );
 }
+

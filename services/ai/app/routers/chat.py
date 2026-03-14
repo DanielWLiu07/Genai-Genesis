@@ -37,16 +37,19 @@ TOOLS AVAILABLE:
 Scene editing: add_clip, remove_clip, update_clip, reorder_clips, bulk_update_clips, set_transition, set_shot_type
 Regeneration: regenerate_clip, trigger_generate_clip
 Audio: set_music, update_settings, update_scene_duration
-AMV Effects: add_amv_effect, remove_amv_effect, set_bpm, auto_amv
+AMV Effects: add_amv_effect, update_amv_effect, remove_amv_effect, clear_amv_effects, set_bpm, add_amv_effect_range, add_amv_effects_on_beats, auto_amv
 
 BEHAVIOR:
 - ALWAYS use tools to apply changes — never just describe what to do
 - Be concise: 1-2 sentences max explaining what you did
 - Think in two modes: (1) story/scene editing, (2) AMV effects editing
+- When user wants to change existing effects, prefer update_amv_effect or clear_amv_effects instead of stacking duplicates
+- When user wants repeated effects over a section, use add_amv_effect_range or add_amv_effects_on_beats
 - When user says "make it more intense/flashy/AMV" → use auto_amv or add_amv_effect
 - When user says "change scene X" → use update_clip with that clip's ID
 - Call multiple tools per response for complex edits
 - If vague ("make it better"), analyze the timeline and make specific improvements
+- If the context says EDITOR MODE is effects, stay focused on FX/BPM/effect timing unless the user explicitly asks for scene edits
 
 SCENE PACING:
 - Hook: 2-3s, striking visual, cut transition
@@ -57,7 +60,7 @@ SCENE PACING:
 - Total: 30-60s ideal
 
 AMV EFFECTS KNOWLEDGE:
-- flash_white/flash_black: on strong beats, 100-200ms, intensity 0.8-1.0
+- flash_white: on strong beats, 100-200ms, intensity 0.8-1.0
 - zoom_burst: on every 4th beat, 200-300ms
 - shake: on impact moments, 150-250ms
 - echo: on every 8th beat or chorus, 300-500ms
@@ -161,12 +164,17 @@ def _build_timeline_context(timeline: dict | None, analysis: dict | None = None)
     if not timeline:
         return "The timeline is currently empty."
 
+    editor_mode = timeline.get("editor_mode") or "general"
     clips = timeline.get("clips", [])
     effects = timeline.get("effects", [])
     beat_map = timeline.get("beat_map") or timeline.get("beatMap")
     tl_analysis = analysis or timeline.get("analysis")
 
     lines = []
+
+    if editor_mode == "effects":
+        lines.append("EDITOR MODE: effects-only timeline editor. Prefer AMV effect edits over clip/story changes unless the user explicitly asks for story edits.")
+        lines.append("")
 
     # Story context
     if tl_analysis:
@@ -188,12 +196,15 @@ def _build_timeline_context(timeline: dict | None, analysis: dict | None = None)
     total_ms = sum(c.get("duration_ms", 0) for c in clips)
     lines.append(f"TIMELINE ({len(clips)} clips, {total_ms/1000:.1f}s total):")
 
+    acc_ms = 0
     for clip in sorted(clips, key=lambda c: c.get("order", 0)):
         dur = clip.get("duration_ms", 3000) / 1000
         ctype = clip.get("type", "image")
         status = clip.get("gen_status", "pending")
         shot = clip.get("shot_type", "cut")
         transition = clip.get("transition_type", "cut")
+        start_ms = acc_ms
+        end_ms = acc_ms + clip.get("duration_ms", 3000)
         text = f' "{clip["text"]}"' if clip.get("text") else ""
         prompt = clip.get("prompt", "")
         prompt_preview = (prompt[:70] + "…") if len(prompt) > 70 else prompt
@@ -203,6 +214,8 @@ def _build_timeline_context(timeline: dict | None, analysis: dict | None = None)
         )
         if prompt_preview:
             lines.append(f"      {prompt_preview}")
+        lines.append(f"      range={start_ms}-{end_ms}ms")
+        acc_ms = end_ms
 
     # Effects summary
     if effects:

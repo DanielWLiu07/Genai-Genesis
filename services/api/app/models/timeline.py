@@ -16,10 +16,26 @@ class Clip(BaseModel):
     gen_error: Optional[str] = None
     position: dict = Field(default_factory=lambda: {"x": 0, "y": 100})
 
+class Effect(BaseModel):
+    id: str
+    type: str
+    timestamp_ms: int
+    duration_ms: int = 200
+    intensity: float = 0.8
+
+
+class BeatMap(BaseModel):
+    bpm: int
+    offset_ms: int = 0
+    beats: List[int] = Field(default_factory=list)
+
+
 class TimelineUpdate(BaseModel):
-    clips: List[Clip] = []
+    clips: List[Clip] = Field(default_factory=list)
     music_track: Optional[dict] = None
     total_duration_ms: int = 0
+    effects: List[Effect] = Field(default_factory=list)
+    beat_map: Optional[BeatMap] = None
     settings: dict = Field(default_factory=lambda: {"resolution": "1080p", "aspect_ratio": "16:9", "fps": 24})
 
 class ClipUpdate(BaseModel):

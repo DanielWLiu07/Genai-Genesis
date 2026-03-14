@@ -13,8 +13,12 @@ EXPECTED_TOOL_NAMES = [
     "update_scene_duration",
     "set_shot_type",
     "add_amv_effect",
+    "update_amv_effect",
     "remove_amv_effect",
+    "clear_amv_effects",
     "set_bpm",
+    "add_amv_effect_range",
+    "add_amv_effects_on_beats",
     "auto_amv",
     "trigger_generate_clip",
     "bulk_update_clips",
@@ -49,8 +53,8 @@ def test_tool_definitions_valid_structure():
 
 
 def test_tool_definitions_count():
-    """There are exactly 16 tools defined."""
-    assert len(TOOL_DEFINITIONS) == 16
+    """There are exactly 20 tools defined."""
+    assert len(TOOL_DEFINITIONS) == 20
 
 
 def test_add_clip_required_fields():
@@ -82,6 +86,29 @@ def test_set_transition_has_enum():
     assert "fade" in trans_prop["enum"]
     assert "dissolve" in trans_prop["enum"]
     assert "cut" in trans_prop["enum"]
+    assert "fadeblack" in trans_prop["enum"]
+    assert "slideleft" in trans_prop["enum"]
+    assert "zoomin" in trans_prop["enum"]
+
+
+def test_update_amv_effect_has_optional_fields():
+    """update_amv_effect exposes editable timing/type/intensity fields."""
+    update_fx = next(t for t in TOOL_DEFINITIONS if t["name"] == "update_amv_effect")
+    props = update_fx["parameters"]["properties"]
+    assert update_fx["parameters"]["required"] == ["effect_id"]
+    assert "type" in props
+    assert "timestamp_ms" in props
+    assert "duration_ms" in props
+    assert "intensity" in props
+
+
+def test_add_amv_effects_on_beats_has_effect_enum():
+    """add_amv_effects_on_beats uses the shared AMV effect enum."""
+    beat_fx = next(t for t in TOOL_DEFINITIONS if t["name"] == "add_amv_effects_on_beats")
+    fx_prop = beat_fx["parameters"]["properties"]["type"]
+    assert "enum" in fx_prop
+    assert "flash_white" in fx_prop["enum"]
+    assert "glitch" in fx_prop["enum"]
 
 
 def test_get_gemini_tools_returns_tool_proto():

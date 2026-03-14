@@ -7,7 +7,14 @@ import uuid
 router = APIRouter(prefix="/projects/{project_id}", tags=["timeline"])
 
 _DEFAULT_SETTINGS = {"resolution": "1080p", "aspect_ratio": "16:9", "fps": 24}
-_DEFAULT_TIMELINE = {"clips": [], "music_track": None, "total_duration_ms": 0, "settings": _DEFAULT_SETTINGS}
+_DEFAULT_TIMELINE = {
+    "clips": [],
+    "music_track": None,
+    "total_duration_ms": 0,
+    "effects": [],
+    "beat_map": None,
+    "settings": _DEFAULT_SETTINGS,
+}
 
 
 @router.get("/timeline")
@@ -29,6 +36,8 @@ async def update_timeline(project_id: str, data: TimelineUpdate):
         "clips": [c.model_dump() for c in data.clips],
         "music_track": data.music_track,
         "total_duration_ms": data.total_duration_ms,
+        "effects": [e.model_dump() for e in data.effects],
+        "beat_map": data.beat_map.model_dump() if data.beat_map else None,
         "settings": data.settings,
     }
     if db is None:

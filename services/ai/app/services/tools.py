@@ -6,6 +6,44 @@ The frontend receives the tool_calls and applies them to the Zustand store.
 
 import google.generativeai as genai
 
+AMV_EFFECT_TYPES = [
+    "flash_white",
+    "zoom_burst",
+    "shake",
+    "echo",
+    "speed_ramp",
+    "chromatic",
+    "panel_split",
+    "reverse",
+    "glitch",
+    "strobe",
+]
+
+TRANSITION_TYPES = [
+    "cut",
+    "fade",
+    "dissolve",
+    "fadeblack",
+    "fadewhite",
+    "wipe",
+    "wiperight",
+    "wipeup",
+    "wipedown",
+    "slideleft",
+    "slideright",
+    "slideup",
+    "slidedown",
+    "smoothleft",
+    "smoothright",
+    "circleopen",
+    "circleclose",
+    "pixelize",
+    "radial",
+    "zoomin",
+]
+
+AUTO_AMV_STYLES = ["aggressive", "smooth", "minimal"]
+
 TOOL_DEFINITIONS = [
     {
         "name": "add_clip",
@@ -76,7 +114,7 @@ TOOL_DEFINITIONS = [
                 },
                 "transition_type": {
                     "type": "string",
-                    "enum": ["fade", "dissolve", "wipe", "cut"],
+                    "enum": TRANSITION_TYPES,
                     "description": "Transition to next clip",
                 },
             },
@@ -110,7 +148,7 @@ TOOL_DEFINITIONS = [
                 },
                 "transition_type": {
                     "type": "string",
-                    "enum": ["fade", "dissolve", "wipe", "cut"],
+                    "enum": TRANSITION_TYPES,
                     "description": "Type of transition effect",
                 },
             },
@@ -227,7 +265,7 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "type": {
                     "type": "string",
-                    "enum": ["flash_white", "flash_black", "zoom_burst", "shake", "echo", "speed_ramp", "chromatic", "panel_split", "reverse", "glitch", "strobe"],
+                    "enum": AMV_EFFECT_TYPES,
                     "description": "Effect type",
                 },
                 "timestamp_ms": {"type": "integer", "description": "When the effect fires in milliseconds from start"},
@@ -235,6 +273,21 @@ TOOL_DEFINITIONS = [
                 "intensity": {"type": "number", "description": "Intensity 0.0–1.0 (default 0.8)"},
             },
             "required": ["type", "timestamp_ms"],
+        },
+    },
+    {
+        "name": "update_amv_effect",
+        "description": "Update an existing AMV effect. Use this when the user wants to change an effect's timing, duration, intensity, or type.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "effect_id": {"type": "string", "description": "UUID of the effect to update"},
+                "type": {"type": "string", "enum": AMV_EFFECT_TYPES, "description": "New effect type"},
+                "timestamp_ms": {"type": "integer", "description": "New timestamp in milliseconds from start"},
+                "duration_ms": {"type": "integer", "description": "New duration in milliseconds"},
+                "intensity": {"type": "number", "description": "New intensity from 0.0 to 1.0"},
+            },
+            "required": ["effect_id"],
         },
     },
     {
@@ -249,6 +302,19 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "clear_amv_effects",
+        "description": "Remove AMV effects in bulk. If no filters are given, clears all effects. Optional filters let you clear only one effect type or a specific time range.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": AMV_EFFECT_TYPES, "description": "Only clear effects of this type"},
+                "start_ms": {"type": "integer", "description": "Only clear effects at or after this timestamp"},
+                "end_ms": {"type": "integer", "description": "Only clear effects at or before this timestamp"},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "set_bpm",
         "description": "Set the BPM for beat-synced effects. Generates the beat map grid for the effects timeline.",
         "parameters": {
@@ -260,6 +326,40 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "add_amv_effect_range",
+        "description": "Add the same AMV effect repeatedly across a time range. Use this for instructions like 'add shake every 500ms from 5s to 8s' or 'repeat flash through the chorus'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": AMV_EFFECT_TYPES, "description": "Effect type to repeat"},
+                "start_ms": {"type": "integer", "description": "Start of the range in milliseconds"},
+                "end_ms": {"type": "integer", "description": "End of the range in milliseconds"},
+                "interval_ms": {"type": "integer", "description": "Spacing between effects in milliseconds"},
+                "count": {"type": "integer", "description": "Optional number of evenly spaced effects if interval is omitted"},
+                "duration_ms": {"type": "integer", "description": "Duration of each effect in milliseconds"},
+                "intensity": {"type": "number", "description": "Intensity of each effect from 0.0 to 1.0"},
+            },
+            "required": ["type", "start_ms", "end_ms"],
+        },
+    },
+    {
+        "name": "add_amv_effects_on_beats",
+        "description": "Add an AMV effect on beats within a time range. Use this for instructions like 'flash every beat', 'shake every 4th beat', or 'add strobe through the last 8 seconds'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": AMV_EFFECT_TYPES, "description": "Effect type to place on beats"},
+                "start_ms": {"type": "integer", "description": "Optional start of the beat range in milliseconds"},
+                "end_ms": {"type": "integer", "description": "Optional end of the beat range in milliseconds"},
+                "every_n_beats": {"type": "integer", "description": "Place the effect on every Nth beat (default 1)"},
+                "duration_ms": {"type": "integer", "description": "Duration of each effect in milliseconds"},
+                "intensity": {"type": "number", "description": "Intensity of each effect from 0.0 to 1.0"},
+                "bpm": {"type": "integer", "description": "Optional BPM to generate a beat map if one does not already exist"},
+            },
+            "required": ["type"],
+        },
+    },
+    {
         "name": "auto_amv",
         "description": "Auto-fill the effects timeline with beat-synced AMV effects across the entire trailer. Generates flash cuts, zoom bursts, and glitch effects matching the BPM.",
         "parameters": {
@@ -268,7 +368,7 @@ TOOL_DEFINITIONS = [
                 "bpm": {"type": "integer", "description": "BPM override (uses current if omitted)"},
                 "style": {
                     "type": "string",
-                    "enum": ["aggressive", "smooth", "minimal"],
+                    "enum": AUTO_AMV_STYLES,
                     "description": "aggressive = every beat, smooth = every 2 beats, minimal = every 4 beats",
                 },
             },

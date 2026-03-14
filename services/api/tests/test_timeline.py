@@ -9,6 +9,8 @@ def test_get_timeline_default(client):
     assert data["clips"] == []
     assert data["music_track"] is None
     assert data["total_duration_ms"] == 0
+    assert data["effects"] == []
+    assert data["beat_map"] is None
     assert data["settings"]["resolution"] == "1080p"
     assert data["settings"]["aspect_ratio"] == "16:9"
     assert data["settings"]["fps"] == 24
@@ -22,6 +24,9 @@ def test_put_timeline(client, sample_timeline):
     assert len(data["clips"]) == 1
     assert data["clips"][0]["id"] == "clip-001"
     assert data["total_duration_ms"] == 3000
+    assert len(data["effects"]) == 1
+    assert data["effects"][0]["type"] == "flash_white"
+    assert data["beat_map"]["bpm"] == 128
 
 
 def test_add_clip(client, sample_clip):

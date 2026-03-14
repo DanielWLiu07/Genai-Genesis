@@ -79,5 +79,15 @@ def sample_timeline(sample_clip):
         "clips": [sample_clip],
         "music_track": None,
         "total_duration_ms": 3000,
+        "effects": [
+            {
+                "id": "fx-001",
+                "type": "flash_white",
+                "timestamp_ms": 500,
+                "duration_ms": 120,
+                "intensity": 0.9,
+            }
+        ],
+        "beat_map": {"bpm": 128, "offset_ms": 0, "beats": [0, 469, 938]},
         "settings": {"resolution": "1080p", "aspect_ratio": "16:9", "fps": 24},
     }

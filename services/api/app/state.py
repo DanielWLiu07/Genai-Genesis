@@ -56,7 +56,7 @@ def delete_project_mem(pid: str) -> None:
 # ---------- timelines (in-memory fallback) ----------
 def _default_timeline(project_id: str) -> dict:
     return {"project_id": project_id, "clips": [], "music_track": None,
-            "total_duration_ms": 0,
+            "total_duration_ms": 0, "effects": [], "beat_map": None,
             "settings": {"resolution": "1080p", "aspect_ratio": "16:9", "fps": 24}}
 
 

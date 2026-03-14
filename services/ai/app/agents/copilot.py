@@ -78,7 +78,7 @@ try:
 
     @rt.function_node
     async def set_transition(clip_id: str, transition_type: str) -> str:
-        """Set the transition after a clip (fade/dissolve/wipe/cut)."""
+        """Set the transition after a clip using any supported transition preset."""
         _record("set_transition", clip_id=clip_id, transition_type=transition_type)
         return f"Set {transition_type} transition on {clip_id}"
 
@@ -124,16 +124,57 @@ try:
         return f"Added {type} effect @ {timestamp_ms}ms"
 
     @rt.function_node
+    async def update_amv_effect(effect_id: str, type: Optional[str] = None,
+                                timestamp_ms: Optional[int] = None,
+                                duration_ms: Optional[int] = None,
+                                intensity: Optional[float] = None) -> str:
+        """Update an existing AMV effect's timing, duration, intensity, or type."""
+        _record("update_amv_effect", effect_id=effect_id, type=type,
+                timestamp_ms=timestamp_ms, duration_ms=duration_ms, intensity=intensity)
+        return f"Updated effect {effect_id}"
+
+    @rt.function_node
     async def remove_amv_effect(effect_id: str) -> str:
         """Remove a specific AMV effect by its UUID."""
         _record("remove_amv_effect", effect_id=effect_id)
         return f"Removed effect {effect_id}"
 
     @rt.function_node
+    async def clear_amv_effects(type: Optional[str] = None,
+                                start_ms: Optional[int] = None,
+                                end_ms: Optional[int] = None) -> str:
+        """Clear AMV effects in bulk, optionally filtered by type or time range."""
+        _record("clear_amv_effects", type=type, start_ms=start_ms, end_ms=end_ms)
+        return "Cleared matching AMV effects"
+
+    @rt.function_node
     async def set_bpm(bpm: int) -> str:
         """Set the BPM for beat-synced effects and generate the beat map grid."""
         _record("set_bpm", bpm=bpm)
         return f"Set BPM to {bpm} and generated beat map"
+
+    @rt.function_node
+    async def add_amv_effect_range(type: str, start_ms: int, end_ms: int,
+                                   interval_ms: Optional[int] = None,
+                                   count: Optional[int] = None,
+                                   duration_ms: int = 200,
+                                   intensity: float = 0.8) -> str:
+        """Add the same AMV effect repeatedly across a time range."""
+        _record("add_amv_effect_range", type=type, start_ms=start_ms, end_ms=end_ms,
+                interval_ms=interval_ms, count=count, duration_ms=duration_ms, intensity=intensity)
+        return f"Added repeated {type} effects from {start_ms}ms to {end_ms}ms"
+
+    @rt.function_node
+    async def add_amv_effects_on_beats(type: str, start_ms: Optional[int] = None,
+                                       end_ms: Optional[int] = None,
+                                       every_n_beats: int = 1,
+                                       duration_ms: int = 200,
+                                       intensity: float = 0.8,
+                                       bpm: Optional[int] = None) -> str:
+        """Add an AMV effect on beats within an optional time range."""
+        _record("add_amv_effects_on_beats", type=type, start_ms=start_ms, end_ms=end_ms,
+                every_n_beats=every_n_beats, duration_ms=duration_ms, intensity=intensity, bpm=bpm)
+        return f"Added {type} on every {every_n_beats} beat(s)"
 
     @rt.function_node
     async def auto_amv(bpm: Optional[int] = None, style: str = "aggressive") -> str:
@@ -161,10 +202,13 @@ AMV editor who understands both cinematic storytelling AND fast-paced anime musi
 ALWAYS use tools to apply changes — never just describe what to do.
 Be concise: 1-2 sentences max explaining what you did.
 Call multiple tools per response for complex edits.
+If the context says EDITOR MODE is effects, prefer AMV effect tools and avoid scene-editing tools unless the user explicitly asks for clip/story changes.
 
 SCENE PACING: Hook 2-3s cut | Establishing 3-4s dissolve | Action 1.5-2.5s cut | Emotional 4-5s dissolve
-AMV: flash_white/black on strong beats 100-200ms intensity 0.8-1.0 | zoom_burst every 4th beat 200-300ms
+AMV: flash_white on strong beats 100-200ms intensity 0.8-1.0 | zoom_burst every 4th beat 200-300ms
      chromatic for tension 200-400ms | glitch digital/sci-fi 150-300ms | strobe climax 50-100ms
+AMV EDITING: use update_amv_effect to tweak placed effects, clear_amv_effects to remove groups of effects,
+             add_amv_effect_range for repeated effects over a section, add_amv_effects_on_beats for beat-matched sequences
 SHOT TYPE: continuous = same scene flowing | cut = new scene
 PROMPTS: always include camera angle, lighting, mood, color palette, atmosphere, anime/manga style.
 GENERATION: trigger_generate_clip with media_type='image' for still frames (Imagen/Gemini), media_type='video' for animated clips (Veo 3). Default to 'image' unless user asks for video."""
@@ -175,8 +219,9 @@ GENERATION: trigger_generate_clip with media_type='image' for still frames (Imag
         tool_nodes={
             add_clip, remove_clip, update_clip, reorder_clips, set_transition,
             regenerate_clip, set_music, update_settings, update_scene_duration,
-            set_shot_type, add_amv_effect, remove_amv_effect, set_bpm,
-            auto_amv, trigger_generate_clip, bulk_update_clips,
+            set_shot_type, add_amv_effect, update_amv_effect, remove_amv_effect,
+            clear_amv_effects, set_bpm, add_amv_effect_range,
+            add_amv_effects_on_beats, auto_amv, trigger_generate_clip, bulk_update_clips,
         },
         llm=GeminiLLM("gemini-2.5-flash"),
         system_message=SystemMessage(_SYSTEM),

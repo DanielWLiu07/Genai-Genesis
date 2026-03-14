@@ -17,9 +17,10 @@ interface ChatPanelProps {
   projectId: string;
   onCollapse?: () => void;
   dark?: boolean;
+  mode?: 'general' | 'effects';
 }
 
-export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProps) {
+export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general' }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,8 +42,10 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
   const updateSettings = useTimelineStore((s) => s.updateSettings);
   const addEffect    = useTimelineStore((s) => s.addEffect);
   const removeEffect = useTimelineStore((s) => s.removeEffect);
+  const updateEffect = useTimelineStore((s) => s.updateEffect);
   const setBeatMap   = useTimelineStore((s) => s.setBeatMap);
   const setEffects   = useTimelineStore((s) => s.setEffects);
+  const clearEffects = useTimelineStore((s) => s.clearEffects);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -75,6 +78,19 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
     return () => { if (thinkingRef.current) gsap.killTweensOf(thinkingRef.current); };
   }, [loading]);
 
+  const buildBeatMap = useCallback((bpmValue: number) => {
+    const totalMs = useTimelineStore.getState().clips.reduce((sum, clip) => sum + (clip.duration_ms || 3000), 0) || 30000;
+    const interval = (60 / bpmValue) * 1000;
+    const beats: number[] = [];
+    for (let t = 0; t <= totalMs + interval; t += interval) beats.push(Math.round(t));
+    return { bpm: bpmValue, offset_ms: 0, beats };
+  }, []);
+
+  const normalizeEffectType = useCallback((type?: string): EffectType | undefined => {
+    if (!type) return undefined;
+    return (type === 'flash_black' ? 'flash_white' : type) as EffectType;
+  }, []);
+
   const handleToolCall = useCallback((tc: { tool_name: string; arguments: Record<string, any> }) => {
     const { tool_name: name, arguments: args } = tc;
 
@@ -97,7 +113,7 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
         updateClip(args.scene_id, { duration_ms: args.duration_sec * 1000 });
         break;
       case 'set_transition':
-        updateClip(args.clip_id, { transition_type: args.transition_type });
+        if (mode !== 'effects') updateClip(args.clip_id, { transition_type: args.transition_type });
         break;
       case 'regenerate_clip':
         if (args.new_prompt) updateClip(args.clip_id, { prompt: args.new_prompt, gen_status: 'pending' });
@@ -113,17 +129,103 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
         updateClip(args.clip_id, { shot_type: args.shot_type } as any);
         break;
       case 'add_amv_effect':
-        addEffect({ id: crypto.randomUUID(), type: args.type as EffectType, timestamp_ms: args.timestamp_ms, duration_ms: args.duration_ms || 200, intensity: args.intensity ?? 0.8 });
+        addEffect({
+          id: crypto.randomUUID(),
+          type: normalizeEffectType(args.type) || 'flash_white',
+          timestamp_ms: args.timestamp_ms,
+          duration_ms: args.duration_ms || 200,
+          intensity: args.intensity ?? 0.8,
+        });
         break;
+      case 'update_amv_effect': {
+        const { effect_id, type, ...updates } = args;
+        updateEffect(effect_id, {
+          ...updates,
+          ...(type ? { type: normalizeEffectType(type) } : {}),
+        });
+        break;
+      }
       case 'remove_amv_effect':
         removeEffect(args.effect_id);
         break;
+      case 'clear_amv_effects': {
+        const state = useTimelineStore.getState();
+        const targetType = normalizeEffectType(args.type);
+        const startMs = Number.isFinite(args.start_ms) ? args.start_ms : Number.NEGATIVE_INFINITY;
+        const endMs = Number.isFinite(args.end_ms) ? args.end_ms : Number.POSITIVE_INFINITY;
+        if (!targetType && !Number.isFinite(args.start_ms) && !Number.isFinite(args.end_ms)) {
+          clearEffects();
+          break;
+        }
+        setEffects(state.effects.filter((effect) => {
+          const effectType = normalizeEffectType(effect.type);
+          const matchesType = !targetType || effectType === targetType;
+          const matchesRange = effect.timestamp_ms >= startMs && effect.timestamp_ms <= endMs;
+          return !(matchesType && matchesRange);
+        }));
+        break;
+      }
       case 'set_bpm': {
-        const totalMs = useTimelineStore.getState().clips.reduce((s, c) => s + (c.duration_ms || 3000), 0) || 30000;
-        const interval = (60 / args.bpm) * 1000;
-        const beats: number[] = [];
-        for (let t = 0; t <= totalMs + interval; t += interval) beats.push(Math.round(t));
-        setBeatMap({ bpm: args.bpm, offset_ms: 0, beats });
+        setBeatMap(buildBeatMap(args.bpm));
+        break;
+      }
+      case 'add_amv_effect_range': {
+        const state = useTimelineStore.getState();
+        const startMs = Math.max(0, Math.min(args.start_ms, args.end_ms));
+        const endMs = Math.max(args.start_ms, args.end_ms);
+        const intervalMs = args.interval_ms && args.interval_ms > 0 ? args.interval_ms : null;
+        const count = args.count && args.count > 0 ? args.count : null;
+        const timestamps: number[] = [];
+
+        if (intervalMs) {
+          for (let t = startMs; t <= endMs; t += intervalMs) timestamps.push(Math.round(t));
+        } else if (count && count > 1) {
+          const span = endMs - startMs;
+          const step = span / (count - 1);
+          for (let i = 0; i < count; i += 1) timestamps.push(Math.round(startMs + (step * i)));
+        } else {
+          timestamps.push(Math.round(startMs));
+        }
+
+        setEffects([
+          ...state.effects,
+          ...timestamps.map((timestampMs) => ({
+            id: crypto.randomUUID(),
+            type: normalizeEffectType(args.type) || 'flash_white',
+            timestamp_ms: timestampMs,
+            duration_ms: args.duration_ms || 200,
+            intensity: args.intensity ?? 0.8,
+          })),
+        ]);
+        break;
+      }
+      case 'add_amv_effects_on_beats': {
+        const state = useTimelineStore.getState();
+        let nextBeatMap = state.beatMap;
+        if ((!nextBeatMap || nextBeatMap.beats.length === 0) && args.bpm) {
+          nextBeatMap = buildBeatMap(args.bpm);
+          setBeatMap(nextBeatMap);
+        }
+        if (!nextBeatMap || nextBeatMap.beats.length === 0) break;
+
+        const totalMs = state.clips.reduce((sum, clip) => sum + (clip.duration_ms || 3000), 0) || 30000;
+        const startMs = Number.isFinite(args.start_ms) ? args.start_ms : 0;
+        const endMs = Number.isFinite(args.end_ms) ? args.end_ms : totalMs;
+        const everyNBeats = Math.max(1, args.every_n_beats || 1);
+        const timestamps = nextBeatMap.beats.filter((beatMs, index) => (
+          beatMs >= startMs && beatMs <= endMs && index % everyNBeats === 0
+        ));
+
+        setEffects([
+          ...state.effects,
+          ...timestamps.map((timestampMs) => ({
+            id: crypto.randomUUID(),
+            type: normalizeEffectType(args.type) || 'flash_white',
+            timestamp_ms: timestampMs,
+            duration_ms: args.duration_ms || 200,
+            intensity: args.intensity ?? 0.8,
+          })),
+        ]);
         break;
       }
       case 'auto_amv': {
@@ -135,7 +237,7 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
         for (let t = 0; t <= totalMs; t += interval) beats.push(Math.round(t));
         const style = args.style || 'aggressive';
         const step = style === 'aggressive' ? 1 : style === 'smooth' ? 2 : 4;
-        const baseTypes: EffectType[] = ['flash_white', 'flash_black', 'zoom_burst', 'shake'];
+        const baseTypes: EffectType[] = ['flash_white', 'zoom_burst', 'shake'];
         const newEffects: Effect[] = [];
         beats.forEach((ms, idx) => {
           if (ms > totalMs || idx % step !== 0 || idx === 0) return;
@@ -199,7 +301,24 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
         });
         break;
     }
-  }, [addClip, removeClip, updateClip, reorderClips, setMusicTrack, updateSettings, addEffect, removeEffect, setBeatMap, setEffects, projectId]);
+  }, [
+    addClip,
+    removeClip,
+    updateClip,
+    reorderClips,
+    setMusicTrack,
+    updateSettings,
+    addEffect,
+    removeEffect,
+    updateEffect,
+    setBeatMap,
+    setEffects,
+    clearEffects,
+    projectId,
+    mode,
+    buildBeatMap,
+    normalizeEffectType,
+  ]);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -213,6 +332,7 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
     const analysis = useProjectStore.getState().currentProject?.analysis;
     const timeline = {
       project_id: projectId,
+      editor_mode: mode,
       clips: state.clips,
       music_track: state.musicTrack,
       settings: state.settings,
@@ -239,6 +359,8 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
           api.updateTimeline(projectId, {
             clips: updated.clips,
             music_track: updated.musicTrack,
+            effects: updated.effects,
+            beat_map: updated.beatMap,
             settings: updated.settings,
           }).catch(() => {});
         }, 200);
@@ -290,11 +412,21 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
           <div ref={emptyStateRef} className={`text-center mt-8 ${subtext}`}>
             <Zap size={28} className={`mx-auto mb-2 ${dark ? 'text-[#2563eb]' : 'text-[#555]'}`} />
             <p className="text-xs font-bold tracking-wider" style={{ fontFamily: 'var(--font-manga)' }}>AI COPILOT</p>
-            <p className="text-[0.65rem] mt-1">Edit scenes, effects, pacing</p>
+            <p className="text-[0.65rem] mt-1">{mode === 'effects' ? 'Edit FX, beats, timing' : 'Edit scenes, effects, pacing'}</p>
             <div className={`mt-3 text-[0.6rem] space-y-1 ${dark ? 'text-[#555]' : 'text-[#aaa]'}`}>
-              <p>&quot;Make scene 3 more dramatic&quot;</p>
-              <p>&quot;Add flash cuts on every beat at 140bpm&quot;</p>
-              <p>&quot;Regenerate the opening scene&quot;</p>
+              {mode === 'effects' ? (
+                <>
+                  <p>&quot;Add flash on every beat from 0s to 8s at 140 bpm&quot;</p>
+                  <p>&quot;Clear the current flashes and add shake every 2 beats&quot;</p>
+                  <p>&quot;Make the last 5 seconds more intense with glitch and strobe&quot;</p>
+                </>
+              ) : (
+                <>
+                  <p>&quot;Make scene 3 more dramatic&quot;</p>
+                  <p>&quot;Add flash cuts on every beat at 140bpm&quot;</p>
+                  <p>&quot;Regenerate the opening scene&quot;</p>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -337,7 +469,11 @@ export function ChatPanel({ projectId, onCollapse, dark = false }: ChatPanelProp
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder={dark ? 'Add effects, edit scenes...' : 'Edit your trailer...'}
+            placeholder={
+              mode === 'effects'
+                ? 'Describe the FX edit you want...'
+                : dark ? 'Add effects, edit scenes...' : 'Edit your trailer...'
+            }
             className={`flex-1 text-sm px-3 py-2 border outline-none focus:ring-1 ${dark ? `${inputBg} focus:ring-[#2563eb] focus:border-[#2563eb]` : 'border-[#ccc] focus:ring-[#111] manga-input'}`}
           />
           <button

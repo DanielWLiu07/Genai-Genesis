@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { TransitionType } from '@/lib/transitions';
 
 export interface Clip {
   id: string;
@@ -10,7 +11,7 @@ export interface Clip {
   thumbnail_url?: string;
   text?: string;
   text_style?: { font_size: number; color: string; position: string; animation?: string };
-  transition_type?: 'fade' | 'dissolve' | 'wipe' | 'cut';
+  transition_type?: TransitionType;
   shot_type?: 'continuous' | 'cut';   // continuous = same scene flowing; cut = new scene
   scene_group?: number;               // clips sharing a group are one continuous sequence
   gen_status: 'pending' | 'generating' | 'done' | 'error';
@@ -139,6 +140,8 @@ export const useTimelineStore = create<TimelineState>((set) => ({
       clips,
       musicTrack: timeline.music_track || null,
       settings: timeline.settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
+      effects: timeline.effects || [],
+      beatMap: timeline.beat_map || timeline.beatMap || null,
     });
   },
 

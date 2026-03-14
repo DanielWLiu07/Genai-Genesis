@@ -45,52 +45,25 @@ export default function UploadPage() {
 
   // ── Restore previously saved content on mount ──
   useEffect(() => {
-    // Story text — sessionStorage first, then project store
-    const savedText = sessionStorage.getItem(`book_text_${id}`);
-    if (savedText) {
-      setStoryText(savedText);
-      setTextUploaded(true);
-    } else if (currentProject?.book_text) {
+    // Only restore from the store if it's actually this project
+    if (!currentProject || currentProject.id !== id) return;
+
+    if (currentProject.book_text) {
       setStoryText(currentProject.book_text);
       setTextUploaded(true);
     }
 
-    // Images — object URLs remain valid within the same tab session
-    try {
-      const savedImgs = sessionStorage.getItem(`uploaded_images_${id}`);
-      if (savedImgs) {
-        const parsed = JSON.parse(savedImgs);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Wrap back into the shape the component expects (no File, but url is still live)
-          setImages(parsed.map((i: any) => ({
-            id: i.id || crypto.randomUUID(),
-            file: new File([], i.file_name || 'image'),
-            url: i.url,
-            description: i.description || '',
-          })));
-        }
-      }
-    } catch {}
+    if (currentProject.characters?.length) {
+      setCharacters(currentProject.characters.map((c: any) => ({
+        id: c.id || crypto.randomUUID(),
+        name: c.name || '',
+        description: c.description || '',
+        reference_image_url: c.reference_image_url,
+      })));
+    }
 
-    // Characters — sessionStorage first, then project store
-    try {
-      const savedChars = sessionStorage.getItem(`characters_${id}`);
-      if (savedChars) {
-        const parsed = JSON.parse(savedChars);
-        if (Array.isArray(parsed) && parsed.length > 0) setCharacters(parsed);
-      } else if (currentProject?.characters?.length) {
-        setCharacters(currentProject.characters.map((c: any) => ({
-          id: c.id || crypto.randomUUID(),
-          name: c.name || '',
-          description: c.description || '',
-          reference_image_url: c.reference_image_url,
-        })));
-      }
-    } catch {}
-
-    // Audio — analysis result from project store (the file object can't be restored)
-    if (currentProject?.audio_analysis) {
-      setAudioAnalysis(currentProject.audio_analysis as Record<string, any>);
+    if ((currentProject as any).audio_analysis) {
+      setAudioAnalysis((currentProject as any).audio_analysis as Record<string, any>);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -221,14 +194,12 @@ export default function UploadPage() {
       const uploadResult: any = await api.uploadBook(id, file);
       const text = uploadResult.book_text || uploadResult.text_preview || '';
       setStoryText(text);
-      sessionStorage.setItem(`book_text_${id}`, text);
       setTextUploaded(true);
     } catch (err) {
       console.error(err);
       // Fallback: read file locally
       const text = await file.text();
       setStoryText(text);
-      sessionStorage.setItem(`book_text_${id}`, text);
       setTextUploaded(true);
     } finally {
       setUploading(false);
@@ -237,10 +208,9 @@ export default function UploadPage() {
 
   const handlePasteText = useCallback(() => {
     if (storyText.trim()) {
-      sessionStorage.setItem(`book_text_${id}`, storyText);
       setTextUploaded(true);
     }
-  }, [id, storyText]);
+  }, [storyText]);
 
   // ── Image Handlers ──
   const handleImageUpload = useCallback((files: FileList | File[] | null) => {
@@ -299,16 +269,11 @@ export default function UploadPage() {
     const text = storyText.trim();
     if (text && !storyFile) {
       try {
-        // Create a text file from pasted content and upload it
         const blob = new Blob([text], { type: 'text/plain' });
         const file = new File([blob], 'pasted-story.txt', { type: 'text/plain' });
-        const uploadResult: any = await api.uploadBook(id, file);
-        const bookText = uploadResult.book_text || uploadResult.text_preview || text;
-        sessionStorage.setItem(`book_text_${id}`, bookText);
+        await api.uploadBook(id, file);
       } catch (err) {
         console.error('Failed to persist text:', err);
-        // Still continue — sessionStorage has the text
-        sessionStorage.setItem(`book_text_${id}`, text);
       }
     }
 
@@ -322,14 +287,6 @@ export default function UploadPage() {
     images.forEach((img) => {
       addUploadedImage({ url: img.url, file_name: img.file.name, description: img.description });
     });
-    // Save characters to sessionStorage for editor
-    const charData = characters.filter((c) => c.name.trim()).map(({ id: cid, name, description, reference_image_url }) => ({
-      id: cid, name, description, reference_image_url,
-    }));
-    sessionStorage.setItem(`characters_${id}`, JSON.stringify(charData));
-    sessionStorage.setItem(`uploaded_images_${id}`, JSON.stringify(images.map((i) => ({
-      id: i.id, url: i.url, file_name: i.file.name, description: i.description,
-    }))));
 
     router.push(`/project/${id}`);
   }, [id, characters, images, storyText, storyFile, addCharacter, addUploadedImage, router]);

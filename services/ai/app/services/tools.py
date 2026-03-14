@@ -135,6 +135,73 @@ TOOL_DEFINITIONS = [
             "required": ["clip_id"],
         },
     },
+    {
+        "name": "set_music",
+        "description": "Set the background music track for the trailer. Use when the user wants to change or add background music.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Name/title of the music track",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "URL of the music file",
+                },
+                "duration_ms": {
+                    "type": "integer",
+                    "description": "Duration of the music track in milliseconds",
+                },
+                "volume": {
+                    "type": "number",
+                    "description": "Volume level from 0.0 to 1.0 (default 0.8)",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "update_settings",
+        "description": "Update the render settings for the trailer (resolution, aspect ratio, FPS).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "resolution": {
+                    "type": "string",
+                    "enum": ["720p", "1080p", "4k"],
+                    "description": "Video resolution",
+                },
+                "aspect_ratio": {
+                    "type": "string",
+                    "enum": ["16:9", "9:16", "1:1", "4:3"],
+                    "description": "Video aspect ratio",
+                },
+                "fps": {
+                    "type": "integer",
+                    "description": "Frames per second (24, 30, or 60)",
+                },
+            },
+        },
+    },
+    {
+        "name": "update_scene_duration",
+        "description": "Change the duration of a specific scene/clip. Use when the user wants to make a scene longer or shorter.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scene_id": {
+                    "type": "string",
+                    "description": "The UUID of the clip/scene to update",
+                },
+                "duration_sec": {
+                    "type": "number",
+                    "description": "New duration in seconds",
+                },
+            },
+            "required": ["scene_id", "duration_sec"],
+        },
+    },
 ]
 
 

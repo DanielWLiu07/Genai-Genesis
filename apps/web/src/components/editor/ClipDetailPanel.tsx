@@ -125,31 +125,33 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
 
     const analysis = currentProject?.analysis;
     const characters = (analysis?.characters as any[] || []).map((c: any) => ({
-      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+      name: c.name,
+      description: c.description,
+      visual_description: c.visual_description,
+      appearance: c.appearance,
+      image_url: c.image_url || c.reference_image_url,
     }));
     const sortedClips = [...clips].sort((a, b) => a.order - b.order);
     const clipOrder = sortedClips.findIndex((c) => c.id === clipId);
+    const prevClip = clipOrder > 0 ? sortedClips[clipOrder - 1] : null;
+    const nextClip = clipOrder < sortedClips.length - 1 ? sortedClips[clipOrder + 1] : null;
     const isContinuous = (clip as any).shot_type === 'continuous';
     const startFrame = clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined;
 
-    // Build a rich prompt: base prompt + mood/genre context + character names
-    const contextHints = [
-      analysis?.genre && `Genre: ${analysis.genre}`,
-      analysis?.mood && `Mood: ${analysis.mood}`,
-      characters.length > 0 && `Characters: ${characters.map((c: any) => c.name).join(', ')}`,
-      (clip as any).shot_type && `Shot: ${(clip as any).shot_type}`,
-    ].filter(Boolean).join('. ');
-    const richPrompt = contextHints ? `${clip.prompt}\n\n[Context: ${contextHints}]` : clip.prompt;
-
     try {
-      const result: any = await api.generateClip(projectId, clipId, richPrompt, 'video', {
+      const result: any = await api.generateClip(projectId, clipId, clip.prompt, 'video', {
         clip_order: clipOrder,
+        clip_total: sortedClips.length,
         scene_image_url: startFrame,
         characters: characters.length > 0 ? characters : undefined,
         mood: analysis?.mood,
         genre: analysis?.genre,
+        themes: (analysis?.themes as string[] | undefined),
         shot_type: (clip as any).shot_type || 'cut',
         is_continuous: isContinuous,
+        prev_scene_prompt: prevClip?.prompt,
+        next_scene_prompt: nextClip?.prompt,
+        feedback: feedback.trim() || undefined,
       });
       if (result.media_url) {
         updateClip(clipId, { gen_status: 'done', type: 'video' as any, generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url || clip.thumbnail_url });

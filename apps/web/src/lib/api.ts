@@ -97,13 +97,17 @@ export const api = {
       clip_order?: number;
       clip_total?: number;
       scene_image_url?: string;
-      characters?: { name: string; description?: string; appearance?: string; image_url?: string }[];
+      characters?: { name: string; description?: string; appearance?: string; image_url?: string; visual_description?: string }[];
       mood?: string;
       genre?: string;
       shot_type?: string;
       is_continuous?: boolean;
       style_seed?: string;
-    text?: string;
+      text?: string;
+      themes?: string[];
+      prev_scene_prompt?: string;
+      next_scene_prompt?: string;
+      feedback?: string;
     }
   ) =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {

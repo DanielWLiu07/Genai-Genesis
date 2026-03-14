@@ -36,12 +36,17 @@ class GenerateRequest(BaseModel):
     characters: Optional[list[CharacterInfo]] = None
     mood: Optional[str] = None
     genre: Optional[str] = None
+    themes: Optional[list[str]] = None         # story themes (hope, sacrifice, etc.)
     shot_type: str = "cut"                     # "continuous" or "cut"
     is_continuous: bool = False
     negative_prompt: str = ""
     style_seed: Optional[str] = None           # consistent visual anchor across all clips
     callback_url: Optional[str] = None
     text: Optional[str] = None                 # overlay text (for text_overlay clips)
+    # Narrative context for consistency
+    prev_scene_prompt: Optional[str] = None    # previous clip's prompt (continuity)
+    next_scene_prompt: Optional[str] = None    # next clip's prompt (exit framing)
+    feedback: Optional[str] = None             # user refinement notes
 
 
 class GenerateResponse(BaseModel):
@@ -79,24 +84,33 @@ async def _generate_and_callback(data: GenerateRequest):
         await _notify_progress(data.clip_id, "generating")
 
         chars = [c.model_dump() for c in (data.characters or [])]
-        neg = data.negative_prompt or build_negative_prompt()
+        neg = data.negative_prompt or build_negative_prompt(genre=data.genre)
 
         actual_type = data.type
         if data.type == "video":
             prompt = build_video_prompt(
                 data.prompt,
                 clip_order=data.clip_order,
+                clip_total=data.clip_total,
                 characters=chars,
                 mood=data.mood,
                 genre=data.genre,
+                themes=data.themes,
                 is_continuous=data.is_continuous,
+                prev_scene_prompt=data.prev_scene_prompt,
+                next_scene_prompt=data.next_scene_prompt,
+                feedback=data.feedback,
             )
+            # Tighter cfg_scale for continuous shots (stay close to start frame),
+            # looser for hard cuts (more creative freedom)
+            cfg_scale = 0.7 if data.is_continuous else 0.5
             result = await generate_video(
                 prompt=prompt,
                 duration_sec=data.duration_ms / 1000,
                 aspect_ratio=data.aspect_ratio,
                 negative_prompt=neg,
                 start_frame_url=data.scene_image_url,
+                cfg_scale=cfg_scale,
                 reference_image_urls=[
                     c["image_url"] for c in chars if c.get("image_url")
                 ] or None,

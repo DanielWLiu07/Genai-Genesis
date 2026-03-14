@@ -191,6 +191,11 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
 
   return (
     <div ref={containerRef} className="w-full h-full relative">
+      {/* Corner decoratives — behind the canvas */}
+      <img src="/stylized_imgs/stone2.png"  alt="" className="absolute -bottom-6 -left-4  w-48 pointer-events-none select-none z-0" style={{ opacity: 0.13, mixBlendMode: 'multiply', transform: 'rotate(-8deg)' }} />
+      <img src="/stylized_imgs/stone3.png"  alt="" className="absolute -bottom-4 -right-6 w-64 pointer-events-none select-none z-0" style={{ opacity: 0.13, mixBlendMode: 'multiply', transform: 'rotate(10deg)' }} />
+      <img src="/stylized_imgs/flower4.png" alt="" className="absolute -top-6  -left-4  w-36 pointer-events-none select-none z-0" style={{ opacity: 0.13, mixBlendMode: 'multiply', transform: 'rotate(15deg)' }} />
+      <img src="/stylized_imgs/flowers.png" alt="" className="absolute -top-4  -right-4 w-40 pointer-events-none select-none z-0" style={{ opacity: 0.13, mixBlendMode: 'multiply', transform: 'scaleY(-1) rotate(-50deg)' }} />
       <ReactFlow
         nodes={nodes}
         edges={edges}

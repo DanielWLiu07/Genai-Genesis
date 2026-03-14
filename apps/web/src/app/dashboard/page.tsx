@@ -102,9 +102,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!loading && projects.length > 0) {
-      // Run after loading=false so .project-card elements are in the DOM
       gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 0.6, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
       gsap.fromTo('.shelf-line', { opacity: 0, scaleX: 0, transformOrigin: 'left' }, { opacity: 1, scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.65, ease: 'power2.out' });
+
+      const controller = new AbortController();
+      const { signal } = controller;
 
       const cards = document.querySelectorAll('.project-card');
       cards.forEach((card) => {
@@ -114,30 +116,24 @@ export default function Dashboard() {
         el.addEventListener('mouseenter', () => {
           gsap.to(el, { opacity: 1, duration: 0.2 });
           gsap.to(bookEl, { y: -8, rotation: -2, boxShadow: '6px 12px 0px rgba(0,0,0,0.3)', duration: 0.25, ease: 'power2.out' });
-        });
+        }, { signal });
         el.addEventListener('mouseleave', () => {
           gsap.to(el, { opacity: 0.6, duration: 0.25 });
           gsap.to(bookEl, { y: 0, rotation: 0, boxShadow: '3px 3px 0px #000', duration: 0.25, ease: 'power2.out' });
-        });
-        const linkEl = el.querySelector('a') as HTMLAnchorElement | null;
+        }, { signal });
+        const linkEl = el.querySelector('a.book-link') as HTMLAnchorElement | null;
         linkEl?.addEventListener('click', (e) => {
           e.preventDefault();
           const href = linkEl.getAttribute('href');
-          // Flick animation: spin and slide off to the right like knocked off a shelf
           gsap.killTweensOf(bookEl);
           gsap.to(bookEl, {
-            x: 180,
-            y: -40,
-            rotation: 25,
-            opacity: 0,
-            duration: 0.45,
-            ease: 'power2.in',
-            onComplete: () => {
-              if (href) window.location.href = href;
-            },
+            x: 180, y: -40, rotation: 25, opacity: 0, duration: 0.45, ease: 'power2.in',
+            onComplete: () => { if (href) window.location.href = href; },
           });
-        });
+        }, { signal });
       });
+
+      return () => controller.abort();
     }
   }, [projects, loading]);
 
@@ -166,7 +162,7 @@ export default function Dashboard() {
       <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item fixed -bottom-6 -left-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
       <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item fixed -bottom-16 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
       <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun fixed top-28 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
-      <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 left-[52.5%] -translate-x-1/2 w-[1100px] pointer-events-none select-none z-[3]" style={{ opacity: 0.22 }} />
+      <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 left-[53%] -translate-x-1/2 w-[1100px] pointer-events-none select-none z-[3]" style={{ opacity: 0.22 }} />
 
       {/* Top bar */}
       <div className="shrink-0 border-b-2 border-[#ddd] relative overflow-hidden bg-white/90 backdrop-blur-sm z-[20]">

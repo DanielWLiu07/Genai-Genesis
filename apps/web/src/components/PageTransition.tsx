@@ -50,8 +50,8 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
     // Hide logo + letters initially
     if (logoRef.current)    gsap.set(logoRef.current, { opacity: 0, scale: 0.2, rotation: -25, y: 20 });
     if (glowRef.current)    gsap.set(glowRef.current, { opacity: 0, scale: 0.5 });
-    if (leftTreeRef.current)  gsap.set(leftTreeRef.current, { x: '-100%', opacity: 0 });
-    if (rightTreeRef.current) gsap.set(rightTreeRef.current, { x: '100%', opacity: 0 });
+    if (leftTreeRef.current)  gsap.set(leftTreeRef.current, { opacity: 1 });
+    if (rightTreeRef.current) gsap.set(rightTreeRef.current, { opacity: 1 });
     letterRefs.current.forEach((el) => {
       if (el) gsap.set(el, { opacity: 0, y: -60, rotation: () => Math.random() * 40 - 20 });
     });
@@ -82,20 +82,6 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    // Trees slide in from sides
-    if (leftTreeRef.current) {
-      gsap.fromTo(leftTreeRef.current,
-        { x: '-100%', opacity: 0 },
-        { x: '0%', opacity: 1, duration: 0.4, delay: 0.05, ease: 'power3.out' }
-      );
-    }
-    if (rightTreeRef.current) {
-      gsap.fromTo(rightTreeRef.current,
-        { x: '100%', opacity: 0 },
-        { x: '0%', opacity: 1, duration: 0.4, delay: 0.05, ease: 'power3.out' }
-      );
-    }
-
     // Letters crash in — stagger 0.03s each, last letter lands at 0.08 + 8×0.03 + 0.18 = ~0.5s
     letters.forEach((el, i) => {
       const startRot = (Math.random() * 36 - 18);
@@ -117,8 +103,6 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
 
     if (logo) gsap.to(logo, { scale: 2.5, opacity: 0, rotation: 15, duration: 0.32, ease: 'power2.in' });
     if (glow) gsap.set(glow, { opacity: 0 });
-    if (leftTreeRef.current)  gsap.to(leftTreeRef.current, { x: '-100%', opacity: 0, duration: 0.3, ease: 'power2.in' });
-    if (rightTreeRef.current) gsap.to(rightTreeRef.current, { x: '100%', opacity: 0, duration: 0.3, ease: 'power2.in' });
 
     letters.forEach((el, i) => {
       gsap.to(el, {
@@ -166,8 +150,8 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
         // Reset logo + letters for next transition
         if (logoRef.current) gsap.set(logoRef.current, { opacity: 0, scale: 0.2, rotation: -25, y: 20, x: 0 });
         if (glowRef.current) gsap.set(glowRef.current, { opacity: 0, scale: 0.5 });
-        if (leftTreeRef.current)  gsap.set(leftTreeRef.current, { x: '-100%', opacity: 0 });
-        if (rightTreeRef.current) gsap.set(rightTreeRef.current, { x: '100%', opacity: 0 });
+        if (leftTreeRef.current)  gsap.set(leftTreeRef.current, { opacity: 1 });
+        if (rightTreeRef.current) gsap.set(rightTreeRef.current, { opacity: 1 });
         letterRefs.current.forEach((el) => {
           if (el) gsap.set(el, { opacity: 0, y: -60, x: 0, rotation: 0, scale: 1, scaleX: 1, scaleY: 1 });
         });
@@ -255,12 +239,12 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
         </svg>
 
         {/* ── Tree overlays ─────────────────────────────────── */}
-        <div ref={leftTreeRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
+        <div ref={leftTreeRef} className="absolute inset-0 pointer-events-none">
           <video autoPlay loop muted playsInline className="w-full h-full object-cover" style={{ background: 'transparent' }}>
             <source src="/left-tree.webm" type="video/webm" />
           </video>
         </div>
-        <div ref={rightTreeRef} className="absolute inset-0 pointer-events-none" style={{ opacity: 0 }}>
+        <div ref={rightTreeRef} className="absolute inset-0 pointer-events-none">
           <video autoPlay loop muted playsInline className="w-full h-full object-cover" style={{ background: 'transparent' }}>
             <source src="/right-tree.webm" type="video/webm" />
           </video>

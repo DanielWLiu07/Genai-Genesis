@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useTimelineStore } from '@/stores/timeline-store';
 import { useProjectStore } from '@/stores/project-store';
+import gsap from 'gsap';
 
 type GenerationStep = 'idle' | 'analyzing' | 'planning' | 'done' | 'error';
 
@@ -28,21 +29,35 @@ export default function EditorPage() {
   const updateProject = useProjectStore((s) => s.updateProject);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // GSAP refs
+  const topBarRef = useRef<HTMLElement>(null);
+  const onboardingCardRef = useRef<HTMLDivElement>(null);
+  const generateBtnRef = useRef<HTMLButtonElement>(null);
+  const editorHeaderRef = useRef<HTMLDivElement>(null);
+  const flashOverlayRef = useRef<HTMLDivElement>(null);
+  const prevGenStepRef = useRef<GenerationStep>('idle');
+  const hadClipsRef = useRef(false);
+
   useEffect(() => {
     if (!id) return;
     setProjectId(id);
 
-    // Load project + timeline in parallel
     Promise.all([
       api.getProject(id).catch(() => null),
       api.getTimeline(id).catch(() => ({ clips: [], music_track: null, settings: null })),
     ]).then(([project, timeline]: [any, any]) => {
       if (project) {
-        // Try to recover book_text from sessionStorage
         const storedBookText = sessionStorage.getItem(`book_text_${id}`);
         if (storedBookText && !project.book_text) {
           project.book_text = storedBookText;
         }
+        // Recover characters and images from sessionStorage
+        const storedChars = sessionStorage.getItem(`characters_${id}`);
+        if (storedChars) {
+          project.characters = JSON.parse(storedChars);
+        }
+        if (!project.characters) project.characters = [];
+        if (!project.uploaded_images) project.uploaded_images = [];
         setCurrentProject(project);
       }
       if (timeline) loadTimeline(timeline);
@@ -76,6 +91,109 @@ export default function EditorPage() {
     };
   }, [id, setProjectId, loadTimeline, setCurrentProject, updateClip]);
 
+  // ── GSAP: Top bar slides down on mount ──
+  useEffect(() => {
+    if (loading || error) return;
+    const ctx = gsap.context(() => {
+      // 1. Top bar slides down from top
+      if (topBarRef.current) {
+        gsap.fromTo(topBarRef.current,
+          { y: -48, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }
+        );
+      }
+    });
+    return () => ctx.revert();
+  }, [loading, error]);
+
+  // ── GSAP: Onboarding card dramatic entrance ──
+  useEffect(() => {
+    if (!onboardingCardRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(onboardingCardRef.current,
+        { scale: 0.8, opacity: 0, rotation: -2 },
+        { scale: 1, opacity: 1, rotation: 0, duration: 0.6, ease: 'back.out(1.7)', delay: 0.2 }
+      );
+    });
+    return () => ctx.revert();
+  }, [loading, clips.length, genStep]);
+
+  // ── GSAP: Generate button idle glow pulse ──
+  useEffect(() => {
+    if (!generateBtnRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.to(generateBtnRef.current, {
+        boxShadow: '0 0 20px rgba(168, 85, 247, 0.6), 0 0 40px rgba(168, 85, 247, 0.3)',
+        duration: 1.2,
+        ease: 'sine.inOut',
+        yoyo: true,
+        repeat: -1,
+      });
+    });
+    return () => ctx.revert();
+  }, [loading, clips.length, genStep]);
+
+  // ── GSAP: Step indicator pulse on active ──
+  useEffect(() => {
+    if (genStep === 'analyzing' || genStep === 'planning') {
+      const activeIndicators = document.querySelectorAll('.step-indicator-active');
+      gsap.fromTo(activeIndicators,
+        { scale: 1 },
+        { scale: 1.05, duration: 0.5, ease: 'power1.inOut', yoyo: true, repeat: 2 }
+      );
+    }
+  }, [genStep]);
+
+  // ── GSAP: Flash screen when generation completes ──
+  useEffect(() => {
+    if (genStep === 'done' && prevGenStepRef.current !== 'done') {
+      if (flashOverlayRef.current) {
+        gsap.fromTo(flashOverlayRef.current,
+          { opacity: 0.8, display: 'block' },
+          {
+            opacity: 0,
+            duration: 0.6,
+            ease: 'power2.out',
+            onComplete: () => {
+              if (flashOverlayRef.current) {
+                flashOverlayRef.current.style.display = 'none';
+              }
+            },
+          }
+        );
+      }
+    }
+    prevGenStepRef.current = genStep;
+  }, [genStep]);
+
+  // ── GSAP: Celebration on first clips load ──
+  useEffect(() => {
+    if (clips.length > 0 && !hadClipsRef.current) {
+      hadClipsRef.current = true;
+      if (editorHeaderRef.current) {
+        const tl = gsap.timeline();
+        tl.to(editorHeaderRef.current, {
+          scale: 1.05,
+          duration: 0.2,
+          ease: 'power2.out',
+        });
+        tl.to(editorHeaderRef.current, {
+          scale: 1,
+          duration: 0.3,
+          ease: 'elastic.out(1, 0.5)',
+        });
+        tl.fromTo(editorHeaderRef.current, {
+          textShadow: '0 0 0px rgba(168, 85, 247, 0)',
+        }, {
+          textShadow: '0 0 20px rgba(168, 85, 247, 0.8)',
+          duration: 0.3,
+          yoyo: true,
+          repeat: 1,
+        }, '<');
+      }
+    }
+  }, [clips.length]);
+
   const handleExport = useCallback(async () => {
     if (!id || exporting) return;
     setExporting(true);
@@ -89,7 +207,6 @@ export default function EditorPage() {
         return;
       }
 
-      // Poll for completion
       setExportStatus('Rendering...');
       let attempts = 0;
       const maxAttempts = 120;
@@ -131,20 +248,25 @@ export default function EditorPage() {
   const handleGenerate = useCallback(async () => {
     if (!currentProject || !id) return;
 
-    const bookText = currentProject.book_text || sessionStorage.getItem(`book_text_${id}`);
+    const bookText = currentProject.book_text || currentProject.story_text || sessionStorage.getItem(`book_text_${id}`);
     const existingAnalysis = currentProject.analysis;
+    const characters = currentProject.characters || [];
+    const uploadedImages = currentProject.uploaded_images || [];
 
     try {
       let analysis = existingAnalysis;
 
       if (!analysis) {
         if (!bookText) {
-          setGenError('No book text found. Please re-upload your story file.');
+          setGenError('No story uploaded yet. Go to the upload page to add your story.');
           setGenStep('error');
           return;
         }
         setGenStep('analyzing');
-        analysis = await api.analyzeStory(id, bookText);
+        analysis = await api.analyzeStory(id, bookText, {
+          characters: characters.length > 0 ? characters : undefined,
+          uploaded_images: uploadedImages.length > 0 ? uploadedImages.map((i: any) => i.url) : undefined,
+        });
         updateProject(id, { analysis, status: 'planning' });
       }
 
@@ -164,6 +286,7 @@ export default function EditorPage() {
 
   const hasBook = currentProject && (
     currentProject.book_text ||
+    currentProject.story_text ||
     currentProject.book_file_url ||
     (typeof window !== 'undefined' && sessionStorage.getItem(`book_text_${id}`))
   );
@@ -172,10 +295,10 @@ export default function EditorPage() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-zinc-950">
+      <div className="h-screen flex items-center justify-center bg-[#f5f5f5]">
         <div className="text-center">
-          <Loader2 size={32} className="mx-auto mb-3 text-violet-400 animate-spin" />
-          <p className="text-zinc-400">Loading project...</p>
+          <Loader2 size={32} className="mx-auto mb-3 text-[#111] animate-spin" />
+          <p className="text-[#888]">Loading project...</p>
         </div>
       </div>
     );
@@ -183,36 +306,43 @@ export default function EditorPage() {
 
   if (error) {
     return (
-      <div className="h-screen flex items-center justify-center bg-zinc-950">
+      <div className="h-screen flex items-center justify-center bg-[#f5f5f5]">
         <div className="text-center">
           <p className="text-red-400 mb-4">{error}</p>
-          <Link href="/" className="text-violet-400 hover:text-violet-300 underline">Back to Dashboard</Link>
+          <Link href="/dashboard" className="text-[#111] hover:text-[#555] underline">Back to Dashboard</Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-zinc-950">
+    <div className="h-screen flex flex-col bg-[#f5f5f5]">
+      {/* Flash overlay for generation complete */}
+      <div
+        ref={flashOverlayRef}
+        className="fixed inset-0 z-50 bg-[#111] pointer-events-none"
+        style={{ display: 'none', opacity: 0 }}
+      />
+
       {/* Top bar */}
-      <header className="h-12 border-b border-zinc-800 flex items-center px-4 gap-4 shrink-0">
-        <Link href="/" className="text-zinc-400 hover:text-zinc-200">
+      <header ref={topBarRef} className="h-12 border-b-2 border-[#ccc] flex items-center px-4 gap-4 shrink-0 bg-[#f5f5f5]">
+        <Link href="/dashboard" className="text-[#888] hover:text-[#111] transition-colors">
           <ArrowLeft size={18} />
         </Link>
-        <div className="flex items-center gap-2">
-          <Film size={18} className="text-violet-400" />
-          <span className="font-semibold text-sm">
-            {currentProject?.title || 'FrameFlow Editor'}
+        <div ref={editorHeaderRef} className="flex items-center gap-2">
+          <Film size={18} className="text-[#111]" />
+          <span className="font-semibold text-sm text-[#111]" style={{ fontFamily: 'var(--font-manga)' }}>
+            {currentProject?.title || 'MangaMate Editor'}
           </span>
         </div>
         <div className="ml-auto flex gap-2">
-          <button className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors">
+          <button className="manga-btn bg-white text-[#111] px-3 py-1.5 text-sm flex items-center gap-1.5">
             <Play size={14} /> Preview
           </button>
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors"
+            className="manga-btn bg-[#111] text-white px-3 py-1.5 text-sm flex items-center gap-1.5"
           >
             {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             {exportStatus || (exporting ? 'Exporting...' : 'Export')}
@@ -229,17 +359,17 @@ export default function EditorPage() {
 
         {/* Onboarding overlay */}
         {showOnboarding && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#f5f5f5]/80 backdrop-blur-sm">
             <div className="max-w-md w-full mx-4">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl shadow-violet-500/5">
-                <div className="w-14 h-14 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-6">
-                  <Sparkles size={28} className="text-violet-400" />
+              <div ref={onboardingCardRef} className="manga-panel-accent p-8">
+                <div className="w-14 h-14 flex items-center justify-center mx-auto mb-6">
+                  <Sparkles size={28} className="text-[#111]" />
                 </div>
 
-                <h2 className="text-xl font-bold text-center mb-2">
+                <h2 className="manga-title text-2xl text-center mb-2 text-[#111]">
                   Ready to create your trailer
                 </h2>
-                <p className="text-zinc-400 text-sm text-center mb-8">
+                <p className="text-[#888] text-sm text-center mb-8">
                   Our AI will analyze your story and generate a cinematic trailer plan with scenes, transitions, and pacing.
                 </p>
 
@@ -259,15 +389,21 @@ export default function EditorPage() {
                 )}
 
                 {genStep === 'error' && genError && (
-                  <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <div className="mb-6 p-3 bg-red-500/10 border-2 border-red-500/30">
                     <p className="text-red-400 text-sm">{genError}</p>
+                    {!hasBook && (
+                      <Link href={`/project/${id}/upload`} className="text-[#111] text-sm underline mt-2 block">
+                        Go to Upload Page
+                      </Link>
+                    )}
                   </div>
                 )}
 
                 <button
+                  ref={generateBtnRef}
                   onClick={handleGenerate}
                   disabled={isGenerating}
-                  className="w-full bg-violet-600 hover:bg-violet-500 disabled:bg-violet-600/50 disabled:cursor-not-allowed text-white py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+                  className="manga-btn w-full bg-[#111] text-white py-3 text-lg flex items-center justify-center gap-2"
                 >
                   {isGenerating ? (
                     <>
@@ -290,11 +426,25 @@ export default function EditorPage() {
                 </button>
 
                 {currentProject?.analysis && genStep === 'idle' && (
-                  <p className="text-xs text-zinc-500 text-center mt-3">
+                  <p className="text-xs text-[#555] text-center mt-3">
                     Story already analyzed -- will skip to trailer planning
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* No story uploaded state */}
+        {!loading && !error && clips.length === 0 && !hasBook && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#f5f5f5]/80 backdrop-blur-sm">
+            <div className="manga-panel-accent p-8 max-w-md text-center">
+              <BookOpen size={32} className="mx-auto mb-4 text-[#111]" />
+              <h2 className="manga-title text-xl mb-2 text-[#111]">No Story Content</h2>
+              <p className="text-[#888] text-sm mb-6">Upload your story text, images, or character details to get started.</p>
+              <Link href={`/project/${id}/upload`} className="manga-btn bg-[#111] text-white px-6 py-3 inline-block">
+                Go to Upload
+              </Link>
             </div>
           </div>
         )}
@@ -318,20 +468,22 @@ function StepIndicator({
   status: 'pending' | 'active' | 'done';
 }) {
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
+      status === 'active' ? 'step-indicator-active' : ''
+    } ${
       status === 'active'
-        ? 'bg-violet-500/10 border border-violet-500/20'
+        ? 'bg-[#111]/10 border-2 border-[#111]/30'
         : status === 'done'
-        ? 'bg-emerald-500/10 border border-emerald-500/20'
-        : 'bg-zinc-800/50 border border-zinc-700/50'
+        ? 'bg-emerald-500/10 border-2 border-emerald-500/30'
+        : 'bg-white border-2 border-[#ccc]'
     }`}>
       <div className={`shrink-0 ${
-        status === 'active' ? 'text-violet-400' : status === 'done' ? 'text-emerald-400' : 'text-zinc-600'
+        status === 'active' ? 'text-[#111]' : status === 'done' ? 'text-emerald-400' : 'text-[#555]'
       }`}>
         {status === 'active' ? <Loader2 size={16} className="animate-spin" /> : icon}
       </div>
       <span className={`text-sm ${
-        status === 'active' ? 'text-violet-300' : status === 'done' ? 'text-emerald-300' : 'text-zinc-500'
+        status === 'active' ? 'text-[#555]' : status === 'done' ? 'text-emerald-300' : 'text-[#555]'
       }`}>
         {label}
         {status === 'done' && <span className="ml-1.5 text-emerald-400">done</span>}

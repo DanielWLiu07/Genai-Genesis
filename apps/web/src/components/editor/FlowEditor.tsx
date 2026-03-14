@@ -42,6 +42,7 @@ function clipsToEdges(clips: Clip[]): Edge[] {
       target: sorted[i + 1].id,
       type: 'smoothstep',
       animated: true,
+      style: { stroke: '#111', strokeWidth: 2 },
     });
   }
   return edges;
@@ -94,11 +95,11 @@ export function FlowEditor() {
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         fitView
-        className="bg-zinc-950"
+        className="bg-[#f5f5f5]"
       >
-        <Background color="#333" gap={20} />
-        <Controls className="!bg-zinc-800 !border-zinc-700" />
-        <MiniMap className="!bg-zinc-800" />
+        <Background color="#ddd" gap={20} />
+        <Controls className="!bg-white !border-2 !border-[#ccc] !rounded-none [&>button]:!bg-white [&>button]:!border-[#ccc] [&>button]:!text-[#888] [&>button:hover]:!bg-[#f0f0f0]" />
+        <MiniMap className="!bg-white !border-2 !border-[#ccc]" />
       </ReactFlow>
     </div>
   );

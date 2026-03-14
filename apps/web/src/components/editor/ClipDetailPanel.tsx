@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
+import { useProjectStore } from '@/stores/project-store';
 import { api } from '@/lib/api';
-import { X, Sparkles, RefreshCw, Clock, Type, ArrowRightLeft, Trash2, Upload, Film, ImageIcon } from 'lucide-react';
+import { X, Sparkles, RefreshCw, Clock, Type, ArrowRightLeft, Trash2, Upload, Film, ImageIcon, Play, Maximize2 } from 'lucide-react';
 import gsap from 'gsap';
 
 interface ClipDetailPanelProps {
@@ -13,8 +14,10 @@ interface ClipDetailPanelProps {
 
 export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
   const clip = useTimelineStore((s) => s.clips.find((c) => c.id === clipId));
+  const clips = useTimelineStore((s) => s.clips);
   const updateClip = useTimelineStore((s) => s.updateClip);
   const removeClip = useTimelineStore((s) => s.removeClip);
+  const currentProject = useProjectStore((s) => s.currentProject);
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -25,6 +28,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
   const [transition, setTransition] = useState<string>(clip?.transition_type || 'fade');
   const [activeTab, setActiveTab] = useState<'image' | 'video'>('image');
   const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
 
   const hasVideo = !!(clip?.generated_media_url && clip?.type === 'video');
   const hasImage = !!clip?.thumbnail_url;
@@ -118,9 +122,34 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
     if (!projectId || !clip) return;
     setGeneratingVideo(true);
     updateClip(clipId, { gen_status: 'generating' });
+
+    const analysis = currentProject?.analysis;
+    const characters = (analysis?.characters as any[] || []).map((c: any) => ({
+      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+    }));
+    const sortedClips = [...clips].sort((a, b) => a.order - b.order);
+    const clipOrder = sortedClips.findIndex((c) => c.id === clipId);
+    const isContinuous = (clip as any).shot_type === 'continuous';
+    const startFrame = clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined;
+
+    // Build a rich prompt: base prompt + mood/genre context + character names
+    const contextHints = [
+      analysis?.genre && `Genre: ${analysis.genre}`,
+      analysis?.mood && `Mood: ${analysis.mood}`,
+      characters.length > 0 && `Characters: ${characters.map((c: any) => c.name).join(', ')}`,
+      (clip as any).shot_type && `Shot: ${(clip as any).shot_type}`,
+    ].filter(Boolean).join('. ');
+    const richPrompt = contextHints ? `${clip.prompt}\n\n[Context: ${contextHints}]` : clip.prompt;
+
     try {
-      const result: any = await api.generateClip(projectId, clipId, clip.prompt, 'video', {
-        scene_image_url: clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined,
+      const result: any = await api.generateClip(projectId, clipId, richPrompt, 'video', {
+        clip_order: clipOrder,
+        scene_image_url: startFrame,
+        characters: characters.length > 0 ? characters : undefined,
+        mood: analysis?.mood,
+        genre: analysis?.genre,
+        shot_type: (clip as any).shot_type || 'cut',
+        is_continuous: isContinuous,
       });
       if (result.media_url) {
         updateClip(clipId, { gen_status: 'done', type: 'video' as any, generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url || clip.thumbnail_url });
@@ -131,7 +160,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
     } finally {
       setGeneratingVideo(false);
     }
-  }, [clipId, clip, updateClip]);
+  }, [clipId, clip, clips, currentProject, updateClip]);
 
   if (!clip) return null;
 
@@ -222,7 +251,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
               </div>
             )}
 
-            {/* Upload overlay — appears on hover */}
+            {/* Upload overlay — image tab only */}
             {(!showTabs || activeTab === 'image') && (
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -232,6 +261,16 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
                 <span className="text-white text-xs font-medium">Upload Image</span>
               </button>
             )}
+            {/* Fullscreen button — video tab */}
+            {(showTabs && activeTab === 'video') || (clip.generated_media_url && clip.type === 'video' && !hasImage) ? (
+              <button
+                onClick={() => setShowVideoModal(true)}
+                className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-black/90 text-white transition-colors opacity-0 group-hover:opacity-100"
+                title="Watch fullscreen"
+              >
+                <Maximize2 size={13} />
+              </button>
+            ) : null}
 
             <input
               ref={fileInputRef}
@@ -332,6 +371,15 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
 
       {/* Actions */}
       <div className="p-3 border-t-2 border-[#ccc] space-y-2">
+        {/* Watch video button — prominent when video exists */}
+        {hasVideo && (
+          <button
+            onClick={() => setShowVideoModal(true)}
+            className="manga-btn w-full bg-blue-600 text-white border-blue-700 py-2 text-sm flex items-center justify-center gap-2 hover:bg-blue-700"
+          >
+            <Play size={14} /> Watch Video
+          </button>
+        )}
         <div className="flex gap-2">
           <button
             onClick={handleRegenerate}
@@ -345,7 +393,7 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
             <button
               onClick={handleGenerateVideo}
               disabled={clip.gen_status === 'generating' || generatingVideo}
-              className="manga-btn flex-1 bg-blue-600 text-white border-blue-700 py-2 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50 hover:bg-blue-700"
+              className="manga-btn flex-1 bg-[#111] text-white py-2 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               <Film size={13} />
               {generatingVideo ? 'Generating...' : 'Gen Video'}
@@ -359,6 +407,33 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
           <Trash2 size={14} /> Delete Clip
         </button>
       </div>
+
+      {/* Fullscreen video modal */}
+      {showVideoModal && clip.generated_media_url && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center"
+          onClick={() => setShowVideoModal(false)}
+        >
+          <button
+            onClick={() => setShowVideoModal(false)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white"
+          >
+            <X size={28} />
+          </button>
+          <p className="text-[#888] text-xs uppercase tracking-widest mb-3" style={{ fontFamily: 'var(--font-manga)' }}>
+            Scene {clips.sort((a, b) => a.order - b.order).findIndex((c) => c.id === clipId) + 1}
+          </p>
+          <video
+            src={clip.generated_media_url}
+            className="max-w-4xl w-full max-h-[80vh] bg-black"
+            controls
+            autoPlay
+            poster={clip.thumbnail_url}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <p className="text-white/60 text-xs mt-3 max-w-2xl text-center leading-relaxed">{clip.prompt}</p>
+        </div>
+      )}
     </div>
   );
 }

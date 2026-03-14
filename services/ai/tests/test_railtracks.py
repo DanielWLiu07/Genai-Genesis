@@ -233,44 +233,45 @@ class TestAgentModuleImports:
         from app.agents.pipeline import run_pipeline
         assert asyncio.iscoroutinefunction(run_pipeline)
 
-    def test_copilot_agent_is_none_due_to_llm_model_bug(self):
-        """
-        CopilotAgent is None because the code passes llm_model= (wrong kwarg).
-        This test DOCUMENTS THE KNOWN BUG.
-        """
+    def test_copilot_agent_is_initialised(self):
+        """CopilotAgent is not None — llm= kwarg is correct."""
         from app.agents.copilot import CopilotAgent, _RAILTRACKS_AVAILABLE
-        # Due to the llm_model= bug, railtracks init fails
-        assert CopilotAgent is None
-        assert _RAILTRACKS_AVAILABLE is False
+        assert _RAILTRACKS_AVAILABLE is True
+        assert CopilotAgent is not None
 
-    def test_pipeline_agent_is_none_due_to_llm_model_bug(self):
-        """
-        TrailerPipelineAgent is None because the code passes llm_model= (wrong kwarg).
-        This test DOCUMENTS THE KNOWN BUG.
-        """
+    def test_pipeline_agent_is_initialised(self):
+        """TrailerPipelineAgent is not None — llm= kwarg is correct."""
         from app.agents.pipeline import TrailerPipelineAgent, _RAILTRACKS_AVAILABLE
-        assert TrailerPipelineAgent is None
-        assert _RAILTRACKS_AVAILABLE is False
+        assert _RAILTRACKS_AVAILABLE is True
+        assert TrailerPipelineAgent is not None
 
-    def test_run_copilot_raises_when_agent_is_none(self):
-        """run_copilot raises RuntimeError when CopilotAgent is None."""
-        from app.agents.copilot import run_copilot
+    def test_run_copilot_raises_when_agent_forced_none(self):
+        """run_copilot raises RuntimeError when CopilotAgent is manually set to None."""
+        import app.agents.copilot as copilot_mod
 
-        async def _run():
-            with pytest.raises(RuntimeError, match="Railtracks not available"):
-                await run_copilot("test prompt")
+        original = copilot_mod.CopilotAgent
+        copilot_mod.CopilotAgent = None
+        try:
+            async def _run():
+                with pytest.raises(RuntimeError, match="Railtracks not available"):
+                    await copilot_mod.run_copilot("test prompt")
+            asyncio.run(_run())
+        finally:
+            copilot_mod.CopilotAgent = original
 
-        asyncio.run(_run())
+    def test_run_pipeline_raises_when_agent_forced_none(self):
+        """run_pipeline raises RuntimeError when TrailerPipelineAgent is manually set to None."""
+        import app.agents.pipeline as pipeline_mod
 
-    def test_run_pipeline_raises_when_agent_is_none(self):
-        """run_pipeline raises RuntimeError when TrailerPipelineAgent is None."""
-        from app.agents.pipeline import run_pipeline
-
-        async def _run():
-            with pytest.raises(RuntimeError, match="Railtracks pipeline not available"):
-                await run_pipeline("test book text")
-
-        asyncio.run(_run())
+        original = pipeline_mod.TrailerPipelineAgent
+        pipeline_mod.TrailerPipelineAgent = None
+        try:
+            async def _run():
+                with pytest.raises(RuntimeError, match="Railtracks pipeline not available"):
+                    await pipeline_mod.run_pipeline("test book text")
+            asyncio.run(_run())
+        finally:
+            pipeline_mod.TrailerPipelineAgent = original
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +322,7 @@ class TestChatRouterFallback:
         assert "tool_calls" in data
 
     def test_chat_fallback_content_is_from_gemini(self, client):
-        """Fallback response content comes from direct Gemini call."""
+        """Fallback response content comes from direct Gemini call when Railtracks disabled."""
         expected_text = "Here is what I suggest for your trailer."
 
         mock_response = MagicMock()
@@ -335,7 +336,8 @@ class TestChatRouterFallback:
         mock_session.send_message.return_value = mock_response
         mock_model.start_chat.return_value = mock_session
 
-        with patch("app.routers.chat.get_model", return_value=mock_model), \
+        with patch("app.routers.chat._RAILTRACKS_CHAT", False), \
+             patch("app.routers.chat.get_model", return_value=mock_model), \
              patch("app.routers.chat.get_gemini_tools", return_value=MagicMock()):
             response = client.post(
                 "/ai/chat",
@@ -360,7 +362,7 @@ class TestPipelineRouterFallback:
 
     def test_pipeline_falls_back_when_railtracks_unavailable(self, client):
         """
-        Since TrailerPipelineAgent is None, pipeline endpoint falls back to
+        When _RAILTRACKS_PIPELINE is False, pipeline endpoint falls back to
         sequential direct calls: analyze_story → plan_trailer → get_suggestions.
         """
         fake_analysis = {
@@ -387,7 +389,8 @@ class TestPipelineRouterFallback:
             "suggestions": [{"type": "pacing", "priority": "medium", "description": "Add more clips"}],
         }
 
-        with patch("app.services.story_analyzer.generate_json", new_callable=AsyncMock, return_value=fake_analysis), \
+        with patch("app.routers.plan._RAILTRACKS_PIPELINE", False), \
+             patch("app.services.story_analyzer.generate_json", new_callable=AsyncMock, return_value=fake_analysis), \
              patch("app.services.trailer_planner.generate_json", new_callable=AsyncMock, return_value=fake_plan), \
              patch("app.services.suggestions.generate_json", new_callable=AsyncMock, return_value=fake_quality):
             response = client.post(
@@ -424,7 +427,8 @@ class TestPipelineRouterFallback:
         }
         fake_quality = {"score": 5, "overall": "OK", "suggestions": []}
 
-        with patch("app.services.story_analyzer.generate_json", new_callable=AsyncMock, return_value=fake_analysis), \
+        with patch("app.routers.plan._RAILTRACKS_PIPELINE", False), \
+             patch("app.services.story_analyzer.generate_json", new_callable=AsyncMock, return_value=fake_analysis), \
              patch("app.services.trailer_planner.generate_json", new_callable=AsyncMock, return_value=fake_plan), \
              patch("app.services.suggestions.generate_json", new_callable=AsyncMock, return_value=fake_quality):
             response = client.post(
@@ -712,31 +716,28 @@ class TestPipelineContextVarIsolation:
 
 class TestLlmModelBug:
     """
-    Document and validate the core railtracks API bug:
-    both copilot.py and pipeline.py call rt.agent_node(llm_model=...)
-    but the correct parameter is llm=.
+    Verify the llm_model= bug is FIXED: both agent files now use llm= (correct).
     """
 
-    def test_copilot_uses_wrong_kwarg_llm_model(self):
-        """Grep the source to confirm llm_model= is used in copilot.py."""
-        import ast, textwrap
+    def test_copilot_uses_correct_kwarg_llm(self):
+        """Confirm copilot.py uses llm= (not llm_model=) for rt.agent_node."""
         src_path = os.path.join(
             os.path.dirname(__file__), "..", "app", "agents", "copilot.py"
         )
         with open(src_path) as f:
             source = f.read()
-        assert "llm_model=" in source, "Expected llm_model= kwarg in copilot.py"
-        assert "llm_model=GeminiLLM" in source
+        assert "llm=GeminiLLM" in source, "copilot.py should use llm= kwarg"
+        assert "llm_model=GeminiLLM" not in source, "copilot.py must not use llm_model= kwarg"
 
-    def test_pipeline_uses_wrong_kwarg_llm_model(self):
-        """Grep the source to confirm llm_model= is used in pipeline.py."""
+    def test_pipeline_uses_correct_kwarg_llm(self):
+        """Confirm pipeline.py uses llm= (not llm_model=) for rt.agent_node."""
         src_path = os.path.join(
             os.path.dirname(__file__), "..", "app", "agents", "pipeline.py"
         )
         with open(src_path) as f:
             source = f.read()
-        assert "llm_model=" in source, "Expected llm_model= kwarg in pipeline.py"
-        assert "llm_model=GeminiLLM" in source
+        assert "llm=GeminiLLM" in source, "pipeline.py should use llm= kwarg"
+        assert "llm_model=GeminiLLM" not in source, "pipeline.py must not use llm_model= kwarg"
 
     def test_fix_would_make_agent_non_none(self):
         """If we use llm= instead of llm_model=, CopilotAgent would be created."""

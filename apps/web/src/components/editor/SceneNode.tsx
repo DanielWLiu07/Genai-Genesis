@@ -104,8 +104,8 @@ function SceneNodeInner({ data }: NodeProps) {
       );
     }
 
-    // text_overlay and transition clips don't need API generation — mark done immediately
-    if (clip.type === 'text_overlay' || clip.type === 'transition') {
+    // transition clips don't need API generation — mark done immediately
+    if (clip.type === 'transition') {
       updateClip(clip.id, { gen_status: 'done' });
       return;
     }
@@ -133,9 +133,12 @@ function SceneNodeInner({ data }: NodeProps) {
 
     const sceneImageUrl = startFrame;
 
+    // For text_overlay: generate type stays 'image' but we pass the overlay text
+    // so the render service can blend it into the scene cinematically
+    const genType = clip.type === 'text_overlay' ? 'text_overlay' : 'image';
+
     try {
-      // Always generate as image in the scene editor — video compilation is a separate batch step
-      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, 'image', {
+      const result: any = await api.generateClip(projectId, clip.id, clip.prompt, genType, {
         clip_order: clipOrder,
         scene_image_url: sceneImageUrl,
         characters: characters.length > 0 ? characters : undefined,
@@ -143,6 +146,7 @@ function SceneNodeInner({ data }: NodeProps) {
         genre: analysis?.genre,
         shot_type: (clip as any).shot_type || 'cut',
         is_continuous: isContinuous,
+        text: clip.text || undefined,
       });
       updateClip(clip.id, {
         gen_status: 'done',
@@ -174,8 +178,20 @@ function SceneNodeInner({ data }: NodeProps) {
       </div>
 
       <div className="relative group">
-        {/* Text overlay — render text card, no image needed */}
-        {clip.type === 'text_overlay' ? (
+        {/* Text overlay with generated scene — show image if generated, else text placeholder */}
+        {clip.type === 'text_overlay' && clip.thumbnail_url ? (
+          <div className="w-full h-32 overflow-hidden mb-2 relative">
+            <img src={clip.thumbnail_url} alt="" className="w-full h-full object-cover" />
+            {clip.text && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 px-2">
+                <p className="text-white text-xs font-bold text-center leading-snug line-clamp-3 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]"
+                   style={{ fontFamily: 'var(--font-manga)', letterSpacing: '0.05em' }}>
+                  {clip.text}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : clip.type === 'text_overlay' ? (
           <div className="w-full h-32 mb-2 bg-[#111] flex items-center justify-center px-3">
             <p className="text-white text-sm font-bold text-center leading-snug line-clamp-4"
                style={{ fontFamily: 'var(--font-manga)', letterSpacing: '0.05em' }}>
@@ -206,13 +222,15 @@ function SceneNodeInner({ data }: NodeProps) {
           </div>
         )}
 
-        {clip.gen_status === 'pending' && clip.type !== 'text_overlay' && clip.type !== 'transition' && (
+        {clip.gen_status === 'pending' && clip.type !== 'transition' && (
           <button
             onClick={handleGenerate}
             className="absolute inset-0 mb-2 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"
           >
             <Sparkles size={18} className="text-white" />
-            <span className="text-xs font-medium text-white" style={{ fontFamily: 'var(--font-manga)' }}>Scene Image</span>
+            <span className="text-xs font-medium text-white" style={{ fontFamily: 'var(--font-manga)' }}>
+              {clip.type === 'text_overlay' ? 'Scene + Text' : 'Scene Image'}
+            </span>
           </button>
         )}
 

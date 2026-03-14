@@ -129,9 +129,10 @@ def test_chat_with_no_timeline(client):
 
 
 def test_chat_gemini_not_configured(client):
-    """POST /ai/chat when Gemini is not configured returns error gracefully."""
+    """POST /ai/chat when neither Railtracks nor Gemini is configured returns error gracefully."""
     with patch("app.routers.chat.get_model", side_effect=RuntimeError("GEMINI_API_KEY not set in .env")), \
-         patch("app.routers.chat.get_gemini_tools", return_value=MagicMock()):
+         patch("app.routers.chat.get_gemini_tools", return_value=MagicMock()), \
+         patch("app.routers.chat._RAILTRACKS_CHAT", False):
         response = client.post(
             "/ai/chat",
             json={
@@ -151,7 +152,8 @@ def test_chat_with_history(client, sample_timeline):
     mock_response = _make_mock_text_response("Based on our earlier conversation, I'll adjust the pacing.")
     mock_model = _make_mock_model(mock_response)
 
-    with patch("app.routers.chat.get_model", return_value=mock_model), \
+    with patch("app.routers.chat._RAILTRACKS_CHAT", False), \
+         patch("app.routers.chat.get_model", return_value=mock_model), \
          patch("app.routers.chat.get_gemini_tools", return_value=MagicMock()):
         response = client.post(
             "/ai/chat",

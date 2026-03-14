@@ -37,6 +37,8 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
     }
     if data.clip_order is not None:
         generate_payload["clip_order"] = data.clip_order
+    if data.clip_total is not None:
+        generate_payload["clip_total"] = data.clip_total
     if data.scene_image_url:
         generate_payload["scene_image_url"] = data.scene_image_url
     if data.characters:
@@ -49,6 +51,10 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         generate_payload["shot_type"] = data.shot_type
     if data.is_continuous is not None:
         generate_payload["is_continuous"] = data.is_continuous
+    if data.style_seed:
+        generate_payload["style_seed"] = data.style_seed
+    if data.text:
+        generate_payload["text"] = data.text
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:

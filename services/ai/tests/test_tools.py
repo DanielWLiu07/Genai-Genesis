@@ -8,6 +8,16 @@ EXPECTED_TOOL_NAMES = [
     "reorder_clips",
     "set_transition",
     "regenerate_clip",
+    "set_music",
+    "update_settings",
+    "update_scene_duration",
+    "set_shot_type",
+    "add_amv_effect",
+    "remove_amv_effect",
+    "set_bpm",
+    "auto_amv",
+    "trigger_generate_clip",
+    "bulk_update_clips",
 ]
 
 
@@ -27,8 +37,11 @@ def test_tool_definitions_valid_structure():
         assert "type" in tool["parameters"]
         assert tool["parameters"]["type"] == "object"
         assert "properties" in tool["parameters"]
-        assert "required" in tool["parameters"]
-        # Required fields must exist in properties
+        # `required` key must exist (may be empty list for all-optional tools)
+        assert "required" in tool["parameters"], (
+            f"Tool '{tool['name']}' is missing 'required' key in parameters"
+        )
+        # Every required field must exist in properties
         for req in tool["parameters"]["required"]:
             assert req in tool["parameters"]["properties"], (
                 f"Tool '{tool['name']}' requires '{req}' but it's not in properties"
@@ -36,8 +49,8 @@ def test_tool_definitions_valid_structure():
 
 
 def test_tool_definitions_count():
-    """There are exactly 6 tools defined."""
-    assert len(TOOL_DEFINITIONS) == 6
+    """There are exactly 16 tools defined."""
+    assert len(TOOL_DEFINITIONS) == 16
 
 
 def test_add_clip_required_fields():

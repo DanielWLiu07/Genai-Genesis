@@ -6,12 +6,15 @@ class GenerateClipRequest(BaseModel):
     prompt: str = ""
     type: str = "image"
     clip_order: Optional[int] = None
+    clip_total: Optional[int] = None
     scene_image_url: Optional[str] = None
     characters: Optional[List[Any]] = None
     mood: Optional[str] = None
     genre: Optional[str] = None
     shot_type: Optional[str] = None
     is_continuous: Optional[bool] = None
+    style_seed: Optional[str] = None
+    text: Optional[str] = None  # overlay text for text_overlay clips
 
 class RenderRequest(BaseModel):
     effects: Optional[List[Any]] = None

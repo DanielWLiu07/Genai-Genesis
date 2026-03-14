@@ -41,6 +41,7 @@ class GenerateRequest(BaseModel):
     negative_prompt: str = ""
     style_seed: Optional[str] = None           # consistent visual anchor across all clips
     callback_url: Optional[str] = None
+    text: Optional[str] = None                 # overlay text (for text_overlay clips)
 
 
 class GenerateResponse(BaseModel):
@@ -146,8 +147,21 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
 
     # Images: always use Gemini (synchronous, returns URL immediately)
     if data.type != "video":
+        base_prompt = data.prompt
+
+        # text_overlay: generate a cinematic scene with the text visually integrated
+        if data.type == "text_overlay" and data.text:
+            overlay_text = data.text.strip()
+            base_prompt = (
+                f"{base_prompt}. "
+                f"The text \"{overlay_text}\" is dramatically composited into the scene as a "
+                f"cinematic title card — stylised kanji/manga lettering, glowing ink strokes, "
+                f"integrated into the environment (carved in stone, painted on a wall, floating "
+                f"in mist, or burning in the air). The text is part of the scene, not a UI overlay."
+            )
+
         prompt = build_image_prompt(
-            data.prompt,
+            base_prompt,
             characters=chars,
             mood=data.mood,
             style_seed=data.style_seed,

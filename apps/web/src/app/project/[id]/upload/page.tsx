@@ -241,7 +241,7 @@ export default function UploadPage() {
   const hasStoryContent = textUploaded || storyText.trim().length > 0;
 
   return (
-    <main className="min-h-screen bg-[#f5f5f5]" ref={pageRef}>
+    <main className="min-h-screen bg-white/80 backdrop-blur-sm" ref={pageRef}>
       <div className="max-w-3xl mx-auto px-6 py-12">
         {/* Header */}
         <div ref={headerRef}>

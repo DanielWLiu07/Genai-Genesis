@@ -18,7 +18,7 @@ export default function CommunityPage() {
   }, []);
 
   return (
-    <main ref={mainRef} className="min-h-screen bg-[#f5f5f5]">
+    <main ref={mainRef} className="min-h-screen bg-white/80 backdrop-blur-sm">
       <div className="max-w-5xl mx-auto px-6 py-12">
         <Link href="/dashboard" className="community-back text-[#888] hover:text-[#111] flex items-center gap-2 mb-8 text-sm transition-colors">
           <ArrowLeft size={16} /> Back to Dashboard

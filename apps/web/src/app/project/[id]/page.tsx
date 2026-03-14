@@ -78,7 +78,18 @@ export default function EditorPage() {
       try {
         const msg = JSON.parse(event.data);
         if ((msg.type === 'clip_update' || msg.type === 'clip_updated') && msg.clip_id) {
-          updateClip(msg.clip_id, msg.updates || { gen_status: msg.gen_status, generated_media_url: msg.generated_media_url });
+          // Build updates from whatever fields are present
+          const updates: Record<string, any> = {};
+          if (msg.gen_status) updates.gen_status = msg.gen_status;
+          if (msg.status) updates.gen_status = msg.status;
+          if (msg.generated_media_url) updates.generated_media_url = msg.generated_media_url;
+          if (msg.media_url) updates.generated_media_url = msg.media_url;
+          if (msg.thumbnail_url) updates.thumbnail_url = msg.thumbnail_url;
+          if (msg.gen_error || msg.error) updates.gen_error = msg.gen_error || msg.error;
+          if (msg.updates) Object.assign(updates, msg.updates);
+          if (Object.keys(updates).length > 0) {
+            updateClip(msg.clip_id, updates);
+          }
         }
       } catch {
         // ignore parse errors
@@ -254,7 +265,9 @@ export default function EditorPage() {
     const uploadedImages = currentProject.uploaded_images || [];
 
     try {
-      let analysis = existingAnalysis;
+      // Only treat as valid analysis if it has structured data (key_scenes),
+      // not just the raw book_text stored by the upload step
+      let analysis = existingAnalysis?.key_scenes ? existingAnalysis : null;
 
       if (!analysis) {
         if (!bookText) {
@@ -273,10 +286,28 @@ export default function EditorPage() {
       setGenStep('planning');
       const timeline: any = await api.planTrailer(id, { analysis });
 
+      // Validate response
+      if (!timeline || !timeline.clips || timeline.clips.length === 0) {
+        throw new Error('AI returned empty trailer plan. Try again or check that the AI service is running on port 8001.');
+      }
+
+      console.log(`Trailer planned: ${timeline.clips.length} clips`);
       loadTimeline(timeline);
       updateProject(id, { status: 'editing' });
       setGenStep('done');
       sessionStorage.removeItem(`book_text_${id}`);
+
+      // Immediately save timeline to backend so it persists on reload
+      try {
+        await api.updateTimeline(id, {
+          clips: timeline.clips,
+          music_track: timeline.music_track || null,
+          settings: timeline.settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
+          total_duration_ms: timeline.total_duration_ms || 0,
+        });
+      } catch (saveErr) {
+        console.warn('Failed to save timeline after generation:', saveErr);
+      }
     } catch (err: any) {
       console.error('Generation failed:', err);
       setGenError(err.message || 'Failed to generate trailer. Please try again.');
@@ -290,12 +321,14 @@ export default function EditorPage() {
     currentProject.book_file_url ||
     (typeof window !== 'undefined' && sessionStorage.getItem(`book_text_${id}`))
   );
-  const showOnboarding = !loading && !error && clips.length === 0 && hasBook && genStep !== 'done';
+  const projectStatus = currentProject?.status;
+  const alreadyEditing = projectStatus === 'editing' || projectStatus === 'rendering' || projectStatus === 'done';
+  const showOnboarding = !loading && !error && clips.length === 0 && hasBook && genStep !== 'done' && !alreadyEditing;
   const isGenerating = genStep === 'analyzing' || genStep === 'planning';
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#f5f5f5]">
+      <div className="h-screen flex items-center justify-center bg-white/80 backdrop-blur-sm">
         <div className="text-center">
           <Loader2 size={32} className="mx-auto mb-3 text-[#111] animate-spin" />
           <p className="text-[#888]">Loading project...</p>
@@ -306,7 +339,7 @@ export default function EditorPage() {
 
   if (error) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#f5f5f5]">
+      <div className="h-screen flex items-center justify-center bg-white/80 backdrop-blur-sm">
         <div className="text-center">
           <p className="text-red-400 mb-4">{error}</p>
           <Link href="/dashboard" className="text-[#111] hover:text-[#555] underline">Back to Dashboard</Link>
@@ -316,7 +349,7 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#f5f5f5]">
+    <div className="h-screen flex flex-col bg-white/80 backdrop-blur-sm">
       {/* Flash overlay for generation complete */}
       <div
         ref={flashOverlayRef}
@@ -325,7 +358,7 @@ export default function EditorPage() {
       />
 
       {/* Top bar */}
-      <header ref={topBarRef} className="h-12 border-b-2 border-[#ccc] flex items-center px-4 gap-4 shrink-0 bg-[#f5f5f5]">
+      <header ref={topBarRef} className="h-12 border-b-2 border-[#ccc] flex items-center px-4 gap-4 shrink-0 bg-white/80 backdrop-blur-sm">
         <Link href="/dashboard" className="text-[#888] hover:text-[#111] transition-colors">
           <ArrowLeft size={18} />
         </Link>
@@ -352,6 +385,61 @@ export default function EditorPage() {
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden relative">
+        {/* Left sidebar — project info */}
+        {currentProject && clips.length > 0 && (
+          <div className="w-[220px] shrink-0 border-r-2 border-[#ccc] bg-white overflow-y-auto p-3 space-y-3">
+            <div>
+              <span className="manga-accent-bar text-[0.6rem]">Project</span>
+              <h3 className="text-sm font-bold mt-2 text-[#111]">{currentProject.title}</h3>
+              {currentProject.description && (
+                <p className="text-xs text-[#888] mt-1">{currentProject.description}</p>
+              )}
+            </div>
+
+            {currentProject.analysis && (
+              <div>
+                <span className="manga-accent-bar text-[0.6rem]">Analysis</span>
+                <div className="mt-2 space-y-1">
+                  {currentProject.analysis.genre && (
+                    <p className="text-xs text-[#666]"><span className="font-medium text-[#111]">Genre:</span> {currentProject.analysis.genre}</p>
+                  )}
+                  {currentProject.analysis.mood && (
+                    <p className="text-xs text-[#666]"><span className="font-medium text-[#111]">Mood:</span> {currentProject.analysis.mood}</p>
+                  )}
+                  {currentProject.analysis.themes && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {(currentProject.analysis.themes as string[]).slice(0, 4).map((t: string) => (
+                        <span key={t} className="text-[0.6rem] bg-[#f0f0f0] border border-[#ccc] px-1.5 py-0.5 text-[#666]">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {currentProject.analysis?.characters && (currentProject.analysis.characters as any[]).length > 0 && (
+              <div>
+                <span className="manga-accent-bar text-[0.6rem]">Characters</span>
+                <div className="mt-2 space-y-1">
+                  {(currentProject.analysis.characters as any[]).slice(0, 5).map((c: any, i: number) => (
+                    <p key={i} className="text-xs text-[#666]"><span className="font-medium text-[#111]">{c.name}</span></p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <span className="manga-accent-bar text-[0.6rem]">Timeline</span>
+              <div className="mt-2 text-xs text-[#666] space-y-0.5">
+                <p>{clips.length} clips</p>
+                <p>{(clips.reduce((s, c) => s + c.duration_ms, 0) / 1000).toFixed(1)}s total</p>
+                <p>{clips.filter(c => c.gen_status === 'done').length} generated</p>
+                <p>{clips.filter(c => c.gen_status === 'pending').length} pending</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* React Flow Editor */}
         <div className="flex-1">
           <FlowEditor />
@@ -359,7 +447,7 @@ export default function EditorPage() {
 
         {/* Onboarding overlay */}
         {showOnboarding && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#f5f5f5]/80 backdrop-blur-sm">
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/90 backdrop-blur-sm">
             <div className="max-w-md w-full mx-4">
               <div ref={onboardingCardRef} className="manga-panel-accent p-8">
                 <div className="w-14 h-14 flex items-center justify-center mx-auto mb-6">
@@ -412,7 +500,7 @@ export default function EditorPage() {
                     </>
                   ) : genStep === 'error' ? (
                     'Try Again'
-                  ) : currentProject?.analysis ? (
+                  ) : currentProject?.analysis?.key_scenes ? (
                     <>
                       <Clapperboard size={18} />
                       Plan Trailer
@@ -425,7 +513,7 @@ export default function EditorPage() {
                   )}
                 </button>
 
-                {currentProject?.analysis && genStep === 'idle' && (
+                {currentProject?.analysis?.key_scenes && genStep === 'idle' && (
                   <p className="text-xs text-[#555] text-center mt-3">
                     Story already analyzed -- will skip to trailer planning
                   </p>
@@ -437,7 +525,7 @@ export default function EditorPage() {
 
         {/* No story uploaded state */}
         {!loading && !error && clips.length === 0 && !hasBook && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#f5f5f5]/80 backdrop-blur-sm">
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/90 backdrop-blur-sm">
             <div className="manga-panel-accent p-8 max-w-md text-center">
               <BookOpen size={32} className="mx-auto mb-4 text-[#111]" />
               <h2 className="manga-title text-xl mb-2 text-[#111]">No Story Content</h2>

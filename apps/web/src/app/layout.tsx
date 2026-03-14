@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${bangers.variable} font-sans bg-[#f5f5f5] text-[#111] min-h-screen`}>
+      <body className={`${inter.variable} ${bangers.variable} font-sans text-[#111] min-h-screen`} style={{ background: `url('/bg.png') center/cover fixed no-repeat`, backgroundColor: '#f5f5f5' }}>
         <Theme appearance="light" accentColor="gray" radius="none" scaling="100%">
           {children}
         </Theme>

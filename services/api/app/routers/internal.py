@@ -20,6 +20,7 @@ class ClipStatusUpdate(BaseModel):
     media_url: str = ""
     thumbnail_url: str = ""
     error: str = ""
+    actual_type: Optional[str] = None  # set when Kling video falls back to image
 
 
 class RenderProgressUpdate(BaseModel):
@@ -62,6 +63,8 @@ async def update_clip_status(data: ClipStatusUpdate):
         "thumbnail_url": data.thumbnail_url,
         "gen_error": data.error,
     }
+    if data.actual_type:
+        ws_message["actual_type"] = data.actual_type
     # Broadcast to all projects (since we don't know which project owns this clip)
     for project_id in list(manager.connections.keys()):
         await manager.broadcast(project_id, ws_message)

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import Image from 'next/image';
-import { Plus, Clock, Loader2, Users } from 'lucide-react';
+import { Plus, Clock, Loader2, Users, X, Trash2 } from 'lucide-react';
 import { useProjectStore, type Project } from '@/stores/project-store';
 import { api } from '@/lib/api';
 import gsap from 'gsap';
@@ -40,6 +40,8 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 export default function Dashboard() {
   const { projects, loading, setProjects, setLoading } = useProjectStore();
   const mainRef = useRef<HTMLElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null); // project id
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -59,24 +61,42 @@ export default function Dashboard() {
         { opacity: 0, scale: 0.7 },
         { opacity: 0.5, scale: 1, duration: 1, stagger: 0.12, delay: 0.3, ease: 'power2.out' }
       );
-      // Sun fades in and rotates slowly forever
+      // Sun fades in then bobs up and down slowly
       gsap.fromTo('.decor-sun',
         { opacity: 0, scale: 0.5 },
         { opacity: 0.6, scale: 1, duration: 1.2, delay: 0.5, ease: 'power2.out' }
       );
       gsap.to('.decor-sun', {
+        y: -14,
+        duration: 4,
+        delay: 1.5,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
+      gsap.to('.decor-sun', {
         rotation: 360,
-        duration: 60,
-        delay: 1,
+        duration: 30,
+        delay: 1.5,
         repeat: -1,
         ease: 'none',
       });
-      // Gentle idle sway on corner decorations
+      // Oni fades in centered when no projects
+      gsap.fromTo('.decor-oni',
+        { opacity: 0, y: 20, scale: 0.85 },
+        { opacity: 1, y: 0, scale: 1, duration: 1.2, delay: 0.6, ease: 'power3.out' }
+      );
+      gsap.to('.decor-oni', {
+        y: -10, duration: 3.5, delay: 1.8, repeat: -1, yoyo: true, ease: 'sine.inOut',
+      });
+      // Gentle sway — relative rotation so it rocks around its current CSS transform
       document.querySelectorAll('.decor-item').forEach((el, i) => {
+        const dur = 2.8 + i * 0.6;
         gsap.to(el, {
-          y: i % 2 === 0 ? -5 : 5,
-          duration: 3 + i * 0.7,
-          delay: 1.5 + i * 0.3,
+          rotation: '+=7',
+          y: '+=6',
+          duration: dur,
+          delay: 1.2 + i * 0.35,
           repeat: -1,
           yoyo: true,
           ease: 'sine.inOut',
@@ -89,7 +109,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!loading && projects.length > 0) {
       // Run after loading=false so .project-card elements are in the DOM
-      gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
+      gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 0.6, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
       gsap.fromTo('.shelf-line', { opacity: 0, scaleX: 0, transformOrigin: 'left' }, { opacity: 1, scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.65, ease: 'power2.out' });
 
       const cards = document.querySelectorAll('.project-card');
@@ -98,21 +118,66 @@ export default function Dashboard() {
         const bookEl = el.querySelector('.book-card') as HTMLElement;
         if (!bookEl) return;
         el.addEventListener('mouseenter', () => {
+          gsap.to(el, { opacity: 1, duration: 0.2 });
           gsap.to(bookEl, { y: -8, rotation: -2, boxShadow: '6px 12px 0px rgba(0,0,0,0.3)', duration: 0.25, ease: 'power2.out' });
         });
         el.addEventListener('mouseleave', () => {
+          gsap.to(el, { opacity: 0.6, duration: 0.25 });
           gsap.to(bookEl, { y: 0, rotation: 0, boxShadow: '3px 3px 0px #000', duration: 0.25, ease: 'power2.out' });
+        });
+        const linkEl = el.querySelector('a') as HTMLAnchorElement | null;
+        linkEl?.addEventListener('click', (e) => {
+          e.preventDefault();
+          const href = linkEl.getAttribute('href');
+          // Flick animation: spin and slide off to the right like knocked off a shelf
+          gsap.killTweensOf(bookEl);
+          gsap.to(bookEl, {
+            x: 180,
+            y: -40,
+            rotation: 25,
+            opacity: 0,
+            duration: 0.45,
+            ease: 'power2.in',
+            onComplete: () => {
+              if (href) window.location.href = href;
+            },
+          });
         });
       });
     }
   }, [projects, loading]);
 
+  async function handleDeleteConfirmed() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await api.deleteProject(confirmDelete);
+      setProjects(projects.filter((p) => p.id !== confirmDelete));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(null);
+    }
+  }
+
   const shelfRows = chunkArray(projects, 5);
 
   return (
     <main ref={mainRef} className="h-screen flex flex-col">
+      {/* Decorative elements — fixed to viewport, outside scroll+overflow containers so stacking context doesn't trap them. z-[5] puts them above bg but below navbar (z-[20]). */}
+      <Image src="/stylized_imgs/flower3.png" alt="" width={140} height={260} className="decor-item fixed -top-8 -right-4 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.2))', transform: 'rotate(-25deg) scaleX(-1)' }} />
+      <Image src="/stylized_imgs/leaf7.png" alt="" width={150} height={134} className="decor-item fixed top-8 -left-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-10deg)' }} />
+      <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item fixed -bottom-6 -left-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
+      <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item fixed -bottom-16 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
+      <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun fixed top-28 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
+      {/* Oni — only shown on empty state, centered, same layer as other decoratives */}
+      {!loading && projects.length === 0 && (
+        <Image src="/stylized_imgs/oni.png" alt="" width={320} height={320} className="decor-oni fixed bottom-16 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ mixBlendMode: 'multiply', filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.25))' }} />
+      )}
+
       {/* Top bar */}
-      <div className="shrink-0 border-b-2 border-[#ddd] relative overflow-hidden bg-white/90 backdrop-blur-sm">
+      <div className="shrink-0 border-b-2 border-[#ddd] relative overflow-hidden bg-white/90 backdrop-blur-sm z-[20]">
         <div className="absolute inset-0 manga-speedlines opacity-10 pointer-events-none" />
         <div className="relative z-10 px-6 py-3 flex items-center max-w-6xl mx-auto w-full">
           <div className="hero-title flex items-center gap-3">
@@ -139,27 +204,21 @@ export default function Dashboard() {
 
       {/* Scrollable shelf area */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-        {/* Decorative elements — clipped to edges, pointing inward */}
-        {/* Top-right: flower hanging down from top-right corner, leaning left */}
-        <Image src="/stylized_imgs/flower3.png" alt="" width={140} height={260} className="decor-item absolute -top-8 -right-4 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.2))', transform: 'rotate(-25deg) scaleX(-1)' }} />
-        {/* Top-left: leaf branch coming from left edge, pointing right */}
-        <Image src="/stylized_imgs/leaf7.png" alt="" width={150} height={134} className="decor-item absolute top-8 -left-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-10deg)' }} />
-        {/* Bottom-left: flowers right-side up, reaching inward */}
-        <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item absolute -bottom-8 -left-6 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
-        {/* Bottom-right: stone anchoring the corner */}
-        <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item absolute -bottom-14 -right-10 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
-        {/* Sun: top center, lower, with warm glow, slowly rotating */}
-        <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun absolute top-16 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
-
         <div className="max-w-6xl mx-auto px-6 pt-8 pb-12 relative z-[1]">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 size={24} className="text-[#444] animate-spin" />
             </div>
           ) : projects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-[#999]">
-              <p className="text-sm">No projects yet. Create your first book trailer.</p>
-            </div>
+            <Link href="/project/new" className="flex items-center justify-center h-72">
+              <div className="group flex flex-col items-center gap-3 px-16 py-10 border-2 border-[#111] bg-white/60 backdrop-blur-sm hover:bg-white/90 transition-all duration-200 cursor-pointer" style={{ boxShadow: '4px 4px 0px #111' }}>
+                <p className="manga-title text-2xl" style={{ WebkitTextStroke: '2px #111', color: '#fff', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000' }}>NO STORIES YET</p>
+                <p className="text-xs text-[#555] border-t border-[#ccc] pt-3 group-hover:text-[#111] transition-colors">Upload your first manga to generate a cinematic trailer.</p>
+                <span className="manga-btn bg-[#111] text-white px-4 py-1.5 text-xs flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity -mt-1">
+                  <Plus size={12} /> New Project
+                </span>
+              </div>
+            </Link>
           ) : (
             <div className="space-y-0">
               {shelfRows.map((row, rowIdx) => (
@@ -167,12 +226,23 @@ export default function Dashboard() {
                   {/* Books on shelf */}
                   <div className="flex gap-5 px-4 pb-3 pt-6">
                     {row.map((project) => (
-                      <Link
+                      <div
                         key={project.id}
-                        href={`/project/${project.id}`}
-                        className="project-card group flex-shrink-0"
+                        className="project-card group flex-shrink-0 relative"
                         style={{ width: 'calc((100% - 80px) / 5)', opacity: 0 }}
                       >
+                        {/* Delete — top-right corner inside the card, visible on hover */}
+                        <button
+                          className="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-red-600/80 p-1"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDelete(project.id); }}
+                          title="Delete project"
+                        >
+                          <X size={11} className="text-white" />
+                        </button>
+                        <Link
+                          href={`/project/${project.id}`}
+                          className="block"
+                        >
                         <div
                           className="book-card relative aspect-[2/3] overflow-hidden border-2 border-[#111]"
                           style={{ boxShadow: '3px 3px 0px #000', transformOrigin: 'bottom center' }}
@@ -225,7 +295,8 @@ export default function Dashboard() {
                             </div>
                           </div>
                         </div>
-                      </Link>
+                        </Link>
+                      </div>
                     ))}
                   </div>
 
@@ -242,6 +313,37 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white border-2 border-[#111] p-6 w-80 shadow-[4px_4px_0px_#000]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <Trash2 size={16} className="text-red-500" />
+              <h3 className="font-bold text-sm text-[#111]">Delete project?</h3>
+            </div>
+            <p className="text-xs text-[#666] mb-5 leading-relaxed">
+              This will permanently delete the project and all its data. This cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                className="px-3 py-1.5 text-xs border border-[#ccc] text-[#666] hover:bg-[#f5f5f5] transition-colors"
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs bg-red-500 text-white border border-red-600 hover:bg-red-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                onClick={handleDeleteConfirmed}
+                disabled={deleting}
+              >
+                {deleting ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

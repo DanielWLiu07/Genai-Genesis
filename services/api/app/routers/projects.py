@@ -25,7 +25,7 @@ async def list_projects():
     if db is None:
         return list_projects_mem()
     result = db.table("projects").select(
-        "id,title,author,description,status,cover_image_url,created_at,updated_at"
+        "id,title,author,status,cover_image_url,created_at,updated_at"
     ).order("created_at", desc=True).execute()
     # Strip base64 data URLs — too large for list view, stored in client localStorage
     rows = []

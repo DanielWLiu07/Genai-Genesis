@@ -1,5 +1,4 @@
 """Image generation using Imagen 4 Fast (google-genai SDK)."""
-import base64
 import logging
 import os
 import hashlib
@@ -11,10 +10,49 @@ logger = logging.getLogger(__name__)
 _cache: dict[str, dict] = {}
 
 RENDER_SERVICE_URL = "http://localhost:8002"
+STORAGE_BUCKET = "renders"
+
+
+def _supabase_upload(filename: str, data: bytes) -> str | None:
+    """Upload image bytes to Supabase Storage and return the public URL.
+
+    Returns None if Supabase is not configured or the upload fails.
+    The bucket is auto-created as public on first use.
+    """
+    settings = get_settings()
+    if not (settings.supabase_url and settings.supabase_service_key):
+        return None
+    try:
+        from supabase import create_client
+        client = create_client(settings.supabase_url, settings.supabase_service_key)
+
+        # Ensure bucket exists (idempotent — ignores error if already exists)
+        try:
+            client.storage.create_bucket(STORAGE_BUCKET, options={"public": True})
+        except Exception:
+            pass
+
+        # Upload — upsert so re-generated images overwrite the old file
+        client.storage.from_(STORAGE_BUCKET).upload(
+            filename,
+            data,
+            file_options={"content-type": "image/png", "upsert": "true"},
+        )
+
+        public_url = client.storage.from_(STORAGE_BUCKET).get_public_url(filename)
+        logger.info("Uploaded to Supabase Storage: %s", public_url)
+        return public_url
+    except Exception as e:
+        logger.warning("Supabase Storage upload failed, falling back to local URL: %s", e)
+        return None
 
 
 async def generate_image_gemini(prompt: str, aspect_ratio: str = "16:9") -> dict:
-    """Generate an image using Imagen 4 Fast. Returns a static HTTP URL."""
+    """Generate an image using Imagen 4 Fast.
+
+    Uploads to Supabase Storage for a publicly accessible URL.
+    Falls back to a local static HTTP URL if Supabase is unavailable.
+    """
     settings = get_settings()
     if not settings.gemini_api_key:
         return {"status": "error", "message": "No GEMINI_API_KEY configured"}
@@ -49,19 +87,22 @@ async def generate_image_gemini(prompt: str, aspect_ratio: str = "16:9") -> dict
         if not raw:
             return {"status": "error", "message": "No image bytes returned"}
 
+        filename = f"imagen_{cache_key[:16]}.png"
+
+        # Save locally as backup / for local serving
         output_dir = settings.render_output_dir
         os.makedirs(output_dir, exist_ok=True)
-        filename = f"imagen_{cache_key[:16]}.png"
         filepath = os.path.join(output_dir, filename)
         with open(filepath, "wb") as f:
             f.write(raw)
 
-        # Return a static HTTP URL — small, cacheable, no base64 bloat in DB
-        url = f"{RENDER_SERVICE_URL}/outputs/{filename}"
+        # Upload to Supabase Storage for a public URL friends can access
+        public_url = await asyncio.to_thread(_supabase_upload, filename, raw)
+        url = public_url or f"{RENDER_SERVICE_URL}/outputs/{filename}"
 
         result = {"status": "done", "url": url, "thumbnail_url": url}
         _cache[cache_key] = result
-        logger.info("Imagen image saved: %s (%d bytes)", filename, len(raw))
+        logger.info("Imagen image ready: %s (%d bytes) -> %s", filename, len(raw), "supabase" if public_url else "local")
         return result
 
     except Exception as e:

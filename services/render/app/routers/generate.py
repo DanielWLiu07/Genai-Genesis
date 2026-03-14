@@ -52,19 +52,21 @@ class GenerateResponse(BaseModel):
     message: str = ""
 
 
-async def _notify_progress(clip_id: str, status: str, media_url: str = "", thumbnail_url: str = "", error: str = ""):
+async def _notify_progress(clip_id: str, status: str, media_url: str = "", thumbnail_url: str = "", error: str = "", extra: dict = {}):
     settings = get_settings()
     try:
         async with httpx.AsyncClient() as client:
+            payload = {
+                "clip_id": clip_id,
+                "status": status,
+                "media_url": media_url,
+                "thumbnail_url": thumbnail_url,
+                "error": error,
+            }
+            payload.update(extra)
             await client.post(
                 f"{settings.api_service_url}/api/v1/internal/clip-status",
-                json={
-                    "clip_id": clip_id,
-                    "status": status,
-                    "media_url": media_url,
-                    "thumbnail_url": thumbnail_url,
-                    "error": error,
-                },
+                json=payload,
                 timeout=10,
             )
     except Exception as e:
@@ -79,6 +81,7 @@ async def _generate_and_callback(data: GenerateRequest):
         chars = [c.model_dump() for c in (data.characters or [])]
         neg = data.negative_prompt or build_negative_prompt()
 
+        actual_type = data.type
         if data.type == "video":
             prompt = build_video_prompt(
                 data.prompt,
@@ -98,6 +101,12 @@ async def _generate_and_callback(data: GenerateRequest):
                     c["image_url"] for c in chars if c.get("image_url")
                 ] or None,
             )
+            # Kling video failed — fall back to Gemini image so clip isn't stranded
+            if result.get("status") != "done":
+                logger.warning("Kling video failed (%s), falling back to Gemini image", result.get("message"))
+                img_prompt = build_image_prompt(data.prompt, characters=chars, mood=data.mood)
+                result = await generate_image_gemini(img_prompt, data.aspect_ratio)
+                actual_type = "image"
         else:
             prompt = build_image_prompt(
                 data.prompt,
@@ -120,12 +129,13 @@ async def _generate_and_callback(data: GenerateRequest):
             try:
                 if media_url and not media_url.startswith("data:"):
                     media_bytes = await download_media(media_url)
-                    if data.type == "image" and media_bytes:
+                    if actual_type == "image" and media_bytes:
                         await create_thumbnail(media_bytes)
             except Exception as e:
                 logger.warning("Thumbnail creation failed: %s", e)
 
-            await _notify_progress(data.clip_id, "done", media_url, thumbnail_url)
+            await _notify_progress(data.clip_id, "done", media_url, thumbnail_url,
+                                   extra={"actual_type": actual_type} if actual_type != data.type else {})
         else:
             await _notify_progress(data.clip_id, "error", error=result.get("message", "Generation failed"))
 

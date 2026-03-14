@@ -144,6 +144,7 @@ export default function EditorPage() {
           if (msg.media_url) updates.generated_media_url = msg.media_url;
           if (msg.thumbnail_url) updates.thumbnail_url = msg.thumbnail_url;
           if (msg.gen_error || msg.error) updates.gen_error = msg.gen_error || msg.error;
+          if (msg.actual_type) updates.type = msg.actual_type;  // Kling fallback: revert video→image
           if (msg.updates) Object.assign(updates, msg.updates);
           if (Object.keys(updates).length > 0) updateClip(msg.clip_id, updates);
 

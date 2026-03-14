@@ -20,7 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
 import { api } from '@/lib/api';
 import { SceneNode } from './SceneNode';
-import { ChevronLeft, ChevronRight, Lock, Unlock, Maximize2, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Unlock, Maximize2, LayoutGrid, CloudOff } from 'lucide-react';
 
 const nodeTypes: NodeTypes = {
   scene: SceneNode,
@@ -73,6 +73,7 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
   const { fitView, setCenter, getNodes } = useReactFlow();
   const [focusedIdx, setFocusedIdx] = useState(0);
   const [locked, setLocked] = useState(false);
+  const [unsaved, setUnsaved] = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -160,12 +161,15 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
     const projectId = useTimelineStore.getState().projectId;
     if (!projectId || clips.length === 0) return;
 
+    setUnsaved(true);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const { musicTrack, settings } = useTimelineStore.getState();
-      api.updateTimeline(projectId, { clips, music_track: musicTrack, settings }).catch(() => {
-        // Silently ignore — backend may not be running
-      });
+      api.updateTimeline(projectId, { clips, music_track: musicTrack, settings })
+        .then(() => setUnsaved(false))
+        .catch(() => {
+          // Keep unsaved indicator — backend may not be running
+        });
     }, 2000);
 
     return () => {
@@ -210,6 +214,24 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
         <Controls className="!bg-white !border-2 !border-[#ccc] !rounded-none [&>button]:!bg-white [&>button]:!border-[#ccc] [&>button]:!text-[#888] [&>button:hover]:!bg-[#f0f0f0]" />
         <MiniMap className="!bg-white !border-2 !border-[#ccc]" />
       </ReactFlow>
+
+      {/* Empty timeline state */}
+      {clips.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="text-center">
+            <p className="text-[#ccc] text-sm tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>NO SCENES</p>
+            <p className="text-[#ddd] text-xs mt-1">Generate a trailer plan to start →</p>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved indicator */}
+      {unsaved && (
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2 py-1 bg-white/90 border border-[#ddd] text-[0.6rem] text-[#999]"
+             style={{ fontFamily: 'var(--font-manga)' }}>
+          <CloudOff size={10} /> Unsaved
+        </div>
+      )}
 
       {/* Navigation controls */}
       {clips.length > 0 && (

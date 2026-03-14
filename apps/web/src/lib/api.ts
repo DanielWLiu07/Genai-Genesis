@@ -9,16 +9,26 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+// Projects use Next.js API routes (relative URLs) so they work on Vercel without the FastAPI backend
+async function fetchProjects<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`/api/projects${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
 export const api = {
-  // Projects
+  // Projects — served via Next.js API routes -> Supabase directly
   createProject: (data: { title: string; description?: string; author?: string }) =>
-    fetchAPI('/projects', { method: 'POST', body: JSON.stringify(data) }),
-  getProjects: () => fetchAPI('/projects'),
-  getProject: (id: string) => fetchAPI(`/projects/${id}`),
+    fetchProjects('', { method: 'POST', body: JSON.stringify(data) }),
+  getProjects: () => fetchProjects<any[]>(''),
+  getProject: (id: string) => fetchProjects(`/${id}`),
   updateProject: (id: string, data: Record<string, any>) =>
-    fetchAPI(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    fetchProjects(`/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteProject: (id: string) =>
-    fetchAPI(`/projects/${id}`, { method: 'DELETE' }),
+    fetchProjects(`/${id}`, { method: 'DELETE' }),
 
   // Timeline
   getTimeline: (projectId: string) => fetchAPI(`/projects/${projectId}/timeline`),

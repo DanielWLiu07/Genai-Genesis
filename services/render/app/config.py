@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     render_output_dir: str = os.environ.get("RENDER_OUTPUT_DIR", "/tmp/renders")
 
     class Config:
-        env_file = ".env"
+        env_file = ("../../.env", ".env")
         extra = "ignore"
 
 

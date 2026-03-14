@@ -72,13 +72,14 @@ export default function LandingPage() {
   const leavesRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const holyRef = useRef<HTMLDivElement>(null);
+  const vignetteRef = useRef<HTMLDivElement>(null);
   const { navigate } = usePageTransition();
 
   useEffect(() => {
     triggerNoise('video-reveal');
 
     const ctx = gsap.context(() => {
-      // Left tree slides in from offscreen left
+      // Left tree slides in from offscreen left, shifted up
       gsap.fromTo(treeRef.current,
         { x: '-100%', opacity: 0 },
         { x: '0%', opacity: 1, duration: 1.8, delay: 0.4, ease: 'power2.out' }
@@ -89,6 +90,15 @@ export default function LandingPage() {
       gsap.to(holyRef.current, {
         opacity: 0.25,
         duration: 4,
+        ease: 'sine.inOut',
+        yoyo: true,
+        repeat: -1,
+      });
+
+      // Vignette — slow gentle pulse
+      gsap.to(vignetteRef.current, {
+        boxShadow: 'inset 0 0 120px 30px rgba(255,255,255,0.6)',
+        duration: 5,
         ease: 'sine.inOut',
         yoyo: true,
         repeat: -1,
@@ -158,11 +168,11 @@ export default function LandingPage() {
         </NoiseMask>
       </div>
 
-      {/* Tree overlay — slides in from left, behind leaves */}
+      {/* Left tree overlay — slides in from left, shifted up */}
       <div
         ref={treeRef}
-        className="absolute inset-0 pointer-events-none z-[3]"
-        style={{ opacity: 0 }}
+        className="absolute pointer-events-none z-[3]"
+        style={{ opacity: 0, top: '-8%', left: 0, right: 0, bottom: 0 }}
       >
         <video
           autoPlay
@@ -194,8 +204,9 @@ export default function LandingPage() {
         </video>
       </div>
 
-      {/* White vignette — soft edges */}
+      {/* White vignette — soft edges, slowly pulsing */}
       <div
+        ref={vignetteRef}
         className="absolute inset-0 pointer-events-none z-[7]"
         style={{
           boxShadow: 'inset 0 0 80px 15px rgba(255,255,255,0.4)',

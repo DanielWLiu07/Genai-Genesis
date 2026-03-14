@@ -1,31 +1,78 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, FileText } from 'lucide-react';
+import { ArrowLeft, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import gsap from 'gsap';
 
 export default function NewProject() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const createBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Page entrance animations
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      // Header speedlines section slides down from top with bounce
+      gsap.fromTo(
+        '.new-project-header',
+        { y: -80, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.7, ease: 'bounce.out' }
+      );
+
+      // Title slams in with scale and rotation
+      gsap.fromTo(
+        '.new-project-title',
+        { scale: 2, rotateZ: -5, opacity: 0 },
+        { scale: 1, rotateZ: 0, opacity: 1, duration: 0.6, delay: 0.2, ease: 'back.out(1.4)' }
+      );
+
+      // Subtitle fades in
+      gsap.fromTo(
+        '.new-project-subtitle',
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.4, delay: 0.5, ease: 'power2.out' }
+      );
+
+      // Form fields stagger in from left
+      gsap.fromTo(
+        '.form-field',
+        { x: -60, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.5, stagger: 0.1, delay: 0.4, ease: 'power3.out' }
+      );
+
+      // Create button punches in from bottom
+      gsap.fromTo(
+        '.create-btn',
+        { y: 50, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.5, delay: 0.7, ease: 'back.out(1.7)' }
+      );
+    }, mainRef);
+
+    return () => ctx.revert();
+  }, []);
 
   const handleCreate = async () => {
     if (!title.trim()) return;
+
+    // Pulse animation on button before loading
+    if (createBtnRef.current) {
+      gsap.fromTo(
+        createBtnRef.current,
+        { scale: 1 },
+        { scale: 1.08, duration: 0.12, yoyo: true, repeat: 1, ease: 'power2.inOut' }
+      );
+    }
+
     setLoading(true);
     try {
       const project: any = await api.createProject({ title: title.trim(), description: description.trim() || undefined });
-      if (file) {
-        const uploadResult: any = await api.uploadBook(project.id, file);
-        // Store book_text in sessionStorage so editor page can access it
-        if (uploadResult.book_text || uploadResult.text_preview) {
-          sessionStorage.setItem(`book_text_${project.id}`, uploadResult.book_text || uploadResult.text_preview);
-        }
-      }
-      router.push(`/project/${project.id}`);
+      router.push(`/project/${project.id}/upload`);
     } catch (err) {
       console.error(err);
       alert('Failed to create project. Please try again.');
@@ -35,68 +82,47 @@ export default function NewProject() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950">
+    <main ref={mainRef} className="min-h-screen bg-[#f5f5f5]">
       <div className="max-w-2xl mx-auto px-6 py-12">
-        <Link href="/" className="text-zinc-400 hover:text-zinc-200 flex items-center gap-2 mb-8 text-sm">
+        <Link href="/" className="text-[#888] hover:text-[#111] flex items-center gap-2 mb-8 text-sm transition-colors">
           <ArrowLeft size={16} /> Back to Dashboard
         </Link>
 
-        <h1 className="text-3xl font-bold mb-8">Create New Project</h1>
+        <div className="new-project-header manga-speedlines rounded-none p-8 mb-8">
+          <h1 className="new-project-title manga-title text-4xl text-[#111]">
+            <Sparkles className="inline mr-2 text-[#111]" size={28} />
+            New Project
+          </h1>
+          <p className="new-project-subtitle text-[#888] mt-2">Create your trailer project, then upload your story content.</p>
+        </div>
 
         <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">Project Title</label>
+          <div className="form-field">
+            <label className="manga-accent-bar text-sm mb-3 block">Project Title</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="My Book Trailer"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-zinc-200 focus:outline-none focus:border-violet-500"
+              className="manga-input w-full"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">Description</label>
+          <div className="form-field">
+            <label className="manga-accent-bar text-sm mb-3 block">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of your story..."
               rows={3}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-zinc-200 focus:outline-none focus:border-violet-500 resize-none"
+              className="manga-input w-full resize-none"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">Upload Story</label>
-            <div
-              className="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center hover:border-violet-500 transition-colors cursor-pointer"
-              onClick={() => document.getElementById('file-input')?.click()}
-            >
-              <input
-                id="file-input"
-                type="file"
-                accept=".txt,.pdf,.epub,.md"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="hidden"
-              />
-              {file ? (
-                <div className="flex items-center justify-center gap-2">
-                  <FileText size={20} className="text-violet-400" />
-                  <span className="text-zinc-200">{file.name}</span>
-                </div>
-              ) : (
-                <>
-                  <Upload size={32} className="mx-auto mb-3 text-zinc-600" />
-                  <p className="text-zinc-400">Drop your book file here or click to browse</p>
-                  <p className="text-xs text-zinc-600 mt-1">Supports .txt, .pdf, .epub, .md</p>
-                </>
-              )}
-            </div>
-          </div>
-
           <button
+            ref={createBtnRef}
             onClick={handleCreate}
             disabled={!title.trim() || loading}
-            className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white py-3 rounded-lg font-medium transition-colors"
+            className="create-btn manga-btn w-full bg-[#111] text-white py-3 px-6 text-lg"
           >
             {loading ? 'Creating...' : 'Create Project'}
           </button>

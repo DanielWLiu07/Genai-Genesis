@@ -76,9 +76,9 @@ export const api = {
   getPresets: () => fetchAPI('/presets'),
   getPreset: (style: string) => fetchAPI(`/presets/${style}`),
 
-  // Chat
+  // Chat — served via Next.js API route -> Gemini directly
   chat: async (projectId: string, message: string, timeline: any, history: any[]) => {
-    const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/chat`, {
+    const res = await fetch(`/api/projects/${projectId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, timeline, history }),

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import gsap from 'gsap';
 
 const TOTAL_FRAMES = 250;
 const FPS = 24;
@@ -15,6 +16,16 @@ const LeafOverlay = forwardRef<HTMLDivElement>((_, ref) => {
   const started = useRef(false);
 
   useImperativeHandle(ref, () => containerRef.current as HTMLDivElement);
+
+  // Drop-down animation on mount
+  useEffect(() => {
+    if (containerRef.current) {
+      gsap.fromTo(containerRef.current,
+        { y: '-100%', opacity: 0 },
+        { y: '0%', opacity: 1, duration: 1.5, delay: 0.5, ease: 'power2.out' }
+      );
+    }
+  }, []);
 
   useEffect(() => {
     const frames: HTMLImageElement[] = [];

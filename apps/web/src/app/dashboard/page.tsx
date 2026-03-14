@@ -117,9 +117,9 @@ export default function Dashboard() {
         <div className="relative z-10 px-6 py-3 flex items-center max-w-6xl mx-auto w-full">
           <div className="hero-title flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <Image src="/logo.png" alt="" width={28} height={28} className="drop-shadow-[0_0_8px_rgba(0,0,0,0.15)]" />
+              <Image src="/logo.png" alt="" width={40} height={40} className="drop-shadow-[0_0_8px_rgba(0,0,0,0.15)]" />
               <h1
-                className="manga-title text-xl"
+                className="manga-title text-2xl"
                 style={{ color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000' }}
               >MangaMate</h1>
             </Link>

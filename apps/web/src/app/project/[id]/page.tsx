@@ -5,11 +5,12 @@ import { useParams } from 'next/navigation';
 import { FlowEditor } from '@/components/editor/FlowEditor';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { Film, ArrowLeft, Play, Download, Loader2, Sparkles, BookOpen, Clapperboard, Lightbulb, Palette } from 'lucide-react';
-import Link from 'next/link';
+import { TransitionLink as Link } from '@/components/PageTransition';
 import { api } from '@/lib/api';
 import { useTimelineStore } from '@/stores/timeline-store';
 import { useProjectStore } from '@/stores/project-store';
 import { ClipDetailPanel } from '@/components/editor/ClipDetailPanel';
+import { TimelineStrip } from '@/components/editor/TimelineStrip';
 import gsap from 'gsap';
 
 type GenerationStep = 'idle' | 'analyzing' | 'planning' | 'done' | 'error';
@@ -23,6 +24,8 @@ export default function EditorPage() {
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
   const [selectedStyle, setSelectedStyle] = useState('cinematic');
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -417,18 +420,26 @@ export default function EditorPage() {
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left sidebar — project info */}
         {currentProject && clips.length > 0 && (
-          <div className="w-[220px] shrink-0 border-r-2 border-[#ccc] bg-white overflow-y-auto p-3 space-y-3">
+          <div className={`shrink-0 border-r-2 border-[#ccc] bg-white overflow-y-auto transition-all duration-200 ${leftOpen ? 'w-[200px] p-4' : 'w-8 p-0'}`}>
+            <button
+              onClick={() => setLeftOpen(!leftOpen)}
+              className="w-full flex items-center justify-center h-8 text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors"
+              title={leftOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            >
+              {leftOpen ? '◀' : '▶'}
+            </button>
+            {leftOpen && <div className="space-y-4">
             <div>
-              <span className="manga-accent-bar text-[0.6rem]">Project</span>
-              <h3 className="text-sm font-bold mt-2 text-[#111]">{currentProject.title}</h3>
+              <span className="manga-accent-bar text-[0.6rem]">PROJECT</span>
+              <h3 className="text-sm font-bold mt-2 text-[#111] leading-snug">{currentProject.title}</h3>
               {currentProject.description && (
-                <p className="text-xs text-[#888] mt-1">{currentProject.description}</p>
+                <p className="text-[0.7rem] text-[#888] mt-1 leading-relaxed">{currentProject.description}</p>
               )}
             </div>
 
             {currentProject.analysis && (
               <div>
-                <span className="manga-accent-bar text-[0.6rem]">Analysis</span>
+                <span className="manga-accent-bar text-[0.6rem]">ANALYSIS</span>
                 <div className="mt-2 space-y-1">
                   {currentProject.analysis.genre && (
                     <p className="text-xs text-[#666]"><span className="font-medium text-[#111]">Genre:</span> {currentProject.analysis.genre}</p>
@@ -449,7 +460,7 @@ export default function EditorPage() {
 
             {currentProject.analysis?.characters && (currentProject.analysis.characters as any[]).length > 0 && (
               <div>
-                <span className="manga-accent-bar text-[0.6rem]">Characters</span>
+                <span className="manga-accent-bar text-[0.6rem]">CHARACTERS</span>
                 <div className="mt-2 space-y-1">
                   {(currentProject.analysis.characters as any[]).slice(0, 5).map((c: any, i: number) => (
                     <p key={i} className="text-xs text-[#666]"><span className="font-medium text-[#111]">{c.name}</span></p>
@@ -459,7 +470,7 @@ export default function EditorPage() {
             )}
 
             <div>
-              <span className="manga-accent-bar text-[0.6rem]">Timeline</span>
+              <span className="manga-accent-bar text-[0.6rem]">TIMELINE</span>
               <div className="mt-2 text-xs text-[#666] space-y-0.5">
                 <p>{clips.length} clips</p>
                 <p>{(clips.reduce((s, c) => s + c.duration_ms, 0) / 1000).toFixed(1)}s total</p>
@@ -467,18 +478,37 @@ export default function EditorPage() {
                 <p>{clips.filter(c => c.gen_status === 'pending').length} pending</p>
               </div>
             </div>
+            }
           </div>
         )}
 
-        {/* React Flow Editor */}
-        <div className="flex-1">
-          <FlowEditor onNodeClick={(clipId) => setSelectedClipId(clipId)} />
+        {/* Center: React Flow + Timeline Strip */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1">
+            <FlowEditor onNodeClick={(clipId) => setSelectedClipId(clipId)} />
+          </div>
+          <TimelineStrip selectedClipId={selectedClipId} onSelectClip={setSelectedClipId} />
         </div>
 
-        {/* Clip Detail Panel */}
-        {selectedClipId && clips.length > 0 && (
-          <ClipDetailPanel clipId={selectedClipId} onClose={() => setSelectedClipId(null)} />
-        )}
+        {/* Right: Clip Detail Panel (when selected) + Chat */}
+        <div className={`shrink-0 border-l-2 border-[#ccc] flex flex-col transition-all duration-200 ${rightOpen ? 'w-[320px]' : 'w-8'}`}>
+          <button
+            onClick={() => setRightOpen(!rightOpen)}
+            className="w-full flex items-center justify-center h-8 shrink-0 text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors border-b border-[#eee]"
+            title={rightOpen ? 'Collapse panel' : 'Expand panel'}
+          >
+            {rightOpen ? '▶' : '◀'}
+          </button>
+          {rightOpen && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {selectedClipId && clips.length > 0 ? (
+                <ClipDetailPanel clipId={selectedClipId} onClose={() => setSelectedClipId(null)} />
+              ) : (
+                <ChatPanel projectId={id} />
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Onboarding overlay */}
         {showOnboarding && (
@@ -596,10 +626,35 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* Chat Panel */}
-        <div className="w-[350px] shrink-0">
-          <ChatPanel projectId={id} />
-        </div>
+        {/* Suggestions Modal */}
+        {suggestions !== null && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setSuggestions(null)}>
+            <div className="manga-panel p-6 max-w-lg w-full mx-4 max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="manga-title text-lg text-[#111] flex items-center gap-2">
+                  <Lightbulb size={18} /> AI Suggestions
+                </h3>
+                <button onClick={() => setSuggestions(null)} className="text-[#888] hover:text-[#111]">
+                  &times;
+                </button>
+              </div>
+              {suggestions.length === 0 ? (
+                <p className="text-[#888] text-sm">No suggestions available. Your timeline looks good!</p>
+              ) : (
+                <div className="space-y-3">
+                  {suggestions.map((s: any, i: number) => (
+                    <div key={i} className="p-3 bg-[#f5f5f5] border-2 border-[#ccc]">
+                      <p className="text-sm text-[#111] font-medium">{s.title || s.suggestion || `Suggestion ${i + 1}`}</p>
+                      {s.description && <p className="text-xs text-[#666] mt-1">{s.description}</p>}
+                      {s.reason && <p className="text-xs text-[#888] mt-1 italic">{s.reason}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

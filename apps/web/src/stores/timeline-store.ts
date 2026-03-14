@@ -90,6 +90,7 @@ export const useTimelineStore = create<TimelineState>((set) => ({
     const rawClips = timeline.clips || [];
     const clips = rawClips.map((c: any, i: number) => ({
       ...c,
+      prompt: c.prompt ?? '',
       order: c.order ?? i,
       position: c.position && c.position.x !== undefined
         ? c.position

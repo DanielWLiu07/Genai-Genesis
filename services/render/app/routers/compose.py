@@ -1,40 +1,266 @@
-from fastapi import APIRouter
+"""Trailer composition endpoint — composes clips into final video via FFmpeg."""
+import os
+import logging
+import tempfile
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
-from typing import Optional, List
-from app.services.ffmpeg import compose_trailer
-from app.services.music import suggest_music
+from typing import Optional
 import uuid
+import httpx
 
+from app.services.ffmpeg import compose_trailer, generate_preview
+from app.services.media import generate_title_card, generate_end_card
+from app.services.music import suggest_music
+from app.services.kling import download_media
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/render", tags=["compose"])
+
+# In-memory job tracking (replace with DB in production)
+_render_jobs: dict[str, dict] = {}
+
 
 class ComposeRequest(BaseModel):
     project_id: str
     timeline: Optional[dict] = None
+    include_title_card: bool = True
+    include_end_card: bool = True
+    title: str = ""
+    author: str = ""
+
+
+class ComposeResponse(BaseModel):
+    job_id: str
+    status: str = "queued"
+    progress: int = 0
+    output_url: Optional[str] = None
+    message: str = ""
+
 
 class MusicSuggestRequest(BaseModel):
     mood: str = ""
     genre: str = ""
     duration_ms: int = 0
 
-@router.post("/compose")
-async def compose(data: ComposeRequest):
-    job_id = str(uuid.uuid4())
-    output_path = f"renders/{data.project_id}/{job_id}.mp4"
 
-    result = await compose_trailer(
-        clips=data.timeline.get("clips", []) if data.timeline else [],
-        output_path=output_path,
-        settings=data.timeline.get("settings") if data.timeline else None,
+async def _report_progress(job_id: str, project_id: str, progress: int, message: str):
+    """Update job status and notify API service."""
+    if job_id in _render_jobs:
+        _render_jobs[job_id]["progress"] = progress
+        _render_jobs[job_id]["message"] = message
+        if progress >= 100:
+            _render_jobs[job_id]["status"] = "done"
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{settings.api_service_url}/api/v1/internal/render-progress",
+                json={
+                    "job_id": job_id,
+                    "project_id": project_id,
+                    "progress": progress,
+                    "status": "composing" if progress < 100 else "done",
+                    "message": message,
+                },
+                timeout=10,
+            )
+    except Exception as e:
+        logger.warning("Failed to report progress: %s", e)
+
+
+async def _download_clip_media(clips: list[dict], tmpdir: str) -> list[dict]:
+    """Download remote media for all clips to local temp files."""
+    updated_clips = []
+    for i, clip in enumerate(clips):
+        media_url = clip.get("generated_media_url", "")
+        if media_url and media_url.startswith("http"):
+            try:
+                media_bytes = await download_media(media_url)
+                ext = ".mp4" if clip.get("type") == "video" else ".png"
+                local_path = os.path.join(tmpdir, f"media_{i:03d}{ext}")
+                with open(local_path, "wb") as f:
+                    f.write(media_bytes)
+                clip = {**clip, "local_media_path": local_path}
+            except Exception as e:
+                logger.warning("Failed to download media for clip %d: %s", i, e)
+        updated_clips.append(clip)
+    return updated_clips
+
+
+async def _compose_background(data: ComposeRequest, job_id: str):
+    """Background task: download media, generate cards, compose trailer."""
+    settings = get_settings()
+    output_dir = os.path.join(settings.render_output_dir, data.project_id)
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{job_id}.mp4")
+
+    tmpdir = tempfile.mkdtemp(prefix="frameflow_compose_")
+
+    try:
+        _render_jobs[job_id]["status"] = "generating_media"
+        timeline = data.timeline or {}
+        clips = timeline.get("clips", [])
+        timeline_settings = timeline.get("settings", {})
+        music_track = timeline.get("music_track")
+
+        width = 1920
+        height = 1080
+        aspect = timeline_settings.get("aspect_ratio", "16:9")
+        if aspect == "9:16":
+            width, height = 1080, 1920
+        elif aspect == "1:1":
+            width = height = 1080
+
+        # Download remote media
+        async def progress_cb(pct, msg):
+            await _report_progress(job_id, data.project_id, pct, msg)
+
+        await progress_cb(5, "Downloading clip media...")
+        clips = await _download_clip_media(clips, tmpdir)
+
+        # Generate title card
+        if data.include_title_card and data.title:
+            await progress_cb(8, "Generating title card...")
+            title_path = os.path.join(tmpdir, "title_card.png")
+            await generate_title_card(
+                title=data.title,
+                subtitle=f"by {data.author}" if data.author else "",
+                width=width,
+                height=height,
+                output_path=title_path,
+            )
+            title_clip = {
+                "id": "title_card",
+                "order": -1,
+                "type": "image",
+                "duration_ms": 4000,
+                "prompt": "",
+                "local_media_path": title_path,
+                "gen_status": "done",
+                "transition_type": "dissolve",
+                "position": {"x": 0, "y": 0},
+            }
+            clips = [title_clip] + clips
+
+        # Generate end card
+        if data.include_end_card:
+            await progress_cb(9, "Generating end card...")
+            end_path = os.path.join(tmpdir, "end_card.png")
+            await generate_end_card(
+                width=width,
+                height=height,
+                output_path=end_path,
+            )
+            end_clip = {
+                "id": "end_card",
+                "order": 999,
+                "type": "image",
+                "duration_ms": 3000,
+                "prompt": "",
+                "local_media_path": end_path,
+                "gen_status": "done",
+                "transition_type": "fade",
+                "position": {"x": 0, "y": 0},
+            }
+            clips.append(end_clip)
+
+        # Download music if URL provided
+        if music_track and music_track.get("url", "").startswith("http"):
+            try:
+                music_bytes = await download_media(music_track["url"])
+                music_local = os.path.join(tmpdir, "music.mp3")
+                with open(music_local, "wb") as f:
+                    f.write(music_bytes)
+                music_track = {**music_track, "local_path": music_local}
+            except Exception as e:
+                logger.warning("Failed to download music: %s", e)
+                music_track = None
+
+        # Compose trailer
+        _render_jobs[job_id]["status"] = "composing"
+        result = await compose_trailer(
+            clips=clips,
+            output_path=output_path,
+            settings=timeline_settings,
+            music_track=music_track,
+            progress_callback=progress_cb,
+        )
+
+        if result.get("status") == "done":
+            # Generate preview
+            preview_path = os.path.join(output_dir, f"{job_id}_preview.mp4")
+            await generate_preview(output_path, preview_path)
+
+            _render_jobs[job_id].update({
+                "status": "done",
+                "progress": 100,
+                "output_url": output_path,
+                "preview_url": preview_path,
+                "duration_ms": result.get("duration_ms", 0),
+                "message": result.get("message", ""),
+            })
+            await _report_progress(job_id, data.project_id, 100, "Render complete!")
+        else:
+            _render_jobs[job_id].update({
+                "status": "error",
+                "error": result.get("message", "Composition failed"),
+            })
+
+    except Exception as e:
+        logger.error("Compose background task failed: %s", e)
+        _render_jobs[job_id].update({
+            "status": "error",
+            "error": str(e),
+        })
+    finally:
+        try:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+@router.post("/compose", response_model=ComposeResponse)
+async def compose(data: ComposeRequest, background_tasks: BackgroundTasks):
+    """Start composing a trailer from timeline clips.
+
+    Runs in the background and reports progress via callback.
+    """
+    job_id = str(uuid.uuid4())
+
+    _render_jobs[job_id] = {
+        "job_id": job_id,
+        "project_id": data.project_id,
+        "status": "queued",
+        "progress": 0,
+        "output_url": None,
+        "error": None,
+        "message": "Queued for rendering",
+    }
+
+    background_tasks.add_task(_compose_background, data, job_id)
+
+    return ComposeResponse(
+        job_id=job_id,
+        status="queued",
+        progress=0,
+        message="Render job queued",
     )
 
-    return {
-        "job_id": job_id,
-        "status": result.get("status", "pending"),
-        "output_url": None,
-        "message": result.get("message", ""),
-    }
+
+@router.get("/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    """Get the status of a render job."""
+    job = _render_jobs.get(job_id)
+    if not job:
+        return {"error": "Job not found", "job_id": job_id}
+    return job
+
 
 @router.post("/music/suggest")
 async def music_suggest(data: MusicSuggestRequest):
+    """Suggest background music tracks based on mood and genre."""
     tracks = await suggest_music(data.mood, data.genre, data.duration_ms)
     return {"tracks": tracks}

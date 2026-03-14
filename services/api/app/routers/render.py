@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from app.models.render import GenerateClipRequest, RenderJobResponse
 from app.config import get_settings
 from app.db import get_supabase
@@ -6,6 +6,9 @@ from app.routers.ws import manager
 import httpx
 import uuid
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["render"])
 
@@ -29,7 +32,13 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         try:
             resp = await client.post(
                 f"{settings.render_service_url}/render/generate",
-                json={"clip_id": data.clip_id, "prompt": data.prompt, "type": data.type},
+                json={
+                    "clip_id": data.clip_id,
+                    "prompt": data.prompt,
+                    "type": data.type,
+                    "aspect_ratio": "16:9",
+                    "duration_ms": 3000,
+                },
             )
             result = resp.json()
         except httpx.ConnectError:
@@ -73,14 +82,23 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
 async def render_trailer(project_id: str):
     settings = get_settings()
 
-    # Fetch current timeline to pass to render service
+    # Fetch current timeline and project info
     timeline = None
+    title = ""
+    author = ""
     db = get_supabase()
     if db is not None:
         try:
             tl_row = db.table("timelines").select("*").eq("project_id", project_id).execute()
             if tl_row.data:
                 timeline = tl_row.data[0]
+        except Exception:
+            pass
+        try:
+            proj_row = db.table("projects").select("title,author").eq("id", project_id).execute()
+            if proj_row.data:
+                title = proj_row.data[0].get("title", "")
+                author = proj_row.data[0].get("author", "")
         except Exception:
             pass
 
@@ -95,7 +113,7 @@ async def render_trailer(project_id: str):
                 "progress": 0,
             }).execute()
         except Exception:
-            job_id = str(uuid.uuid4())  # continue even if DB insert fails
+            job_id = str(uuid.uuid4())
 
     await manager.broadcast(project_id, {
         "type": "render_progress",
@@ -108,7 +126,7 @@ async def render_trailer(project_id: str):
         try:
             resp = await client.post(
                 f"{settings.render_service_url}/render/compose",
-                json={"project_id": project_id, "timeline": timeline},
+                json={"project_id": project_id, "timeline": timeline, "title": title, "author": author},
             )
             result = resp.json()
         except httpx.ConnectError:
@@ -155,3 +173,27 @@ async def list_render_jobs(project_id: str):
         return result.data
     except Exception:
         return []
+
+
+@router.get("/render/{job_id}")
+async def get_render_status(project_id: str, job_id: str):
+    db = get_supabase()
+    if db:
+        try:
+            result = db.table("render_jobs").select("*").eq("id", job_id).execute()
+            if result.data:
+                return result.data[0]
+        except Exception:
+            pass
+
+    # Fall back to polling render service directly
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{settings.render_service_url}/render/jobs/{job_id}")
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=404, detail="Render job not found")

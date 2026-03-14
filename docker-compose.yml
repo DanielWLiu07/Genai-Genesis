@@ -34,3 +34,8 @@ services:
     ports:
       - "8002:8002"
     env_file: .env
+    volumes:
+      - render_data:/app/renders
+
+volumes:
+  render_data:

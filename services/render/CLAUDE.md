@@ -4,51 +4,39 @@
 You own `services/render/` - Video generation (Kling 3.0), FFmpeg composition, and media processing.
 
 ## Key Files
-- `app/main.py` - FastAPI app
-- `app/services/kling.py` - Kling 3.0 API client (image & video generation)
-- `app/services/ffmpeg.py` - FFmpeg video composition pipeline
-- `app/services/music.py` - Background music suggestion
-- `app/services/media.py` - Image processing (thumbnails, resize)
-- `app/routers/generate.py` - `/render/generate` endpoint
-- `app/routers/compose.py` - `/render/compose` and `/render/music/suggest` endpoints
+- `app/main.py` - FastAPI app with CORS, logging, health check (ffmpeg detection)
+- `app/config.py` - Settings (Kling keys, API service URL, Supabase, output dir)
+- `app/services/kling.py` - Kling 3.0 API client (JWT auth, image & video gen, polling, caching)
+- `app/services/ffmpeg.py` - FFmpeg video composition pipeline (transitions, text, music)
+- `app/services/music.py` - Background music suggestion (curated library)
+- `app/services/media.py` - Image processing (thumbnails, resize, title/end cards)
+- `app/routers/generate.py` - `/render/generate` endpoint (background tasks, progress callbacks)
+- `app/routers/compose.py` - `/render/compose`, `/render/jobs/{id}`, `/render/music/suggest`
 
-## Your Tasks (Priority Order)
-1. Get Kling 3.0 API working - implement actual API calls in `kling.py`
-2. Implement image generation flow: prompt → Kling API → download → store
-3. Implement video generation flow (same but for short clips)
-4. Build FFmpeg composition pipeline:
-   - Concatenate clips with configurable durations
-   - Add cross-dissolve/fade transitions
-   - Add text overlays with animations (fade_in, typewriter, slide_up)
-   - Mix background music with volume control
-   - Output encoding (H.264, AAC)
-5. Implement thumbnail generation from generated media
-6. Add progress reporting (callback to API service via HTTP)
-7. Add title card and end card generation
-8. Test full render pipeline end-to-end
-9. Optimize render speed, add caching for duplicate prompts
+## Implemented Features
+- [x] Kling 3.0 API: JWT auth, image gen, video gen (5s/10s), async polling, SHA256 prompt caching
+- [x] FFmpeg pipeline: clip standardization, xfade transitions (fade/dissolve/wipe/cut), text overlays with animations (fade_in/typewriter/slide_up), background music mixing, H.264/AAC encoding
+- [x] Title card generation (Pillow, gradient background, centered text)
+- [x] End card generation (FrameFlow branding)
+- [x] Preview video generation (lower quality for fast preview)
+- [x] Thumbnail extraction from video
+- [x] Background task processing with progress callbacks to API service
+- [x] In-memory render job status tracking with polling endpoint
+- [x] Media download utility for remote URLs
 
-## Kling 3.0 Integration
-- API docs: Check Kling's developer documentation
-- Flow: Submit generation request → poll for completion → download result
-- Support both image and video generation
-- Handle rate limiting and retry logic
-- Cache generated media (same prompt = same output)
-
-## FFmpeg Pipeline
-The composition pipeline takes a list of clips and produces a single video:
-1. For each clip: resize to target resolution, set duration
-2. Apply transitions between clips (crossfade, dissolve, wipe)
-3. Add text overlays using drawtext filter
-4. Mix background music track
-5. Encode to H.264/AAC MP4
-6. Generate preview (lower quality) and final (full quality)
+## Remaining Tasks
+1. Upload generated media to Supabase Storage (currently local only)
+2. Pre-generate demo assets for the hackathon demo
+3. Add real music files to the curated library (URLs are empty)
+4. Stress test with multiple concurrent render jobs
 
 ## API Endpoints
 ```
-POST /render/generate      → Generate single clip (image or video)
-POST /render/compose       → Compose final trailer from all clips
-POST /render/music/suggest → Suggest background music by mood/genre
+POST /render/generate       → Generate single clip (image or video) — runs in background
+POST /render/compose        → Compose final trailer from all clips — runs in background
+GET  /render/jobs/{job_id}  → Poll render job status
+POST /render/music/suggest  → Suggest background music by mood/genre
+GET  /health                → Health check (includes ffmpeg availability)
 ```
 
 ## Running

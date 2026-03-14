@@ -1,42 +1,88 @@
-from app.services.gemini import generate
-import json
+from app.services.gemini import generate_json
+import logging
 
-SYSTEM_PROMPT = """You are a narrative analysis AI. Analyze the given story text and extract structured information.
+logger = logging.getLogger(__name__)
 
-Return a JSON object with this exact structure:
+SYSTEM_PROMPT = """You are a narrative analysis AI specializing in extracting cinematic potential from written stories, books, manga, and comics.
+
+Your job is to analyze text and identify the key elements that would make a compelling book trailer or visual preview.
+
+You MUST return a JSON object with this exact structure:
+
 {
-  "summary": "2-3 sentence summary",
-  "themes": ["theme1", "theme2"],
-  "genre": "genre",
-  "mood": "overall mood",
-  "target_audience": "audience description",
+  "summary": "2-3 sentence compelling summary of the story",
+  "themes": ["theme1", "theme2", "theme3"],
+  "genre": "primary genre",
+  "sub_genres": ["sub-genre1", "sub-genre2"],
+  "mood": "overall emotional tone",
+  "target_audience": "who would enjoy this",
+  "style": "book|manga|comic|light_novel",
   "characters": [
-    {"name": "...", "description": "...", "visual_description": "cinematic visual description for image generation"}
+    {
+      "name": "character name",
+      "role": "protagonist|antagonist|supporting",
+      "description": "who they are and their arc",
+      "visual_description": "detailed cinematic visual description for AI image generation - describe appearance, clothing, pose, lighting, and atmosphere"
+    }
   ],
   "key_scenes": [
     {
-      "title": "scene title",
-      "description": "what happens",
-      "quote": "notable quote from text if any",
-      "mood": "scene mood",
-      "visual_description": "cinematic visual description for image generation",
-      "scene_type": "introduction|character_reveal|tension_build|conflict|climax|emotional_pause|ending_hook"
+      "title": "short scene title",
+      "description": "what happens in this scene",
+      "quote": "a notable line from the text if available, otherwise null",
+      "mood": "emotional tone of this specific scene",
+      "visual_description": "detailed cinematic shot description - include camera angle, lighting, color palette, atmosphere, and composition. Example: 'Close-up of a young woman's face illuminated by candlelight, tears reflecting golden light, dark medieval chamber background, chiaroscuro lighting, shallow depth of field'",
+      "scene_type": "one of: introduction, character_reveal, tension_build, conflict, mystery, action, climax, emotional_pause, ending_hook",
+      "importance": 8
     }
   ]
 }
 
-Extract 6-10 key scenes that would make a compelling book trailer. Focus on visually striking moments.
-Return ONLY valid JSON, no markdown."""
+CRITICAL RULES:
+- Extract 8-12 key scenes that would make visually striking trailer moments
+- Order scenes to tell a compelling story arc (not necessarily chronological)
+- Visual descriptions must be CINEMATIC - describe camera angles, lighting, depth of field, color grading
+- For manga/comics, describe the art style and panel composition
+- importance is 1-10 (10 = absolutely essential for trailer)
+- Every scene needs a strong visual_description suitable for AI image generation
+- Think like a Hollywood trailer editor selecting the most impactful moments"""
+
 
 async def analyze_story(text: str) -> dict:
-    result = await generate(f"Analyze this story:\n\n{text[:8000]}", SYSTEM_PROMPT)
-    try:
-        # Strip markdown code fences if present
-        cleaned = result.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1]
-        if cleaned.endswith("```"):
-            cleaned = cleaned.rsplit("```", 1)[0]
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        return {"error": "Failed to parse analysis", "raw": result}
+    """Analyze story text and extract narrative structure for trailer creation."""
+    # Truncate very long texts but keep enough for good analysis
+    max_chars = 15000
+    if len(text) > max_chars:
+        # Take beginning, middle section, and end for best coverage
+        chunk = max_chars // 3
+        text = (
+            text[:chunk]
+            + "\n\n[...middle section...]\n\n"
+            + text[len(text) // 2 - chunk // 2 : len(text) // 2 + chunk // 2]
+            + "\n\n[...later section...]\n\n"
+            + text[-chunk:]
+        )
+
+    prompt = f"""Analyze the following story text and extract its narrative structure for creating a cinematic book trailer.
+
+STORY TEXT:
+---
+{text}
+---
+
+Analyze this story thoroughly. Identify the most visually compelling and emotionally impactful moments for a trailer."""
+
+    result = await generate_json(prompt, SYSTEM_PROMPT)
+
+    # Validate required fields
+    if "error" not in result:
+        if "key_scenes" not in result:
+            result["key_scenes"] = []
+        if "characters" not in result:
+            result["characters"] = []
+        # Ensure importance field exists
+        for scene in result.get("key_scenes", []):
+            if "importance" not in scene:
+                scene["importance"] = 5
+
+    return result

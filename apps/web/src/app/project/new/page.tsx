@@ -19,11 +19,16 @@ export default function NewProject() {
     try {
       const project: any = await api.createProject({ title: title.trim(), description: description.trim() || undefined });
       if (file) {
-        await api.uploadBook(project.id, file);
+        const uploadResult: any = await api.uploadBook(project.id, file);
+        // Store book_text in sessionStorage so editor page can access it
+        if (uploadResult.book_text || uploadResult.text_preview) {
+          sessionStorage.setItem(`book_text_${project.id}`, uploadResult.book_text || uploadResult.text_preview);
+        }
       }
       router.push(`/project/${project.id}`);
     } catch (err) {
       console.error(err);
+      alert('Failed to create project. Please try again.');
     } finally {
       setLoading(false);
     }

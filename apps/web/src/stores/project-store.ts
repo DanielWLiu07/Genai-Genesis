@@ -6,8 +6,9 @@ export interface Project {
   author: string;
   description: string;
   book_file_url?: string;
+  book_text?: string;
   cover_image_url?: string;
-  status: 'uploading' | 'analyzing' | 'planning' | 'editing' | 'rendering' | 'done';
+  status: 'uploading' | 'uploaded' | 'analyzing' | 'planning' | 'editing' | 'rendering' | 'done';
   analysis?: any;
   created_at: string;
   updated_at: string;

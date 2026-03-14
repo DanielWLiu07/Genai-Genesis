@@ -16,17 +16,18 @@ def _extract_text(content: bytes) -> str:
 @router.post("/upload")
 async def upload_book(project_id: str, file: UploadFile = File(...)):
     content = await file.read()
-    text = _extract_text(content)[:100_000]  # cap at 100 k chars
+    text = _extract_text(content)[:100_000]  # cap at 100k chars
 
     # Always cache text in memory so /analyze can use it even without DB
     store_book_text(project_id, text)
 
     db = get_supabase()
     if db is None:
-        update_project_mem(project_id, status="analyzing")
+        update_project_mem(project_id, status="uploaded")
         return {
             "file_name": file.filename,
             "size": len(content),
+            "book_text": text,
             "text_preview": text[:500],
             "status": "ready_to_analyze",
         }
@@ -41,10 +42,10 @@ async def upload_book(project_id: str, file: UploadFile = File(...)):
     except Exception:
         file_url = None  # storage may not be configured — continue anyway
 
-    # Store book_text in analysis JSONB so it survives restarts, set status → analyzing
+    # Store book_text in analysis JSONB so it survives restarts
     db.table("projects").update({
         "book_file_url": file_url,
-        "status": "analyzing",
+        "status": "uploaded",
         "analysis": {"book_text": text},
     }).eq("id", project_id).execute()
 
@@ -52,6 +53,7 @@ async def upload_book(project_id: str, file: UploadFile = File(...)):
         "file_url": file_url,
         "file_name": file.filename,
         "size": len(content),
+        "book_text": text,
         "text_preview": text[:500],
         "status": "ready_to_analyze",
     }

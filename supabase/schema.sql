@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS projects (
   author TEXT DEFAULT '',
   description TEXT DEFAULT '',
   book_file_url TEXT,
+  book_text TEXT,
   cover_image_url TEXT,
   status TEXT DEFAULT 'uploading',
   analysis JSONB,

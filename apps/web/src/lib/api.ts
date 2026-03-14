@@ -11,7 +11,7 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   // Projects
-  createProject: (data: { title: string; description?: string }) =>
+  createProject: (data: { title: string; description?: string; author?: string }) =>
     fetchAPI('/projects', { method: 'POST', body: JSON.stringify(data) }),
   getProjects: () => fetchAPI('/projects'),
   getProject: (id: string) => fetchAPI(`/projects/${id}`),
@@ -34,25 +34,39 @@ export const api = {
   },
 
   // AI
-  analyzeStory: (projectId: string) =>
-    fetchAPI(`/projects/${projectId}/analyze`, { method: 'POST' }),
-  planTrailer: (projectId: string) =>
-    fetchAPI(`/projects/${projectId}/plan-trailer`, { method: 'POST' }),
+  analyzeStory: (projectId: string, bookText: string) =>
+    fetchAPI(`/projects/${projectId}/analyze`, { method: 'POST', body: JSON.stringify({ book_text: bookText }) }),
+  planTrailer: (projectId: string, opts?: { analysis?: any; style?: string; pacing?: string }) =>
+    fetchAPI(`/projects/${projectId}/plan-trailer`, { method: 'POST', body: JSON.stringify(opts || {}) }),
+  getSuggestions: (projectId: string, timeline: any, analysis?: any) =>
+    fetchAPI(`/projects/${projectId}/suggest`, {
+      method: 'POST',
+      body: JSON.stringify({ timeline, analysis }),
+    }),
 
-  // Chat (SSE streaming)
-  chat: (projectId: string, message: string, timeline: any, history: any[]) =>
-    fetch(`${API_URL}/api/v1/projects/${projectId}/chat`, {
+  // Presets
+  getPresets: () => fetchAPI('/presets'),
+  getPreset: (style: string) => fetchAPI(`/presets/${style}`),
+
+  // Chat
+  chat: async (projectId: string, message: string, timeline: any, history: any[]) => {
+    const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, timeline, history }),
-    }),
+    });
+    if (!res.ok) throw new Error(`Chat error: ${res.status}`);
+    return res.json();
+  },
 
   // Render
-  generateClip: (projectId: string, clipId: string, prompt: string) =>
+  generateClip: (projectId: string, clipId: string, prompt: string, type: string = 'image') =>
     fetchAPI(`/projects/${projectId}/generate-clip`, {
       method: 'POST',
-      body: JSON.stringify({ clip_id: clipId, prompt }),
+      body: JSON.stringify({ clip_id: clipId, prompt, type }),
     }),
   renderTrailer: (projectId: string) =>
     fetchAPI(`/projects/${projectId}/render`, { method: 'POST' }),
+  getRenderStatus: (projectId: string, jobId: string) =>
+    fetchAPI(`/projects/${projectId}/render/${jobId}`),
 };

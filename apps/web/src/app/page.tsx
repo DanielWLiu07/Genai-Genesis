@@ -2,12 +2,13 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Film, BookOpen, Sparkles, Clock } from 'lucide-react';
+import { Plus, Film, BookOpen, Sparkles, Clock, Loader2 } from 'lucide-react';
 import { useProjectStore, type Project } from '@/stores/project-store';
 import { api } from '@/lib/api';
 
 const STATUS_COLORS: Record<Project['status'], string> = {
   uploading: 'text-yellow-400 bg-yellow-400/10',
+  uploaded: 'text-yellow-400 bg-yellow-400/10',
   analyzing: 'text-blue-400 bg-blue-400/10',
   planning: 'text-purple-400 bg-purple-400/10',
   editing: 'text-green-400 bg-green-400/10',
@@ -21,7 +22,7 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true);
     api.getProjects()
-      .then((data: any) => setProjects(data))
+      .then((data: any) => setProjects(Array.isArray(data) ? data : data.projects || []))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [setProjects, setLoading]);
@@ -81,7 +82,8 @@ export default function Dashboard() {
         <h2 className="text-xl font-semibold mb-4">Your Projects</h2>
         {loading ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
-            <div className="animate-pulse">Loading projects...</div>
+            <Loader2 size={32} className="mx-auto mb-3 text-zinc-600 animate-spin" />
+            <p>Loading projects...</p>
           </div>
         ) : projects.length === 0 ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500">
@@ -98,7 +100,7 @@ export default function Dashboard() {
               >
                 <div className="flex items-start justify-between mb-3">
                   <Film size={20} className="text-violet-400 mt-0.5" />
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[project.status]}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[project.status] || 'text-zinc-400 bg-zinc-400/10'}`}>
                     {project.status}
                   </span>
                 </div>

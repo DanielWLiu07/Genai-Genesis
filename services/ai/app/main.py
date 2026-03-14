@@ -1,8 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import analyze, plan, chat
+from app.routers import analyze, plan, chat, suggest, presets
+import logging
 
-app = FastAPI(title="FrameFlow AI Service", version="0.1.0")
+logging.basicConfig(level=logging.INFO)
+
+app = FastAPI(
+    title="FrameFlow AI Service",
+    description="Story analysis, trailer planning, and AI copilot for FrameFlow",
+    version="0.1.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,11 +21,31 @@ app.add_middleware(
 app.include_router(analyze.router)
 app.include_router(plan.router)
 app.include_router(chat.router)
+app.include_router(suggest.router)
+app.include_router(presets.router)
+
 
 @app.get("/")
 async def root():
-    return {"service": "FrameFlow AI", "status": "running", "version": "0.1.0"}
+    return {
+        "service": "FrameFlow AI",
+        "status": "running",
+        "version": "0.1.0",
+        "endpoints": [
+            "POST /ai/analyze - Analyze story text",
+            "POST /ai/plan-trailer - Generate trailer timeline",
+            "POST /ai/chat - Chat with copilot (tool calling)",
+            "POST /ai/suggest - Get timeline improvement suggestions",
+            "GET /ai/presets - List available style presets",
+        ],
+    }
+
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    from app.config import get_settings
+    settings = get_settings()
+    return {
+        "status": "healthy",
+        "gemini_configured": bool(settings.gemini_api_key),
+    }

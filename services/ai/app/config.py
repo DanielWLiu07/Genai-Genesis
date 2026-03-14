@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     api_service_url: str = "http://localhost:8000"
 
     class Config:
-        env_file = "../../.env"
+        env_file = ".env"
+        extra = "ignore"
 
 @lru_cache()
 def get_settings():

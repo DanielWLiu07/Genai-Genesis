@@ -41,14 +41,26 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
       case 'remove_clip':
         removeClip(args.clip_id);
         break;
-      case 'update_clip':
-        updateClip(args.clip_id, args.updates || {});
+      case 'update_clip': {
+        const { clip_id, ...updates } = args;
+        updateClip(clip_id, updates);
         break;
+      }
       case 'reorder_clips':
         reorderClips(args.clip_ids);
         break;
       case 'update_scene_duration':
         updateClip(args.scene_id, { duration_ms: args.duration_sec * 1000 });
+        break;
+      case 'set_transition':
+        updateClip(args.clip_id, { transition_type: args.transition_type });
+        break;
+      case 'regenerate_clip':
+        if (args.new_prompt) {
+          updateClip(args.clip_id, { prompt: args.new_prompt, gen_status: 'pending' });
+        } else {
+          updateClip(args.clip_id, { gen_status: 'pending' });
+        }
         break;
     }
   };
@@ -64,53 +76,21 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
 
     try {
-      const res = await api.chat(projectId, userMsg.content, timeline, history);
-      if (!res.ok) throw new Error(`Chat error: ${res.status}`);
+      const data = await api.chat(projectId, userMsg.content, timeline, history);
 
-      const assistantMsg: Message = { role: 'assistant', content: '', tool_calls: [] };
+      const assistantMsg: Message = {
+        role: 'assistant',
+        content: data.content || 'Done.',
+        tool_calls: data.tool_calls?.length ? data.tool_calls : undefined,
+      };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (reader) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const raw = line.slice(6).trim();
-          if (!raw || raw === '[DONE]') continue;
-
-          let event: any;
-          try { event = JSON.parse(raw); } catch { continue; }
-
-          if (event.type === 'content' && event.content) {
-            assistantMsg.content += event.content;
-            setMessages((prev) => {
-              const updated = [...prev];
-              updated[updated.length - 1] = { ...assistantMsg };
-              return updated;
-            });
-          } else if (event.type === 'tool_call') {
-            const tc = { tool_name: event.tool_name, arguments: event.arguments || {} };
-            assistantMsg.tool_calls = [...(assistantMsg.tool_calls ?? []), tc];
-            handleToolCall(tc);
-            setMessages((prev) => {
-              const updated = [...prev];
-              updated[updated.length - 1] = { ...assistantMsg };
-              return updated;
-            });
-          }
-        }
+      if (assistantMsg.tool_calls) {
+        assistantMsg.tool_calls.forEach(handleToolCall);
       }
-    } catch {
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'Error processing request.' }]);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Error processing request.';
+      setMessages((prev) => [...prev, { role: 'assistant', content: errorMsg }]);
     } finally {
       setLoading(false);
     }

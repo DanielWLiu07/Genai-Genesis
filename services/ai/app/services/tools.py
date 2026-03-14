@@ -1,107 +1,186 @@
-"""Tool definitions for the chatbot copilot. These map to timeline mutations."""
+"""Tool definitions for the chatbot copilot. These map to timeline mutations.
+
+The chatbot calls these tools to modify the trailer timeline.
+The frontend receives the tool_calls and applies them to the Zustand store.
+"""
+
+import google.generativeai as genai
 
 TOOL_DEFINITIONS = [
     {
         "name": "add_clip",
-        "description": "Add a new clip to the trailer timeline",
+        "description": "Add a new clip to the trailer timeline. Use this when the user wants to add a new scene, shot, or text overlay.",
         "parameters": {
             "type": "object",
             "properties": {
-                "prompt": {"type": "string", "description": "Visual prompt for the clip"},
-                "duration_ms": {"type": "integer", "description": "Duration in milliseconds"},
-                "type": {"type": "string", "enum": ["image", "video", "text_overlay"]},
-                "text": {"type": "string", "description": "Optional text overlay"},
-                "order": {"type": "integer", "description": "Position in timeline (0-indexed)"},
+                "prompt": {
+                    "type": "string",
+                    "description": "Detailed cinematic visual prompt for image/video generation. Include camera angle, lighting, mood, and style details.",
+                },
+                "duration_ms": {
+                    "type": "integer",
+                    "description": "Duration in milliseconds (typically 2000-5000)",
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["image", "video", "text_overlay"],
+                    "description": "Type of clip",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Optional text overlay to display on the clip",
+                },
+                "order": {
+                    "type": "integer",
+                    "description": "Position in timeline (0-indexed). If omitted, adds to end.",
+                },
             },
-            "required": ["prompt", "duration_ms"]
-        }
+            "required": ["prompt", "duration_ms"],
+        },
     },
     {
         "name": "remove_clip",
-        "description": "Remove a clip from the timeline by its ID",
+        "description": "Remove a clip from the timeline by its ID. Use when the user wants to delete a scene.",
         "parameters": {
             "type": "object",
             "properties": {
-                "clip_id": {"type": "string", "description": "ID of the clip to remove"}
+                "clip_id": {
+                    "type": "string",
+                    "description": "The UUID of the clip to remove",
+                },
             },
-            "required": ["clip_id"]
-        }
+            "required": ["clip_id"],
+        },
     },
     {
         "name": "update_clip",
-        "description": "Update properties of an existing clip",
+        "description": "Update properties of an existing clip. Use for changing prompts, durations, text, or transitions on a specific clip.",
         "parameters": {
             "type": "object",
             "properties": {
-                "clip_id": {"type": "string", "description": "ID of the clip to update"},
-                "prompt": {"type": "string", "description": "New visual prompt"},
-                "duration_ms": {"type": "integer", "description": "New duration in ms"},
-                "text": {"type": "string", "description": "New overlay text"},
-                "transition_type": {"type": "string", "enum": ["fade", "dissolve", "wipe", "cut"]},
+                "clip_id": {
+                    "type": "string",
+                    "description": "The UUID of the clip to update",
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "New cinematic visual prompt",
+                },
+                "duration_ms": {
+                    "type": "integer",
+                    "description": "New duration in milliseconds",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "New overlay text",
+                },
+                "transition_type": {
+                    "type": "string",
+                    "enum": ["fade", "dissolve", "wipe", "cut"],
+                    "description": "Transition to next clip",
+                },
             },
-            "required": ["clip_id"]
-        }
-    },
-    {
-        "name": "update_scene_duration",
-        "description": "Change the duration of a scene",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "scene_id": {"type": "string", "description": "ID of the scene"},
-                "duration_sec": {"type": "number", "description": "New duration in seconds"},
-            },
-            "required": ["scene_id", "duration_sec"]
-        }
+            "required": ["clip_id"],
+        },
     },
     {
         "name": "reorder_clips",
-        "description": "Reorder clips in the timeline",
+        "description": "Reorder clips in the timeline. Provide the full list of clip IDs in the desired order.",
         "parameters": {
             "type": "object",
             "properties": {
-                "clip_ids": {"type": "array", "items": {"type": "string"}, "description": "Ordered list of clip IDs"}
+                "clip_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Complete ordered list of clip IDs representing the new timeline order",
+                },
             },
-            "required": ["clip_ids"]
-        }
+            "required": ["clip_ids"],
+        },
     },
     {
         "name": "set_transition",
-        "description": "Set the transition type between two clips",
+        "description": "Set the transition effect after a specific clip.",
         "parameters": {
             "type": "object",
             "properties": {
-                "after_clip_id": {"type": "string", "description": "ID of the clip to set transition after"},
-                "transition_type": {"type": "string", "enum": ["fade", "dissolve", "wipe", "cut"]},
+                "clip_id": {
+                    "type": "string",
+                    "description": "ID of the clip to set transition on",
+                },
+                "transition_type": {
+                    "type": "string",
+                    "enum": ["fade", "dissolve", "wipe", "cut"],
+                    "description": "Type of transition effect",
+                },
             },
-            "required": ["after_clip_id", "transition_type"]
-        }
+            "required": ["clip_id", "transition_type"],
+        },
     },
     {
         "name": "regenerate_clip",
-        "description": "Regenerate the visual for a clip with a new or modified prompt",
+        "description": "Mark a clip for visual regeneration, optionally with a new prompt. Use when the user wants to redo a scene's visuals.",
         "parameters": {
             "type": "object",
             "properties": {
-                "clip_id": {"type": "string", "description": "ID of the clip to regenerate"},
-                "new_prompt": {"type": "string", "description": "Optional new prompt (uses existing if not provided)"},
+                "clip_id": {
+                    "type": "string",
+                    "description": "ID of the clip to regenerate",
+                },
+                "new_prompt": {
+                    "type": "string",
+                    "description": "Optional new visual prompt. If omitted, regenerates with existing prompt.",
+                },
             },
-            "required": ["clip_id"]
-        }
+            "required": ["clip_id"],
+        },
     },
 ]
 
-# Convert to Gemini function declarations format
+
 def get_gemini_tools():
-    return [
-        {
-            "function_declarations": [
-                {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["parameters"],
-                }
-                for tool in TOOL_DEFINITIONS
-            ]
-        }
-    ]
+    """Convert tool definitions to Gemini function declarations."""
+    declarations = []
+    for tool in TOOL_DEFINITIONS:
+        declarations.append(
+            genai.protos.FunctionDeclaration(
+                name=tool["name"],
+                description=tool["description"],
+                parameters=genai.protos.Schema(
+                    type=genai.protos.Type.OBJECT,
+                    properties={
+                        k: _convert_property(v)
+                        for k, v in tool["parameters"]["properties"].items()
+                    },
+                    required=tool["parameters"].get("required", []),
+                ),
+            )
+        )
+    return genai.protos.Tool(function_declarations=declarations)
+
+
+def _convert_property(prop: dict) -> genai.protos.Schema:
+    """Convert a JSON Schema property to Gemini Schema."""
+    type_map = {
+        "string": genai.protos.Type.STRING,
+        "integer": genai.protos.Type.INTEGER,
+        "number": genai.protos.Type.NUMBER,
+        "boolean": genai.protos.Type.BOOLEAN,
+        "array": genai.protos.Type.ARRAY,
+        "object": genai.protos.Type.OBJECT,
+    }
+
+    schema_type = type_map.get(prop.get("type", "string"), genai.protos.Type.STRING)
+
+    kwargs = {
+        "type": schema_type,
+        "description": prop.get("description", ""),
+    }
+
+    if "enum" in prop:
+        kwargs["enum"] = prop["enum"]
+
+    if schema_type == genai.protos.Type.ARRAY and "items" in prop:
+        kwargs["items"] = _convert_property(prop["items"])
+
+    return genai.protos.Schema(**kwargs)

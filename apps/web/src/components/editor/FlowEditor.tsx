@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useTimelineStore, type Clip } from '@/stores/timeline-store';
+import { api } from '@/lib/api';
 import { SceneNode } from './SceneNode';
 
 const nodeTypes: NodeTypes = {
@@ -64,6 +65,24 @@ export function FlowEditor() {
     setNodes(clipsToNodes(clips));
     setEdges(clipsToEdges(clips));
   }, [clips, setNodes, setEdges]);
+
+  // Debounced auto-save when clips change
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const projectId = useTimelineStore.getState().projectId;
+    if (!projectId || clips.length === 0) return;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      api.updateTimeline(projectId, { clips }).catch((err) =>
+        console.error('Auto-save failed:', err)
+      );
+    }, 2000);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [clips]);
 
   return (
     <div className="w-full h-full">

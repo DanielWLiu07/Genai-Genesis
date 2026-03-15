@@ -608,15 +608,14 @@ export default function TimelinePage() {
   const storeProjectId = useTimelineStore((s) => s.projectId);
   useEffect(() => {
     if (!id) return;
-    const shouldBootstrap = storeProjectId !== id || useTimelineStore.getState().clips.length === 0;
     setProjectId(id);
-    if (!shouldBootstrap) return;
 
     if (isDemoMode) {
       loadTimeline(createDemoTimeline());
       return;
     }
 
+    // Always fetch fresh from DB on mount — never trust stale store for intro/outro clips
     import('@/lib/api').then(({ api }) => {
       api.getTimeline(id).then((tl: any) => {
         loadTimeline(tl);
@@ -625,7 +624,7 @@ export default function TimelinePage() {
         }
       }).catch(() => {});
     });
-  }, [id, isDemoMode, loadTimeline, setProjectId, storeProjectId]);
+  }, [id, isDemoMode, loadTimeline, setProjectId]);
 
   // compiledUrl is set only when the user actively renders in this session (see handleRender)
 
@@ -768,10 +767,12 @@ export default function TimelinePage() {
   // ── Autosave effects + beatMap to DB (debounced 1.5s) ──────────────────
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     if (!id || isDemoMode) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
+    const doSave = () => {
       const { settings } = useTimelineStore.getState();
       import('@/lib/api').then(({ api }) => {
         api.updateTimeline(id, {
@@ -783,9 +784,24 @@ export default function TimelinePage() {
           total_duration_ms: totalMs,
         }).catch(() => {});
       });
+    };
+    pendingSaveRef.current = doSave;
+    saveTimeoutRef.current = setTimeout(() => {
+      doSave();
+      pendingSaveRef.current = null;
     }, 1500);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [clips, musicTrack, effects, beatMap, id, isDemoMode, totalMs]);
+
+  // Flush any pending save immediately when navigating away
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current();
+        pendingSaveRef.current = null;
+      }
+    };
+  }, []);
 
   // ── Beat map generation ─────────────────────────────────────────────────
 

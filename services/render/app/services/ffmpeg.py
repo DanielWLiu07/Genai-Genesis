@@ -699,7 +699,7 @@ def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
             parts.append(f"eq=saturation=0:contrast={c:.2f}:enable='{en}'")
 
         elif etype == "invert":
-            parts.append(f"negate:enable='{en}'")
+            parts.append(f"negate=enable='{en}'")
 
         elif etype == "red_flash":
             color_hex = p(eff, "color", None)
@@ -898,7 +898,8 @@ def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
 
         elif etype == "posterize":
             levels = int(p(eff, "size", max(2, int(8 - intensity * 6))))
-            parts.append(f"posterize={levels}:enable='{en}'")
+            contrast = min(10.0, max(2.0, 10.0 / levels))
+            parts.append(f"eq=contrast={contrast:.1f}:saturation=0.9:enable='{en}'")
 
         elif etype == "split_tone":
             shadow_h = int(p(eff, "hue_shift", 200))
@@ -946,7 +947,7 @@ def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
             parts.append(f"gblur=sigma={sigma:.1f}:steps=2:enable='{en}'")
 
         elif etype == "mirror_h":
-            parts.append(f"hflip:enable='{en}'")
+            parts.append(f"hflip=enable='{en}'")
 
         elif etype == "rain":
             noise_level = int(p(eff, "count", max(8, int(intensity * 20))))

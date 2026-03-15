@@ -446,16 +446,25 @@ export default function EditorPage() {
       }
       if (timeline) {
         loadTimeline(timeline);
-        // Reset any clips stuck in 'generating' — happens when page is refreshed mid-generation
-        // or when a WebSocket callback was never received. Re-generate will pick them up.
-        const stuckClips = (timeline.clips || []).filter((c: any) => c.gen_status === 'generating');
-        if (stuckClips.length > 0) {
-          const resetClips = (timeline.clips || []).map((c: any) =>
-            c.gen_status === 'generating' ? { ...c, gen_status: 'pending' } : c
-          );
-          stuckClips.forEach((c: any) => updateClip(c.id, { gen_status: 'pending' }));
-          api.updateTimeline(id, { clips: resetClips }).catch(() => {});
-          // Also clear videoCancelled so the generate button reappears
+        // Heal clips that have generated media but wrong gen_status (DB inconsistency)
+        // Also reset any clips stuck in 'generating' — happens when page is refreshed mid-generation.
+        const healedClips = (timeline.clips || []).map((c: any) => {
+          if (c.generated_media_url && c.gen_status !== 'done') {
+            return { ...c, gen_status: 'done' };
+          }
+          if (c.gen_status === 'generating') {
+            return { ...c, gen_status: 'pending' };
+          }
+          return c;
+        });
+        const needsHeal = healedClips.some((c: any, i: number) => c.gen_status !== (timeline.clips || [])[i]?.gen_status);
+        if (needsHeal) {
+          healedClips.forEach((c: any, i: number) => {
+            if (c.gen_status !== (timeline.clips || [])[i]?.gen_status) {
+              updateClip(c.id, { gen_status: c.gen_status });
+            }
+          });
+          api.updateTimeline(id, { clips: healedClips }).catch(() => {});
           sessionStorage.removeItem(`video_cancelled_${id}`);
           setVideoCancelled(false);
         }

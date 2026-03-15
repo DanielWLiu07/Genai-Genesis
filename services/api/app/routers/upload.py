@@ -197,13 +197,15 @@ async def serve_local_audio(project_id: str, filename: str):
 
 
 def _save_audio_locally(project_id: str, filename: str, content: bytes) -> str:
-    """Save audio bytes to local filesystem and return a localhost URL."""
+    """Save audio bytes to local filesystem and return a URL based on the configured API base URL."""
+    from app.config import get_settings
     safe_name = Path(filename).name
     out_dir = _AUDIO_LOCAL_DIR / project_id
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / safe_name
     out_path.write_bytes(content)
-    return f"http://localhost:8000/api/v1/projects/{project_id}/audio/{safe_name}"
+    base = get_settings().api_service_url.rstrip("/")
+    return f"{base}/api/v1/projects/{project_id}/audio/{safe_name}"
 
 
 @router.post("/upload-audio")

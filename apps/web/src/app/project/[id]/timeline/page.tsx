@@ -886,10 +886,18 @@ export default function TimelinePage() {
   // ── Auto AMV ────────────────────────────────────────────────────────────
 
   const handleAutoAmv = useCallback(async () => {
-    console.log('[AutoAMV] beatMap:', beatMap, 'totalMs:', totalMs, 'clips:', clips.length);
-    if (!beatMap) { console.warn('[AutoAMV] no beatMap, returning early'); return; }
     setAutoAmvLoading(true);
     clearEffects();
+
+    // If no beat map exists (no music uploaded), generate a synthetic one from BPM
+    let activeBeatMap = beatMap;
+    if (!activeBeatMap || activeBeatMap.beats.length === 0) {
+      const interval = (60 / bpm) * 1000;
+      const beats: number[] = [];
+      for (let t = 0; t <= totalMs; t += interval) beats.push(Math.round(t));
+      activeBeatMap = { bpm, offset_ms: 0, beats };
+      setBeatMap(activeBeatMap);
+    }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -908,16 +916,16 @@ export default function TimelinePage() {
     });
 
     // ── Pull rich music data from beatMap (all in ms, converted on upload) ──
-    const crashes        = dedupe(beatMap.crashes           || [], 200);
-    const energyPeaks    = dedupe(beatMap.energy_peaks      || [], 300);
-    const sectionBounds  = dedupe(beatMap.section_boundaries|| [], 500);
-    const downbeats      = dedupe(beatMap.downbeats         || [], 200);
-    const kicks          = dedupe(beatMap.kicks             || [], 80);
-    const snares         = dedupe(beatMap.snares            || [], 80);
-    const horns          = dedupe(beatMap.horns             || [], 150);
-    const allBeats       = dedupe(beatMap.beats             || [], 80);
-    const beatStrengths  = beatMap.beat_strengths           || [];
-    const energyCurve    = beatMap.energy_curve             || [];
+    const crashes        = dedupe((activeBeatMap as any).crashes           || [], 200);
+    const energyPeaks    = dedupe((activeBeatMap as any).energy_peaks      || [], 300);
+    const sectionBounds  = dedupe((activeBeatMap as any).section_boundaries|| [], 500);
+    const downbeats      = dedupe((activeBeatMap as any).downbeats         || [], 200);
+    const kicks          = dedupe((activeBeatMap as any).kicks             || [], 80);
+    const snares         = dedupe((activeBeatMap as any).snares            || [], 80);
+    const horns          = dedupe((activeBeatMap as any).horns             || [], 150);
+    const allBeats       = dedupe(activeBeatMap.beats                      || [], 80);
+    const beatStrengths  = (activeBeatMap as any).beat_strengths           || [];
+    const energyCurve    = (activeBeatMap as any).energy_curve             || [];
     const energyAt = (ms: number) => energyCurve[Math.round(ms / 100)] ?? 0.5;
 
     // ── Event-driven fallback (uses real music events, not random beats) ─────
@@ -997,7 +1005,7 @@ export default function TimelinePage() {
       // P8: ALL-OUT — fill every beat
       if (beatSyncIntensity === 'all-out') {
         const fillFx: EffectType[] = ['flash_white', 'shake', 'flicker', 'chromatic', 'contrast_punch'];
-        const beatInterval = beatMap.bpm > 0 ? 60000 / beatMap.bpm : 500;
+        const beatInterval = activeBeatMap.bpm > 0 ? 60000 / activeBeatMap.bpm : 500;
         for (let i = 0; i < allBeats.length; i++) {
           const t = allBeats[i];
           if (isCovered(t)) continue;
@@ -1019,7 +1027,7 @@ export default function TimelinePage() {
         const beatFx: EffectType[] = ['flash_white', 'zoom_burst', 'shake', 'chromatic', 'flicker', 'red_flash', 'contrast_punch'];
         const strongFx: EffectType[] = ['zoom_burst', 'panel_split', 'heavy_shake', 'neon', 'manga_ink', 'overexpose', 'vignette'];
         const rareFx: EffectType[] = ['echo', 'reverse', 'time_echo', 'freeze', 'blur_out', 'zoom_out', 'glitch', 'letterbox'];
-        const beatInterval = beatMap.bpm > 0 ? 60000 / beatMap.bpm : 500;
+        const beatInterval = activeBeatMap.bpm > 0 ? 60000 / activeBeatMap.bpm : 500;
         // Determine step: chill=every 4th, balanced=every 2nd, intense=every, all-out=every+half
         const step = beatSyncIntensity === 'chill' ? 4 : beatSyncIntensity === 'balanced' ? 2 : 1;
         allBeats.forEach((t, idx) => {
@@ -1051,7 +1059,7 @@ export default function TimelinePage() {
     } finally {
       setAutoAmvLoading(false);
     }
-  }, [beatMap, bpm, totalMs, clearEffects, setEffects, beatSyncIntensity]);
+  }, [beatMap, bpm, totalMs, clearEffects, setEffects, setBeatMap, beatSyncIntensity]);
 
   // ── Timeline click → place effect ──────────────────────────────────────
 

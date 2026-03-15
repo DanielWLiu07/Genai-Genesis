@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
     ai_service_url: str = "http://localhost:8001"
     render_service_url: str = "http://localhost:8002"
+    api_service_url: str = "http://localhost:8000"
 
     class Config:
         env_file = ("../../.env", ".env")  # root .env or local .env

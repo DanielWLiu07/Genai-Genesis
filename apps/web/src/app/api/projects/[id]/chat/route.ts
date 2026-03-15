@@ -226,9 +226,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const effectSummary = (timeline?.effects || []).length > 0
     ? (timeline.effects as any[]).map((e: any) => `  ${e.type}@${e.timestamp_ms}ms dur=${e.duration_ms}ms int=${e.intensity?.toFixed(2)}`).join('\n')
     : '  (none)';
-  const contextPrompt = `Timeline: ${timeline?.clips?.length || 0} clips | BPM: ${timeline?.beat_map?.bpm || 'unset'} | Effects: ${(timeline?.effects || []).length}
-Clips:\n${clipSummary}
-Current effects:\n${effectSummary}
+
+  const bm = timeline?.beat_map;
+  const fmt = (arr: number[], cap = 40) => (arr || []).slice(0, cap).join(', ') || 'none';
+  const musicSummary = bm ? [
+    `BPM: ${bm.bpm} | beats: ${(bm.beats || []).length}`,
+    `crashes (${(bm.crashes || []).length}): ${fmt(bm.crashes)}`,
+    `energy_peaks (${(bm.energy_peaks || []).length}): ${fmt(bm.energy_peaks)}`,
+    `section_boundaries (${(bm.section_boundaries || []).length}): ${fmt(bm.section_boundaries)}`,
+    `downbeats (${(bm.downbeats || []).length}): ${fmt(bm.downbeats, 20)}`,
+    `kicks (${(bm.kicks || []).length}): ${fmt(bm.kicks, 30)}`,
+    `snares (${(bm.snares || []).length}): ${fmt(bm.snares, 30)}`,
+    `horns (${(bm.horns || []).length}): ${fmt(bm.horns, 20)}`,
+  ].join('\n') : 'No music/beat map loaded.';
+
+  const contextPrompt = `Timeline: ${timeline?.clips?.length || 0} clips | Effects: ${(timeline?.effects || []).length}
+
+=== MUSIC / BEAT MAP (all timestamps in ms) ===
+${musicSummary}
+
+=== CLIPS ===
+${clipSummary}
+
+=== CURRENT EFFECTS ===
+${effectSummary}
 
 User: ${message}`;
 

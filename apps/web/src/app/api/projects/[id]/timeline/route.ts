@@ -46,7 +46,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   };
   if ('effects' in body) payload.effects = body.effects ?? [];
   if ('beat_map' in body) payload.beat_map = body.beat_map ?? null;
-  const { data, error } = await supabase.from('timelines').upsert(payload).select().single();
+  const { data, error } = await supabase.from('timelines').upsert(payload, { onConflict: 'project_id' }).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }

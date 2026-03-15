@@ -7,7 +7,8 @@ import { Plus, Clock, Loader2, Users, X, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useProjectStore, type Project } from '@/stores/project-store';
 import { api } from '@/lib/api';
-import { hasLocalAuth } from '@/lib/local-auth';
+import { hasLocalAuth, clearLocalAuth } from '@/lib/local-auth';
+import { supabase } from '@/lib/supabase';
 import gsap from 'gsap';
 
 const STATUS_STYLES: Record<Project['status'], string> = {
@@ -48,12 +49,23 @@ export default function Dashboard() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (!hasLocalAuth()) {
-      router.replace('/auth');
-      return;
-    }
-    setAuthReady(true);
+    // Check Supabase session first, fall back to localStorage
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setAuthReady(true);
+      } else if (hasLocalAuth()) {
+        setAuthReady(true);
+      } else {
+        router.replace('/auth');
+      }
+    });
   }, [router]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    clearLocalAuth();
+    router.replace('/auth');
+  };
 
   useEffect(() => {
     if (!authReady) return;
@@ -212,6 +224,12 @@ export default function Dashboard() {
             <Link href="/project/new" className="manga-btn bg-[#111] text-white px-4 py-2 text-sm flex items-center gap-2">
               <Plus size={14} /> New Project
             </Link>
+            <button
+              onClick={handleLogout}
+              className="text-[#888] hover:text-[#111] text-xs border border-[#ddd] hover:border-[#111] px-3 py-2 transition-colors"
+            >
+              Log Out
+            </button>
           </div>
         </div>
       </div>

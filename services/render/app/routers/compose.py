@@ -118,11 +118,22 @@ async def _compose_background(data: ComposeRequest, job_id: str):
         timeline = data.timeline or {}
         all_clips = sorted(timeline.get("clips", []), key=lambda c: c.get("order", 0))
 
-        # Only include clips with actual AI-generated media; skip text overlays and any placeholder clips
+        # Only include clips with actual AI-generated media; skip text overlays, placeholder clips,
+        # and any AI-generated title/outro card images (type=image but purely a title screen)
+        _TITLE_CARD_TERMS = {
+            'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+            'book title', 'movie title', 'film title', 'outro card', 'intro card',
+            'end card', 'coming soon', 'the end', 'credits',
+        }
+        def _is_title_card(clip: dict) -> bool:
+            prompt = (clip.get('prompt') or '').lower()
+            return any(term in prompt for term in _TITLE_CARD_TERMS)
+
         clips = [
             c for c in all_clips
             if c.get("type") != "text_overlay"
             and c.get("generated_media_url")
+            and not _is_title_card(c)
         ]
         logger.info("Compose job %s: %d total clips, %d with generated media", job_id, len(all_clips), len(clips))
 

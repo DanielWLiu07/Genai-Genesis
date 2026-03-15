@@ -1388,7 +1388,7 @@ export default function EditorPage() {
 
       {/* Workflow phase strip */}
       {clips.length > 0 && (
-        <div className="h-7 border-b border-[#e5e5e5] bg-[#fafafa] flex items-center px-4 gap-0 shrink-0 overflow-x-auto">
+        <div className="h-8 border-b border-[#e5e5e5] bg-white flex items-stretch px-3 gap-0 shrink-0 overflow-x-auto">
           {WORKFLOW_STEPS.map(({ key, label }, i) => {
             const stepIdx = WORKFLOW_STEPS.findIndex(s => s.key === workflowPhase);
             const done = i < stepIdx;
@@ -1396,30 +1396,50 @@ export default function EditorPage() {
             return (
               <div key={key} className="flex items-center">
                 <div
-                  className={`flex items-center gap-1 px-2.5 py-0.5 text-[0.55rem] font-bold tracking-widest transition-colors ${
-                    active ? 'bg-[#111] text-white' :
-                    done ? 'text-[#111]' : 'text-[#bbb]'
+                  className={`flex items-center gap-1.5 px-3 h-full text-[0.58rem] font-black tracking-widest transition-all relative ${
+                    active
+                      ? 'bg-[#111] text-white'
+                      : done
+                      ? 'text-[#111] hover:bg-[#f5f5f5]'
+                      : 'text-[#ccc]'
                   }`}
                   style={{ fontFamily: 'var(--font-manga)' }}
                 >
-                  {done ? (
-                    <Check size={8} strokeWidth={3} />
-                  ) : (
-                    <span>{i + 1}.</span>
+                  {/* Active step bottom border accent */}
+                  {active && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#a855f7]" />
                   )}
+                  <span
+                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[0.5rem] font-black shrink-0 ${
+                      active ? 'bg-white text-[#111]' :
+                      done ? 'bg-[#111] text-white' : 'bg-[#e5e5e5] text-[#bbb]'
+                    }`}
+                  >
+                    {done ? <Check size={7} strokeWidth={3.5} /> : i + 1}
+                  </span>
                   {label}
                 </div>
                 {i < WORKFLOW_STEPS.length - 1 && (
-                  <span className="text-[#ccc] text-xs mx-0.5">›</span>
+                  <span className="text-[#ddd] text-xs px-0.5 self-center">›</span>
                 )}
               </div>
             );
           })}
           {generatingVideos && (
-            <span className="ml-3 text-[0.55rem] text-blue-600 font-bold" style={{ fontFamily: 'var(--font-manga)' }}>
-              COMPILING {videoGenProgress.done}/{videoGenProgress.total}...
-            </span>
+            <div className="ml-3 flex items-center gap-1.5 text-[0.55rem] text-blue-600 font-black" style={{ fontFamily: 'var(--font-manga)' }}>
+              <Loader2 size={9} className="animate-spin" />
+              COMPILING {videoGenProgress.done}/{videoGenProgress.total}
+            </div>
           )}
+          {/* Clip stats */}
+          <div className="ml-auto flex items-center gap-3 pr-1">
+            <span className="text-[0.52rem] text-[#bbb] font-bold" style={{ fontFamily: 'var(--font-manga)' }}>
+              {clips.filter(c => c.gen_status === 'done').length}/{clips.length} GENERATED
+            </span>
+            <span className="text-[0.52rem] text-[#bbb] font-bold" style={{ fontFamily: 'var(--font-manga)' }}>
+              {(clips.reduce((s, c) => s + c.duration_ms, 0) / 1000).toFixed(1)}s
+            </span>
+          </div>
         </div>
       )}
 

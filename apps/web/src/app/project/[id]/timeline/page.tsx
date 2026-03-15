@@ -670,6 +670,36 @@ export default function TimelinePage() {
         }
       }
 
+      // ── Guaranteed minimum: if no rich audio data and < 5 effects produced,
+      //    fall back to classic beat-grid so something always happens ──────────
+      if (effects.length < 5 && allBeats.length > 0) {
+        const beatFx: EffectType[] = ['flash_white', 'zoom_burst', 'shake', 'chromatic', 'flicker', 'red_flash', 'contrast_punch'];
+        const strongFx: EffectType[] = ['zoom_burst', 'panel_split', 'heavy_shake', 'neon', 'manga_ink', 'overexpose', 'vignette'];
+        const rareFx: EffectType[] = ['echo', 'reverse', 'time_echo', 'freeze', 'blur_out', 'zoom_out', 'glitch', 'letterbox'];
+        const beatInterval = beatMap.bpm > 0 ? 60000 / beatMap.bpm : 500;
+        // Determine step: chill=every 4th, balanced=every 2nd, intense=every, all-out=every+half
+        const step = beatSyncIntensity === 'chill' ? 4 : beatSyncIntensity === 'balanced' ? 2 : 1;
+        allBeats.forEach((t, idx) => {
+          if (idx % step !== 0) return;
+          if (isCovered(t)) return;
+          const str = beatStrengths[idx] ?? 0.5;
+          if (idx % 8 === 0 && idx > 0) {
+            effects.push(mkFx(pick(rareFx), t, 350, 0.6 + str * 0.3));
+          } else if (idx % 4 === 0 && idx > 0) {
+            effects.push(mkFx(pick(strongFx), t, 250, 0.65 + str * 0.3));
+          } else {
+            effects.push(mkFx(pick(beatFx), t, 150, 0.4 + str * 0.4));
+          }
+          cover(t);
+          if (beatSyncIntensity === 'all-out') {
+            const half = Math.round(t + beatInterval / 2);
+            if (half <= totalMs && !isCovered(half) && Math.random() > 0.5) {
+              effects.push(mkFx(pick(beatFx), half, 100, 0.25 + str * 0.25));
+            }
+          }
+        });
+      }
+
       setEffects(effects.sort((a, b) => a.timestamp_ms - b.timestamp_ms));
     };
 
@@ -775,8 +805,16 @@ ${availableEffects}
 Respond ONLY with compact JSON (no markdown, no explanation):
 {"effects":[{"type":"effect_type","timestamp_ms":number,"duration_ms":number,"intensity":number,"params":{}}]}`;
 
+      // Skip AI call if there's no real audio analysis — fallback is better in that case
+      const hasRichData = crashes.length > 0 || energyPeaks.length > 0 || sectionBounds.length > 0;
+      if (!hasRichData) { runFallback(); return; }
+
       const currentTimeline = { clips: timelineState.clips, music_track: timelineState.musicTrack, settings: timelineState.settings };
-      const result = await api.chat(id as string, prompt, currentTimeline, []);
+      // 20s timeout so the button doesn't hang forever if AI service is slow/down
+      const result = await Promise.race([
+        api.chat(id as string, prompt, currentTimeline, []),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000)),
+      ]) as any;
 
       // ── Parse AI response ──────────────────────────────────────────────────
       const parseEffects = (rawEffects: any[]): Effect[] =>

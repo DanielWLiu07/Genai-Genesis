@@ -26,11 +26,11 @@ const nodeTypes: NodeTypes = {
   scene: SceneNode,
 };
 
-const NODE_W = 260;  // must match SceneNode width exactly
-const NODE_H = 340;  // actual rendered height (~290px card + buffer)
-const GAP_X = 50;    // horizontal gap between cards
-const GAP_Y = 60;    // vertical gap between rows
-const COLS = 3;
+const NODE_W = 244;  // must match SceneNode width exactly
+const NODE_H = 320;  // actual rendered height
+const GAP_X = 40;    // horizontal gap between cards
+const GAP_Y = 50;    // vertical gap between rows
+const COLS = 4;
 
 function clipsToNodes(clips: Clip[]): Node[] {
   const sorted = [...clips].sort((a, b) => a.order - b.order);
@@ -241,85 +241,80 @@ function FlowEditorInner({ onNodeClick }: FlowEditorInnerProps) {
 
       {/* Navigation controls */}
       {clips.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
+        <div
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 z-10"
+          style={{ background: 'rgba(255,255,255,0.95)', border: '2px solid #111', boxShadow: '4px 4px 0px #111', padding: '4px 8px' }}
+        >
           {/* Previous */}
           <button
             onClick={goPrev}
             disabled={focusedIdx <= 0}
-            className="manga-btn bg-white text-[#111] px-2 py-2 disabled:opacity-30"
-            title="Previous frame"
+            className="w-7 h-7 flex items-center justify-center text-[#111] hover:bg-[#f0f0f0] disabled:opacity-30 transition-colors"
+            title="Previous (←)"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
           </button>
 
           {/* Frame counter */}
           <span
-            className="bg-white border-2 border-[#111] px-3 py-1 text-sm min-w-[80px] text-center"
-            style={{ fontFamily: 'var(--font-manga)', boxShadow: '2px 2px 0px #000' }}
+            className="px-3 py-1 text-xs font-black text-[#111] min-w-[72px] text-center border-x border-[#e5e5e5]"
+            style={{ fontFamily: 'var(--font-manga)' }}
           >
-            {focusedIdx + 1} / {sortedClips.length}
+            {focusedIdx + 1} <span className="text-[#bbb]">/</span> {sortedClips.length}
           </span>
 
           {/* Next */}
           <button
             onClick={goNext}
             disabled={focusedIdx >= sortedClips.length - 1}
-            className="manga-btn bg-white text-[#111] px-2 py-2 disabled:opacity-30"
-            title="Next frame"
+            className="w-7 h-7 flex items-center justify-center text-[#111] hover:bg-[#f0f0f0] disabled:opacity-30 transition-colors"
+            title="Next (→)"
           >
-            <ChevronRight size={18} />
+            <ChevronRight size={16} />
           </button>
 
-          {/* Divider */}
-          <div className="w-px h-6 bg-[#ccc] mx-1" />
+          <div className="w-px h-5 bg-[#e0e0e0] mx-1" />
 
           {/* Lock/Unlock */}
           <button
-            onClick={() => {
-              setLocked(!locked);
-              if (!locked) {
-                // Re-locking: zoom to current frame
-                zoomToClip(focusedIdx);
-              }
-            }}
-            className={`manga-btn px-2 py-2 ${locked ? 'bg-[#111] text-white' : 'bg-white text-[#111]'}`}
-            title={locked ? 'Locked on frame — click to free move' : 'Free move — click to lock on frame'}
+            onClick={() => { setLocked(!locked); if (!locked) zoomToClip(focusedIdx); }}
+            className={`w-7 h-7 flex items-center justify-center transition-colors ${locked ? 'bg-[#111] text-white' : 'text-[#111] hover:bg-[#f0f0f0]'}`}
+            title={locked ? 'Locked — click to pan freely' : 'Free pan — click to lock on scene'}
           >
-            {locked ? <Lock size={16} /> : <Unlock size={16} />}
+            {locked ? <Lock size={14} /> : <Unlock size={14} />}
           </button>
 
           {/* Fit all */}
           <button
             onClick={showAll}
-            className="manga-btn bg-white text-[#111] px-2 py-2"
-            title="Show all frames"
+            className="w-7 h-7 flex items-center justify-center text-[#111] hover:bg-[#f0f0f0] transition-colors"
+            title="Fit all (F)"
           >
-            <Maximize2 size={16} />
+            <Maximize2 size={14} />
           </button>
-
-          {/* Add frame */}
-          <button
-            onClick={() => {
-              const maxOrder = sortedClips.length > 0 ? Math.max(...sortedClips.map(c => c.order)) + 1 : 0;
-              addClip({ type: 'image', duration_ms: 1500, prompt: '', gen_status: 'pending' });
-              setFocusedIdx(sortedClips.length); // jump to new clip
-            }}
-            className="manga-btn bg-[#111] text-white px-2 py-2"
-            title="Add new frame"
-          >
-            <Plus size={16} />
-          </button>
-
-          {/* Divider */}
-          <div className="w-px h-6 bg-[#ccc] mx-1" />
 
           {/* Cleanup layout */}
           <button
             onClick={cleanupLayout}
-            className="manga-btn bg-white text-[#111] px-2 py-2"
-            title="Clean up layout — reset node positions to grid"
+            className="w-7 h-7 flex items-center justify-center text-[#111] hover:bg-[#f0f0f0] transition-colors"
+            title="Reset grid layout"
           >
-            <LayoutGrid size={16} />
+            <LayoutGrid size={14} />
+          </button>
+
+          <div className="w-px h-5 bg-[#e0e0e0] mx-1" />
+
+          {/* Add frame */}
+          <button
+            onClick={() => {
+              addClip({ type: 'image', duration_ms: 1500, prompt: '', gen_status: 'pending' });
+              setFocusedIdx(sortedClips.length);
+            }}
+            className="flex items-center gap-1 px-2.5 h-7 text-[0.6rem] font-black text-white bg-[#111] hover:bg-[#333] transition-colors"
+            style={{ fontFamily: 'var(--font-manga)' }}
+            title="Add new scene"
+          >
+            <Plus size={12} /> ADD
           </button>
         </div>
       )}

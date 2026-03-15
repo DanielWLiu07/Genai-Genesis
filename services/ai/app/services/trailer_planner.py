@@ -142,7 +142,8 @@ DIRECTOR'S BRIEF:
 This trailer must feel like a high-energy AMV / Hollywood blockbuster teaser — not a slideshow.
 Every scene should be action-packed or emotionally charged. No slow, boring holds.
 Think rapid cuts between: character close-ups → sweeping landscape → action moment → emotional beat → climax shot.
-The energy should BUILD relentlessly toward a climax, then land on the title with impact.
+The energy should BUILD relentlessly toward a climax, then end on the most powerful visual frame.
+NO title cards, NO text slides, NO "The End", NO book title screens — ONLY raw visual shots.
 Make someone's heart race watching this. Every single frame must earn its place."""
 
     result = await generate_json(prompt, SYSTEM_PROMPT)

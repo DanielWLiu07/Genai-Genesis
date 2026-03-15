@@ -1579,7 +1579,7 @@ Respond ONLY with compact JSON (no markdown, no explanation):
         <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto overflow-x-hidden">
 
         {/* ── PREVIEW AREA ─────────────────────────────────────────────── */}
-        <div ref={previewAreaRef} className="relative min-h-[13rem] border-b border-[#333] flex flex-wrap items-center justify-center gap-6 px-6 py-4 shrink-0 lg:min-h-[15rem] lg:flex-nowrap lg:gap-10 overflow-hidden" style={{ backgroundImage: 'url(/stylized_imgs/dark_bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <div ref={previewAreaRef} className="relative h-[14rem] border-b border-[#333] flex flex-nowrap items-center justify-center gap-6 px-6 py-4 shrink-0 lg:h-[16rem] lg:gap-10 overflow-hidden" style={{ backgroundImage: 'url(/stylized_imgs/dark_bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
 
 
           {/* Decorative stylized elements — draggable in edit mode */}
@@ -1657,7 +1657,7 @@ Respond ONLY with compact JSON (no markdown, no explanation):
               />
             );
           })}
-          <div className="relative h-[12.375rem] w-[22rem] border border-[#333] bg-[#1a1a1a] overflow-hidden lg:h-[15.75rem] lg:w-[28rem]">
+          <div className="relative h-[11.5rem] w-[20rem] shrink-0 border border-[#333] bg-[#1a1a1a] overflow-hidden lg:h-[13.5rem] lg:w-[24rem]">
             {/* Manga halftone bg */}
             <div
               className="absolute inset-0"
@@ -1826,7 +1826,7 @@ Respond ONLY with compact JSON (no markdown, no explanation):
           </div>
 
           {/* Effect info */}
-          <div className="flex flex-col gap-3 min-w-[280px]">
+          <div className="flex flex-col gap-3 min-w-[280px] h-full overflow-y-auto py-1" style={{ scrollbarWidth: 'none' }}>
             <div className="flex items-center gap-2">
               <div
                 className="w-4 h-4 rounded-full"

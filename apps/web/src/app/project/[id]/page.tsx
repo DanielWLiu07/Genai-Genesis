@@ -894,7 +894,9 @@ export default function EditorPage() {
     const sorted = [...clips].sort((a, b) => a.order - b.order);
     const playable = sorted.filter(c => c.type !== 'transition');
     const pending = playable.filter(c =>
-      c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.thumbnail_url)
+      c.type !== 'video' &&
+      !(c.generated_media_url || '').endsWith('.mp4') &&
+      (c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.thumbnail_url))
     );
 
     // Seed the consistency chain with the existing thumbnail so clip 1 is grounded

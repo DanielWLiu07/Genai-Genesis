@@ -115,10 +115,15 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
                 clips = tl_row.data[0].get("clips", [])
                 for clip in clips:
                     if clip.get("id") == data.clip_id:
+                        # Never overwrite a video clip's media URL with an image result
+                        already_video = (
+                            clip.get("type") == "video" or
+                            (clip.get("generated_media_url") or "").endswith(".mp4")
+                        )
                         clip["gen_status"] = gen_status
-                        if generated_url:
+                        if generated_url and not already_video:
                             clip["generated_media_url"] = generated_url
-                        if thumbnail_url:
+                        if thumbnail_url and not already_video:
                             clip["thumbnail_url"] = thumbnail_url
                         if gen_error:
                             clip["gen_error"] = gen_error

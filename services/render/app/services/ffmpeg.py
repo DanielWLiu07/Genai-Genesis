@@ -53,7 +53,7 @@ def _run_ffmpeg(cmd: list[str], desc: str = "") -> bool:
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
         )
         if result.returncode != 0:
             # Log first 800 chars (actual error) — skip last part which is just FFmpeg build config
@@ -64,6 +64,11 @@ def _run_ffmpeg(cmd: list[str], desc: str = "") -> bool:
     except subprocess.TimeoutExpired:
         logger.error("FFmpeg timeout [%s]", desc)
         return False
+
+
+async def _run_ffmpeg_async(cmd: list[str], desc: str = "") -> bool:
+    """Run ffmpeg in a thread so the async event loop stays responsive during long renders."""
+    return await asyncio.to_thread(_run_ffmpeg, cmd, desc)
 
 
 def _create_clip_video(

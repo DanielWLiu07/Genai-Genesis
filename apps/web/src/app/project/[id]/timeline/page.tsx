@@ -672,6 +672,7 @@ export default function TimelinePage() {
   const [resultPublishing, setResultPublishing] = useState(false);
   const [resultMuted, setResultMuted] = useState(true);
   const resultModalRef = useRef<HTMLDivElement>(null);
+  const resultVideoRef = useRef<HTMLVideoElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const router = useRouter();
 
@@ -869,6 +870,15 @@ export default function TimelinePage() {
       );
     }
   }, [showResultModal]);
+
+  // Force muted + play on result video — React's `muted` prop doesn't set the HTML attribute,
+  // so Chrome blocks autoplay unless we set it imperatively.
+  useEffect(() => {
+    if (!compiledUrl || !resultVideoRef.current) return;
+    const v = resultVideoRef.current;
+    v.muted = true;
+    v.play().catch(() => {});
+  }, [compiledUrl, showResultModal]);
 
   // ── Chat panel GSAP slide animation ─────────────────────────────────────
 
@@ -1154,28 +1164,33 @@ export default function TimelinePage() {
       if (!jobId) { setRenderStatus('Submitted!'); return; }
       setRenderStatus('Rendering...');
       let attempts = 0;
-      while (attempts < 120) {
+      let finalStatus: any = null;
+      while (attempts < 180) {
         await new Promise((r) => setTimeout(r, 5000));
         attempts++;
         try {
           const status: any = await api.getRenderStatus(id, jobId);
+          finalStatus = status;
           setRenderStatus(`Rendering... ${status.progress || 0}%`);
           if (status.status === 'done') {
-            setRenderStatus('Done!');
-            const previewUrl = status.preview_url || status.output_url;
-            if (previewUrl) {
-              setCompiledUrl(previewUrl);
-              setCompiledReady(false);
-              setShareUrl(previewUrl);
-              setShowResultModal(true);
-            }
+            finalStatus = status;
             break;
           } else if (status.status === 'error') {
             setRenderStatus(null);
-            alert('Render failed: ' + (status.error || 'Unknown'));
+            alert('Render failed: ' + (status.error || 'Unknown error'));
+            finalStatus = null;
             break;
           }
         } catch { /* keep polling */ }
+      }
+      // Show result modal for any completed render — even if previewUrl is missing
+      if (finalStatus?.status === 'done') {
+        setRenderStatus('Done!');
+        const previewUrl = finalStatus.preview_url || finalStatus.output_url || '';
+        setCompiledUrl(previewUrl);
+        setCompiledReady(false);
+        setShareUrl(previewUrl);
+        setShowResultModal(true);
       }
     } catch (err) {
       console.error('Render failed:', err);
@@ -1512,8 +1527,8 @@ export default function TimelinePage() {
           </button>
 
           <button
-            onClick={() => !rendering && handleRender()}
-            disabled={rendering}
+            onClick={() => !rendering && !renderStatus && handleRender()}
+            disabled={rendering || !!renderStatus}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white text-black font-bold border border-white hover:bg-[#e5e5e5] disabled:opacity-40 transition-colors"
             style={{ fontFamily: 'var(--font-manga)' }}
           >
@@ -2388,7 +2403,7 @@ export default function TimelinePage() {
         )}
 
         {/* ── RESULT MODAL ──────────────────────────────────────────────── */}
-        {showResultModal && compiledUrl && (
+        {showResultModal && (
           <div
             className="fixed inset-0 z-[999] flex items-center justify-center px-4"
             style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
@@ -2426,11 +2441,12 @@ export default function TimelinePage() {
               {/* Video player */}
               <div className="relative bg-black border-b-2 border-[#1e1e1e]" style={{ aspectRatio: '16/9' }}>
                 <video
-                  key={compiledUrl}
-                  src={compiledUrl}
+                  ref={resultVideoRef}
+                  key={compiledUrl || 'no-url'}
+                  src={compiledUrl || undefined}
                   autoPlay
                   loop
-                  muted={resultMuted}
+                  controls
                   playsInline
                   className="w-full h-full object-contain"
                 />

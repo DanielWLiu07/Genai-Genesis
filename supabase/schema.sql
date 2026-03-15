@@ -32,6 +32,7 @@ ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS preview_url TEXT;
 
 -- Migration: add published flag to projects
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT FALSE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS compiled_video_url TEXT;
 
 -- Migration: add effects + beat_map to timelines
 ALTER TABLE timelines ADD COLUMN IF NOT EXISTS effects JSONB DEFAULT '[]'::JSONB;

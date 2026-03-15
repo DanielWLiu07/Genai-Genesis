@@ -1,24 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await supabase
-    .from('projects')
-    .update({ published: true })
-    .eq('id', id);
+  const body = await req.json().catch(() => ({}));
+  const compiled_video_url = body.compiled_video_url || null;
 
+  const update: Record<string, any> = { published: true, updated_at: new Date().toISOString() };
+  if (compiled_video_url) update.compiled_video_url = compiled_video_url;
+
+  const { data, error } = await supabase.from('projects').update(update).eq('id', id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ published: true });
-}
-
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const { error } = await supabase
-    .from('projects')
-    .update({ published: false })
-    .eq('id', id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ published: false });
+  return NextResponse.json(data);
 }

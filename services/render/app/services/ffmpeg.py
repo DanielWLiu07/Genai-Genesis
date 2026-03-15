@@ -432,7 +432,8 @@ async def compose_trailer(
             # Detect video by type field OR by file extension (fal clips have type="image" but .mp4 URLs)
             is_video = clip.get("type") == "video" or (media_path or "").endswith(".mp4")
 
-            success = _create_clip_video(
+            success = await asyncio.to_thread(
+                _create_clip_video,
                 media_path, clip_output,
                 clip.get("duration_ms", 3000),
                 width, height, fps, is_video,
@@ -470,10 +471,10 @@ async def compose_trailer(
                 "-pix_fmt", "yuv420p",
                 concat_output,
             ]
-            if not _run_ffmpeg(cmd, "simple concat"):
+            if not await asyncio.to_thread(_run_ffmpeg, cmd, "simple concat"):
                 return {"status": "error", "message": "Failed to concatenate clips"}
         else:
-            if not _concatenate_with_transitions(
+            if not await asyncio.to_thread(_concatenate_with_transitions,
                 clip_video_paths, playable_clips, concat_output, fps
             ):
                 # Fallback to simple concat
@@ -489,7 +490,7 @@ async def compose_trailer(
                     "-pix_fmt", "yuv420p",
                     concat_output,
                 ]
-                if not _run_ffmpeg(cmd, "fallback concat"):
+                if not await asyncio.to_thread(_run_ffmpeg, cmd, "fallback concat"):
                     return {"status": "error", "message": "Failed to concatenate clips"}
 
         # Step 3: Add text overlays
@@ -500,7 +501,7 @@ async def compose_trailer(
         text_output = os.path.join(tmpdir, "with_text.mp4")
 
         if has_text:
-            if not _add_text_overlays(concat_output, text_output, playable_clips, width, height):
+            if not await asyncio.to_thread(_add_text_overlays, concat_output, text_output, playable_clips, width, height):
                 text_output = concat_output
         else:
             text_output = concat_output
@@ -516,7 +517,7 @@ async def compose_trailer(
 
         if music_path and os.path.exists(music_path):
             volume = music_track.get("volume", 0.3)
-            if not _add_music(text_output, music_path, music_output, volume):
+            if not await asyncio.to_thread(_add_music, text_output, music_path, music_output, volume):
                 music_output = text_output
         else:
             music_output = text_output
@@ -542,7 +543,7 @@ async def compose_trailer(
             "-movflags", "+faststart",
             output_path,
         ]
-        if not _run_ffmpeg(faststart_cmd, "faststart remux"):
+        if not await asyncio.to_thread(_run_ffmpeg, faststart_cmd, "faststart remux"):
             shutil.copy2(final_input, output_path)
 
         total_duration_ms = sum(c.get("duration_ms", 3000) for c in playable_clips)
@@ -985,7 +986,7 @@ async def apply_amv_effects(
         "-pix_fmt", "yuv420p",
         output_path,
     ]
-    return _run_ffmpeg(cmd, "apply amv effects")
+    return await asyncio.to_thread(_run_ffmpeg, cmd, "apply amv effects")
 
 
 async def generate_preview(input_path: str, output_path: str, max_width: int = 640) -> bool:
@@ -1001,7 +1002,7 @@ async def generate_preview(input_path: str, output_path: str, max_width: int = 6
         "-movflags", "+faststart",
         output_path,
     ]
-    return _run_ffmpeg(cmd, "generate preview")
+    return await asyncio.to_thread(_run_ffmpeg, cmd, "generate preview")
 
 
 async def extract_thumbnail(input_path: str, output_path: str, timestamp_sec: float = 0.5) -> bool:
@@ -1015,4 +1016,4 @@ async def extract_thumbnail(input_path: str, output_path: str, timestamp_sec: fl
         "-q:v", "2",
         output_path,
     ]
-    return _run_ffmpeg(cmd, "extract thumbnail")
+    return await asyncio.to_thread(_run_ffmpeg, cmd, "extract thumbnail")

@@ -14,7 +14,7 @@ export function middleware(request: NextRequest) {
   const hasSbSession = Array.from(request.cookies.getAll()).some(
     (c) => c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
   );
-  const hasLocalAuthCookie = request.cookies.get('sakuga_authed')?.value === '1';
+  const hasLocalAuthCookie = request.cookies.get('lotus_authed')?.value === '1';
 
   if (!hasSbSession && !hasLocalAuthCookie) {
     const loginUrl = new URL('/auth', request.url);

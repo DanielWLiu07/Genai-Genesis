@@ -1,8 +1,7 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { TransitionLink as Link } from '@/components/PageTransition';
+import { FormEvent, useState, useEffect } from 'react';
+import { TransitionLink as Link, usePageTransition } from '@/components/PageTransition';
 import { setLocalAuth } from '@/lib/local-auth';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -11,14 +10,25 @@ import Image from 'next/image';
 type AuthMode = 'login' | 'signup';
 
 export default function AuthPage() {
-  const router = useRouter();
+  const { navigate } = usePageTransition();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingVisible, setLoadingVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Defer loading UI by one RAF so CSS animations have a "from" state to start from
+  useEffect(() => {
+    if (loading) {
+      const id = requestAnimationFrame(() => setLoadingVisible(true));
+      return () => cancelAnimationFrame(id);
+    } else {
+      setLoadingVisible(false);
+    }
+  }, [loading]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -45,7 +55,7 @@ export default function AuthPage() {
         if (authError) { setError(authError.message); return; }
         if (data.session) {
           setLocalAuth(email.trim());
-          router.replace('/dashboard');
+          navigate('/dashboard');
         } else {
           setSuccess('Check your email to confirm your account, then log in.');
           setMode('login');
@@ -55,7 +65,7 @@ export default function AuthPage() {
         if (authError) { setError(authError.message); return; }
         if (data.session) {
           setLocalAuth(email.trim());
-          router.replace('/dashboard');
+          navigate('/dashboard');
         }
       }
     } finally {
@@ -68,7 +78,7 @@ export default function AuthPage() {
 
       {/* ── LEFT PANEL — manga artwork ─────────────────────────────── */}
       <div
-        className="hidden lg:flex flex-col justify-between relative overflow-hidden w-[52%] shrink-0 border-r-4 border-[#111]"
+        className="hidden lg:flex flex-col justify-between relative overflow-hidden w-[42%] shrink-0 border-r-4 border-[#111]"
         style={{ background: '#0a0a0a' }}
       >
         {/* Subtle halftone grid */}
@@ -120,7 +130,7 @@ export default function AuthPage() {
             />
             <Image
               src="/stylized_imgs/oni.png"
-              alt="MangaMate"
+              alt="Lotus"
               width={340}
               height={340}
               className="relative z-10 select-none"
@@ -148,9 +158,9 @@ export default function AuthPage() {
         <div className="relative z-10 p-10 pb-12 border-t-2 border-white/10">
           <p
             className="text-white text-3xl font-black tracking-[0.15em] leading-none mb-2"
-            style={{ fontFamily: 'var(--font-manga)' }}
+            style={{ fontFamily: 'var(--font-manga)', textShadow: '3px 3px 0px #ff3fa4, 5px 5px 0px #c0005e' }}
           >
-            MANGAMATE
+            LOTUS
           </p>
           <p className="text-white/40 text-sm tracking-wider">
             Turn your story into a cinematic trailer.
@@ -159,7 +169,7 @@ export default function AuthPage() {
       </div>
 
       {/* ── RIGHT PANEL — form ─────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-14 relative"
+      <div className="flex-1 min-w-[480px] flex flex-col items-center justify-center px-8 py-14 relative"
         style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}
       >
         <Link
@@ -171,14 +181,26 @@ export default function AuthPage() {
 
         {/* Mobile logo */}
         <div className="lg:hidden mb-8 text-center">
-          <p className="text-3xl font-black tracking-[0.15em]" style={{ fontFamily: 'var(--font-manga)' }}>
-            MANGAMATE
+          <p className="text-3xl font-black tracking-[0.15em]" style={{ fontFamily: 'var(--font-manga)', textShadow: '3px 3px 0px #ff3fa4, 5px 5px 0px #c0005e' }}>
+            LOTUS
           </p>
         </div>
 
-        <div className="w-full max-w-sm">
+        <style>{`
+          @keyframes auth-bar     { from { width: 0%; opacity: 0 } to { width: 75%; opacity: 1 } }
+          @keyframes auth-fade-up { from { opacity: 0; transform: translateY(5px) } to { opacity: 1; transform: translateY(0) } }
+          @keyframes auth-pop-in  { from { opacity: 0; transform: scale(0.3) } to { opacity: 1; transform: scale(1) } }
+        `}</style>
+        <div className="w-full max-w-xl">
           {/* Card */}
-          <div className="bg-white/95 backdrop-blur-md border-4 border-[#111] shadow-[6px_6px_0px_rgba(0,0,0,0.85)]">
+          <div className="bg-white/95 backdrop-blur-md border-4 border-[#111] shadow-[8px_8px_0px_rgba(0,0,0,0.85)] relative overflow-hidden">
+            {/* Loading progress bar — uses @keyframes so it always animates from 0 */}
+            {loadingVisible && (
+              <div
+                className="absolute top-0 left-0 h-[3px] bg-[#a855f7]"
+                style={{ animation: 'auth-bar 0.6s cubic-bezier(0.4,0,0.2,1) forwards' }}
+              />
+            )}
 
             {/* Card header */}
             <div className="manga-speedlines px-8 pt-8 pb-6 border-b-4 border-[#111]">
@@ -250,10 +272,16 @@ export default function AuthPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="manga-btn w-full bg-[#111] text-white py-3 px-6 text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+                className="manga-btn w-full bg-[#111] text-white py-3.5 px-6 text-sm flex items-center justify-center gap-2 disabled:opacity-70"
               >
-                {loading && <Loader2 size={14} className="animate-spin" />}
-                {loading ? 'Please wait...' : mode === 'login' ? 'Log In' : 'Create Account'}
+                {loadingVisible ? (
+                  <span className="flex items-center gap-2" style={{ animation: 'auth-fade-up 0.22s ease-out both' }}>
+                    <Loader2 size={15} style={{ animation: 'auth-pop-in 0.2s ease-out both, spin 1s linear 0.2s infinite' }} />
+                    Please wait…
+                  </span>
+                ) : (
+                  mode === 'login' ? 'Log In' : 'Create Account'
+                )}
               </button>
 
               <div className="flex items-center gap-3">

@@ -864,7 +864,8 @@ export default function TimelinePage() {
   // ── Auto AMV ────────────────────────────────────────────────────────────
 
   const handleAutoAmv = useCallback(async () => {
-    if (!beatMap) return;
+    console.log('[AutoAMV] beatMap:', beatMap, 'totalMs:', totalMs, 'clips:', clips.length);
+    if (!beatMap) { console.warn('[AutoAMV] no beatMap, returning early'); return; }
     setAutoAmvLoading(true);
     clearEffects();
 
@@ -1129,7 +1130,8 @@ Respond ONLY with compact JSON (no markdown, no explanation):
 
       // Skip AI call if there's no real audio analysis — fallback is better in that case
       const hasRichData = crashes.length > 0 || energyPeaks.length > 0 || sectionBounds.length > 0;
-      if (!hasRichData) { runFallback(); return; }
+      console.log('[AutoAMV] hasRichData:', hasRichData, 'crashes:', crashes.length, 'peaks:', energyPeaks.length, 'sections:', sectionBounds.length, 'allBeats:', allBeats.length);
+      if (!hasRichData) { console.log('[AutoAMV] using fallback'); runFallback(); return; }
 
       const currentTimeline = { clips: timelineState.clips, music_track: timelineState.musicTrack, settings: timelineState.settings };
       // 20s timeout so the button doesn't hang forever if AI service is slow/down

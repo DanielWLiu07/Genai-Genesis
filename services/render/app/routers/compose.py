@@ -28,6 +28,7 @@ class ComposeRequest(BaseModel):
     author: str = ""
     effects: Optional[list] = None
     beat_map: Optional[dict] = None
+    callback_job_id: Optional[str] = None  # API service's job_id for DB callbacks
 
 
 class ComposeResponse(BaseModel):
@@ -45,7 +46,8 @@ class MusicSuggestRequest(BaseModel):
 
 
 async def _report_progress(job_id: str, project_id: str, progress: int, message: str,
-                           output_url: str = "", preview_url: str = ""):
+                           output_url: str = "", preview_url: str = "",
+                           callback_job_id: Optional[str] = None):
     """Update job status and notify API service."""
     if job_id in _render_jobs:
         _render_jobs[job_id]["progress"] = progress
@@ -53,13 +55,15 @@ async def _report_progress(job_id: str, project_id: str, progress: int, message:
         if progress >= 100:
             _render_jobs[job_id]["status"] = "done"
 
+    # Use callback_job_id (API's job_id) so the DB update matches the row inserted by the API
+    api_job_id = callback_job_id or job_id
     settings = get_settings()
     try:
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"{settings.api_service_url}/api/v1/internal/render-progress",
                 json={
-                    "job_id": job_id,
+                    "job_id": api_job_id,
                     "project_id": project_id,
                     "progress": progress,
                     "status": "composing" if progress < 100 else "done",
@@ -152,8 +156,10 @@ async def _compose_background(data: ComposeRequest, job_id: str):
         effects = data.effects or timeline.get("effects") or []
         beat_map = data.beat_map or timeline.get("beat_map")
 
+        callback_job_id = data.callback_job_id
+
         async def progress_cb(pct, msg):
-            await _report_progress(job_id, data.project_id, pct, msg)
+            await _report_progress(job_id, data.project_id, pct, msg, callback_job_id=callback_job_id)
 
         await progress_cb(5, "Downloading clip media...")
         clips = await _download_clip_media(clips, tmpdir)
@@ -238,7 +244,8 @@ async def _compose_background(data: ComposeRequest, job_id: str):
             })
             await _report_progress(job_id, data.project_id, 100, "Render complete!",
                                    output_url=final_output_url,
-                                   preview_url=final_preview_url)
+                                   preview_url=final_preview_url,
+                                   callback_job_id=callback_job_id)
         else:
             _render_jobs[job_id].update({
                 "status": "error",

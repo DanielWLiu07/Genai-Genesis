@@ -227,6 +227,7 @@ async def render_trailer(project_id: str, background_tasks: BackgroundTasks, dat
         "timeline": timeline,
         "title": title,
         "author": author,
+        "callback_job_id": job_id,  # render service uses this to update the correct DB row
     }
     # Prefer top-level effects/beat_map from the request; fall back to what's embedded in the timeline
     effects = (data and data.effects) or (timeline or {}).get("effects") or []
@@ -335,27 +336,42 @@ async def list_render_jobs(project_id: str):
 async def get_render_status(project_id: str, job_id: str):
     settings = get_settings()
     render_job_id = _render_id_map.get(job_id, job_id)
+    render_data = None
 
     # Always try render service first for live status
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(f"{settings.render_service_url}/render/jobs/{render_job_id}")
             if resp.status_code == 200:
-                data = resp.json()
-                # Normalize: use our job_id in the response
-                data["job_id"] = job_id
-                return data
+                render_data = resp.json()
+                render_data["job_id"] = job_id
+                # If render service reports done with URLs, return immediately
+                if render_data.get("output_url") or render_data.get("preview_url"):
+                    return render_data
     except Exception:
         pass
 
-    # Fall back to DB (has final status after job completes)
+    # Fall back to DB — always has the correct job_id since _report_progress now uses callback_job_id
     db = get_supabase()
     if db:
         try:
             result = db.table("render_jobs").select("*").eq("id", job_id).execute()
             if result.data:
-                return result.data[0]
+                db_data = result.data[0]
+                # If render service had status/progress but no URL, merge with DB URLs
+                if render_data and not render_data.get("error"):
+                    db_data["status"] = render_data.get("status", db_data.get("status"))
+                    db_data["progress"] = render_data.get("progress", db_data.get("progress"))
+                    if not db_data.get("output_url") and render_data.get("output_url"):
+                        db_data["output_url"] = render_data["output_url"]
+                    if not db_data.get("preview_url") and render_data.get("preview_url"):
+                        db_data["preview_url"] = render_data["preview_url"]
+                return db_data
         except Exception:
             pass
+
+    # If we have render service data (even without URL), return it
+    if render_data and not render_data.get("error"):
+        return render_data
 
     raise HTTPException(status_code=404, detail="Render job not found")

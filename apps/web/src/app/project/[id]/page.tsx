@@ -5,10 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { FlowEditor } from '@/components/editor/FlowEditor';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import {
-  Film, ArrowLeft, Play, Pause, Download, Loader2, Sparkles, BookOpen, Clapperboard,
+  Film, ArrowLeft, Play, Download, Loader2, Sparkles, BookOpen, Clapperboard,
   Lightbulb, Palette, Settings, Users, BarChart2, Plus, Trash2, Check,
   RotateCcw, RefreshCw, X, Edit2, Upload, ChevronLeft, ChevronRight, Zap, Music,
-  Volume2, VolumeX, Maximize,
 } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import { api } from '@/lib/api';
@@ -324,224 +323,6 @@ function AudioTab({
   );
 }
 
-function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose: () => void; onFallback: () => void }) {
-  const [videoError, setVideoError] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [muted, setMuted] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const backdropRef = useRef<HTMLDivElement>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
-  const proxied = url;
-
-  // Clear src on unmount so any pending autoplay promise resolves cleanly
-  useEffect(() => {
-    return () => {
-      const v = videoRef.current;
-      if (!v) return;
-      v.pause();
-      v.src = '';
-      v.load();
-    };
-  }, []);
-
-  // Entry animation
-  useEffect(() => {
-    const backdrop = backdropRef.current;
-    const modal = modalRef.current;
-    if (!backdrop || !modal) return;
-    gsap.fromTo(backdrop, { opacity: 0 }, { opacity: 1, duration: 0.25, ease: 'power2.out' });
-    gsap.fromTo(modal, { scale: 0.88, y: 32, opacity: 0 }, { scale: 1, y: 0, opacity: 1, duration: 0.38, ease: 'back.out(1.6)', delay: 0.05 });
-  }, []);
-
-  const handleClose = useCallback(() => {
-    const backdrop = backdropRef.current;
-    const modal = modalRef.current;
-    if (!backdrop || !modal) { onClose(); return; }
-    gsap.to(modal, { scale: 0.92, y: 16, opacity: 0, duration: 0.22, ease: 'power2.in' });
-    gsap.to(backdrop, { opacity: 0, duration: 0.28, ease: 'power2.in', onComplete: onClose });
-  }, [onClose]);
-
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-  const togglePlay = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) { v.play().catch(() => {}); setPlaying(true); } else { v.pause(); setPlaying(false); }
-  };
-
-  const handleMouseMove = () => {
-    setShowControls(true);
-    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    hideControlsTimer.current = setTimeout(() => setShowControls(false), 2500);
-  };
-
-  const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-    const v = videoRef.current;
-    if (!v || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    v.currentTime = frac * duration;
-    setProgress(frac * 100);
-  };
-
-  const fullscreen = () => { videoRef.current?.requestFullscreen?.(); };
-
-  if (videoError) {
-    return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(6px)' }}>
-        <div className="p-8 max-w-sm mx-4 text-center bg-white" style={{ border: '3px solid #111', boxShadow: '6px 6px 0 #111' }}>
-          <p className="text-[#111] font-bold mb-2" style={{ fontFamily: 'var(--font-manga)' }}>VIDEO UNAVAILABLE</p>
-          <p className="text-[#888] text-xs mb-4">The compiled file couldn't be loaded. Try the canvas preview or re-export.</p>
-          <div className="flex gap-2">
-            <button onClick={onFallback} className="bg-[#a855f7] text-white px-3 py-2 text-xs flex-1" style={{ border: '2px solid #111', boxShadow: '3px 3px 0 #111' }}>Canvas Preview</button>
-            <a href={url} target="_blank" rel="noreferrer" className="bg-white text-[#111] px-3 py-2 text-xs flex-1 text-center" style={{ border: '2px solid #111', boxShadow: '3px 3px 0 #111' }}>Open Direct</a>
-          </div>
-          <button onClick={handleClose} className="text-[#aaa] text-xs mt-3 hover:text-[#111] transition-colors block mx-auto">Close</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={backdropRef}
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(6px)' }}
-      onClick={handleClose}
-    >
-      {/* Manga halftone dot overlay */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.05 }}>
-        <defs>
-          <pattern id="dots-compiled" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse">
-            <circle cx="7" cy="7" r="2.8" fill="#111" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#dots-compiled)" />
-      </svg>
-
-      <div
-        ref={modalRef}
-        className="relative w-full max-w-4xl mx-4 bg-white"
-        style={{ border: '3px solid #111', boxShadow: '10px 10px 0px #111' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Violet corner accent */}
-        <div className="absolute top-0 right-0 w-0 h-0 pointer-events-none z-10" style={{ borderStyle: 'solid', borderWidth: '0 36px 36px 0', borderColor: 'transparent #a855f7 transparent transparent' }} />
-
-        {/* Header bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-[#111]">
-          <div className="flex items-center gap-2">
-            <Film size={14} className="text-[#a855f7]" />
-            <span className="text-white text-xs tracking-widest uppercase" style={{ fontFamily: 'var(--font-manga)' }}>
-              Compiled Trailer
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <a href={proxied} download className="flex items-center gap-1.5 text-white/50 hover:text-white text-xs transition-colors">
-              <Download size={13} /> Download
-            </a>
-            <button className="text-white/50 hover:text-[#a855f7] transition-colors" onClick={handleClose}>
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Video container */}
-        <div
-          className="relative bg-black overflow-hidden"
-          style={{ aspectRatio: '16/9' }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => playing && setShowControls(false)}
-        >
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center z-20 bg-black">
-              <Loader2 size={36} className="text-[#a855f7] animate-spin" />
-            </div>
-          )}
-
-          <video
-            ref={videoRef}
-            src={proxied}
-            autoPlay
-            muted={muted}
-            className="w-full h-full object-contain"
-            onCanPlay={() => { setLoading(false); setPlaying(true); }}
-            onError={() => { setLoading(false); setVideoError(true); }}
-            onTimeUpdate={() => {
-              const v = videoRef.current;
-              if (!v) return;
-              setCurrentTime(v.currentTime);
-              setProgress(v.duration ? (v.currentTime / v.duration) * 100 : 0);
-            }}
-            onLoadedMetadata={() => { if (videoRef.current) setDuration(videoRef.current.duration); }}
-            onEnded={() => setPlaying(false)}
-            onClick={togglePlay}
-            style={{ cursor: 'pointer' }}
-          />
-
-          {!playing && !loading && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer" onClick={togglePlay}>
-              <div
-                className="w-16 h-16 bg-[#a855f7] flex items-center justify-center transition-transform active:scale-95"
-                style={{ border: '3px solid #fff', boxShadow: '4px 4px 0 rgba(0,0,0,0.5)' }}
-              >
-                <Play size={28} className="text-white ml-1" />
-              </div>
-            </div>
-          )}
-
-          {/* Controls bar */}
-          <div
-            className={`absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-300 ${showControls || !playing ? 'opacity-100' : 'opacity-0'}`}
-            style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.9))' }}
-          >
-            <div
-              className="mx-3 mb-1 h-1.5 bg-white/20 cursor-pointer overflow-hidden hover:h-2 transition-all"
-              onClick={handleScrub}
-            >
-              <div className="h-full bg-[#a855f7] transition-none" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="flex items-center gap-2 px-3 pb-2.5">
-              <button onClick={togglePlay} className="text-white hover:text-[#a855f7] transition-colors">
-                {playing ? <Pause size={16} /> : <Play size={16} />}
-              </button>
-              <button onClick={() => { setMuted(m => !m); if (videoRef.current) videoRef.current.muted = !muted; }} className="text-white/60 hover:text-white transition-colors">
-                {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-              </button>
-              <span className="text-white/60 text-xs font-mono tabular-nums">{fmt(currentTime)} / {fmt(duration)}</span>
-              <div className="flex-1" />
-              <button onClick={fullscreen} className="text-white/50 hover:text-white transition-colors">
-                <Maximize size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-4 py-2 flex items-center gap-3" style={{ borderTop: '2px solid #111' }}>
-          <span className="text-[0.6rem] text-[#999] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>
-            {fmt(duration)} TOTAL
-          </span>
-          <div className="flex-1" />
-          <button
-            onClick={onFallback}
-            className="text-[0.6rem] text-[#bbb] hover:text-[#a855f7] transition-colors tracking-widest"
-            style={{ fontFamily: 'var(--font-manga)' }}
-          >
-            CANVAS PREVIEW →
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -627,8 +408,11 @@ export default function EditorPage() {
       api.getTimeline(id).catch(() => ({ clips: [], music_track: null, settings: null })),
       api.getRenderJobs(id).catch(() => []),
     ]).then(([project, timeline, renderJobs]: [any, any, any]) => {
-      // Restore compiled video URL from most recent done render job
-      const latestDone = (renderJobs || []).find((j: any) => j.status === 'done' && (j.preview_url || j.output_url));
+      // Restore compiled video URL from most recent done render job (sort by created_at DESC)
+      const sortedJobs = [...(renderJobs || [])].sort((a: any, b: any) =>
+        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+      const latestDone = sortedJobs.find((j: any) => j.status === 'done' && (j.preview_url || j.output_url));
       if (latestDone) setCompiledUrl(latestDone.preview_url || latestDone.output_url);
       if (project) {
         const storedBookText = sessionStorage.getItem(`book_text_${id}`);
@@ -1973,35 +1757,12 @@ export default function EditorPage() {
 
         {/* Trailer preview modal */}
         {showPreview && (
-          compiledUrl ? (
-            <CompiledVideoModal
-              url={compiledUrl}
-              onClose={() => setShowPreview(false)}
-              onFallback={() => { setCompiledUrl(null); setShowPreview(false); }}
-            />
-          ) : (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md" onClick={() => setShowPreview(false)}>
-              <div className="manga-panel p-8 max-w-sm mx-4 text-center" style={{ border: '3px solid #111', boxShadow: '4px 4px 0 #111' }} onClick={e => e.stopPropagation()}>
-                <Film size={28} className="text-[#a855f7] mx-auto mb-3" />
-                <p className="font-bold mb-1" style={{ fontFamily: 'var(--font-manga)' }}>NO COMPILED VIDEO</p>
-                <p className="text-[#888] text-xs mb-5 leading-relaxed">Render the trailer first to get a smooth, scene-continuous video without any playback pauses.</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setShowPreview(false); }}
-                    className="manga-btn bg-white text-[#111] px-3 py-2 text-xs flex-1 border-[#111]"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => { setShowPreview(false); handleExport(); }}
-                    className="manga-btn bg-[#a855f7] text-white px-3 py-2 text-xs flex-1 border-[#a855f7] flex items-center justify-center gap-1"
-                  >
-                    <Download size={12} /> Render Now
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
+          <TrailerPreview
+            clips={clips}
+            musicTrack={musicTrack}
+            compiledUrl={compiledUrl}
+            onClose={() => setShowPreview(false)}
+          />
         )}
 
         {/* Render complete popup */}

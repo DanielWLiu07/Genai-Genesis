@@ -12,6 +12,10 @@ const TITLE_CARD_TERMS = [
   'end card', 'coming soon', 'the end', 'credits',
   'glowing text', 'floating text', 'text appears', 'text reads',
   'logo reveal', 'brand reveal',
+  'title text', 'text on screen', 'text on black', 'text overlay',
+  'words appear', 'words on screen', 'text fades', 'text floats',
+  'chapter title', 'opening card', 'closing card',
+  'black screen with', 'fade to black with', 'text displayed',
 ];
 function isTitleCard(c: any): boolean {
   const prompt = (c.prompt || '').toLowerCase();

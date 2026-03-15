@@ -219,22 +219,39 @@ def _add_music(
     video_path: str,
     music_path: str,
     output_path: str,
-    volume: float = 0.3,
+    volume: float = 0.8,
 ) -> bool:
-    """Mix background music into the video."""
+    """Mix background music into the video (source clips are silent so no merge needed)."""
+    # Primary: loop music, apply volume, pad to video length, copy video stream unchanged.
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
         "-stream_loop", "-1", "-i", music_path,
-        "-filter_complex", f"[1:a]volume={volume}[a]",
-        "-map", "0:v", "-map", "[a]",
+        "-filter_complex", f"[1:a]volume={volume},apad[a]",
+        "-map", "0:v",
+        "-map", "[a]",
         "-c:v", "copy",
         "-c:a", "aac", "-b:a", "192k",
         "-shortest",
         output_path,
     ]
+    if _run_ffmpeg(cmd, "add music"):
+        return True
 
-    return _run_ffmpeg(cmd, "add music")
+    # Fallback: simpler command without filter_complex
+    cmd2 = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-stream_loop", "-1", "-i", music_path,
+        "-map", "0:v",
+        "-map", "1:a",
+        "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "192k",
+        "-af", f"volume={volume}",
+        "-shortest",
+        output_path,
+    ]
+    return _run_ffmpeg(cmd2, "add music (fallback)")
 
 
 def _add_text_overlays(
@@ -275,7 +292,9 @@ def _add_text_overlays(
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
-        "-vf", filter_str,
+        "-filter_complex", f"[0:v]{filter_str}[vout]",
+        "-map", "[vout]",
+        "-map", "0:a?",
         "-c:v", "libx264", "-preset", "fast", "-crf", "23",
         "-c:a", "copy",
         "-pix_fmt", "yuv420p",
@@ -936,10 +955,15 @@ async def apply_amv_effects(
         shutil.copy2(input_path, output_path)
         return True
 
+    # Use filter_complex so video and audio are handled separately.
+    # This ensures the music audio stream (from the previous step) is preserved
+    # unchanged while only video filters are applied.
     cmd = [
         "ffmpeg", "-y",
         "-i", input_path,
-        "-vf", vf,
+        "-filter_complex", f"[0:v]{vf}[vout]",
+        "-map", "[vout]",
+        "-map", "0:a?",          # copy audio if present, skip if not (? = optional)
         "-c:v", "libx264", "-preset", "fast", "-crf", "21",
         "-c:a", "copy",
         "-pix_fmt", "yuv420p",

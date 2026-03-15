@@ -1,493 +1,423 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { X, Play, Pause, RotateCcw, Film, Volume2 } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import {
+  X, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
+  ChevronLeft, ChevronRight, Download, Film, Maximize,
+} from 'lucide-react';
 import gsap from 'gsap';
 
-interface Clip {
-  id: string;
-  order: number;
-  type: string;
-  duration_ms: number;
-  prompt: string;
-  text?: string;
-  text_style?: { font_size?: number; color?: string; position?: string; animation?: string };
-  transition_type?: string;
-  generated_media_url?: string;
-  thumbnail_url?: string;
+// ── Clip filtering ────────────────────────────────────────────────────────────
+
+const TITLE_CARD_TERMS = [
+  'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+  'title reveal', 'title sequence', 'opening title', 'title shot',
+  'book title', 'movie title', 'film title', 'outro card', 'intro card',
+  'end card', 'coming soon', 'the end', 'credits',
+  'glowing text', 'floating text', 'text appears', 'text reads',
+  'logo reveal', 'brand reveal',
+  'title text', 'text on screen', 'text on black', 'text overlay',
+  'words appear', 'words on screen', 'text fades', 'text floats',
+  'chapter title', 'opening card', 'closing card',
+  'black screen with', 'fade to black with', 'text displayed',
+];
+const STRIP_IDS = new Set(['title_card', 'end_card']);
+
+function filterClips(clips: any[]): any[] {
+  return clips.filter((c) => {
+    if (STRIP_IDS.has(c.id)) return false;
+    if (c.type === 'text_overlay') return false;
+    const prompt = (c.prompt || '').toLowerCase();
+    if (TITLE_CARD_TERMS.some((t) => prompt.includes(t))) return false;
+    return true;
+  });
 }
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface TrailerPreviewProps {
-  clips: Clip[];
-  musicTrack?: { url: string; name: string; volume?: number } | null;
+  clips: any[];
+  musicTrack?: { url?: string; name?: string; volume?: number } | null;
+  compiledUrl?: string | null;
   onClose: () => void;
-  projectTitle?: string;
 }
 
-const TRANSITION_MS = 400;
+// ── Compiled video player ─────────────────────────────────────────────────────
 
-export function TrailerPreview({ clips, musicTrack, onClose, projectTitle }: TrailerPreviewProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const rafRef = useRef<number>(0);
-  const startTimeRef = useRef<number>(0);
-  const pausedAtRef = useRef<number>(0);
-  const playingRef = useRef(false);
-  const backdropRef = useRef<HTMLDivElement>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
-
+function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
   const [playing, setPlaying] = useState(false);
-  const [currentMs, setCurrentMs] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-
-  const imagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
-
-  const sortedClips = useMemo(() => [...clips].sort((a, b) => a.order - b.order), [clips]);
-  const totalMs = useMemo(() => sortedClips.reduce((s, c) => s + c.duration_ms, 0), [sortedClips]);
-  const clipTimeline = useMemo(() => {
-    let t = 0;
-    return sortedClips.map(c => {
-      const start = t;
-      t += c.duration_ms;
-      return { clip: c, startMs: start, endMs: t };
-    });
-  }, [sortedClips]);
-
-  const clipTimelineRef = useRef(clipTimeline);
-  const totalMsRef = useRef(totalMs);
-  useEffect(() => { clipTimelineRef.current = clipTimeline; }, [clipTimeline]);
-  useEffect(() => { totalMsRef.current = totalMs; }, [totalMs]);
-
-  // ── Entry animation ────────────────────────────────────────────────────────
-  useEffect(() => {
-    const backdrop = backdropRef.current;
-    const modal = modalRef.current;
-    if (!backdrop || !modal) return;
-
-    gsap.fromTo(backdrop,
-      { opacity: 0 },
-      { opacity: 1, duration: 0.25, ease: 'power2.out' }
-    );
-    gsap.fromTo(modal,
-      { scale: 0.88, y: 32, opacity: 0 },
-      { scale: 1, y: 0, opacity: 1, duration: 0.38, ease: 'back.out(1.6)', delay: 0.05 }
-    );
-  }, []);
-
-  const handleClose = () => {
-    const backdrop = backdropRef.current;
-    const modal = modalRef.current;
-    if (modal) {
-      gsap.to(modal, { scale: 0.92, y: 16, opacity: 0, duration: 0.22, ease: 'power2.in' });
-    }
-    if (backdrop) {
-      gsap.to(backdrop, { opacity: 0, duration: 0.25, delay: 0.08, ease: 'power2.in', onComplete: onClose });
-    } else {
-      onClose();
-    }
-  };
-
-  // ── Image preloading ───────────────────────────────────────────────────────
-  useEffect(() => {
-    const urls = sortedClips
-      .filter(c => c.generated_media_url || c.thumbnail_url)
-      .map(c => (c.generated_media_url || c.thumbnail_url)!);
-
-    if (urls.length === 0) { setLoaded(true); return; }
-
-    let done = 0;
-    urls.forEach(url => {
-      if (imagesRef.current.has(url)) {
-        done++;
-        if (done === urls.length) setLoaded(true);
-        return;
-      }
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = img.onerror = () => {
-        done++;
-        if (done === urls.length) setLoaded(true);
-      };
-      img.src = url;
-      imagesRef.current.set(url, img);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Canvas draw ────────────────────────────────────────────────────────────
-  const drawFrameRef = useRef((ms: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const W = canvas.width, H = canvas.height;
-    const ct = clipTimelineRef.current;
-    const total = totalMsRef.current;
-
-    const idx = ct.findIndex(e => ms < e.endMs);
-    if (idx < 0) return;
-    const { clip, endMs } = ct[idx];
-    const nextEntry = ct[idx + 1];
-
-    const findNearestScene = (fromIdx: number): Clip | null => {
-      for (let i = fromIdx - 1; i >= 0; i--) {
-        const c = ct[i].clip;
-        if (c.type !== 'text_overlay' && (c.generated_media_url || c.thumbnail_url)) return c;
-      }
-      for (let i = fromIdx + 1; i < ct.length; i++) {
-        const c = ct[i].clip;
-        if (c.type !== 'text_overlay' && (c.generated_media_url || c.thumbnail_url)) return c;
-      }
-      return null;
-    };
-
-    const timeToEnd = endMs - ms;
-    const transAlpha = clip.transition_type !== 'cut' && timeToEnd < TRANSITION_MS
-      ? 1 - timeToEnd / TRANSITION_MS : 0;
-
-    const drawClip = (c: Clip, alpha: number) => {
-      ctx.globalAlpha = alpha;
-      const effectiveClip = (c.type === 'text_overlay' && !c.generated_media_url && !c.thumbnail_url)
-        ? (findNearestScene(idx) ?? c) : c;
-      const url = effectiveClip.generated_media_url || effectiveClip.thumbnail_url;
-      if (url && imagesRef.current.has(url)) {
-        const img = imagesRef.current.get(url)!;
-        if (img.complete && img.naturalWidth > 0) {
-          const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
-          const sw = img.naturalWidth * scale, sh = img.naturalHeight * scale;
-          ctx.drawImage(img, (W - sw) / 2, (H - sh) / 2, sw, sh);
-          if (c.type === 'text_overlay') {
-            ctx.globalAlpha = alpha * 0.5;
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, W, H);
-            ctx.globalAlpha = alpha;
-          }
-          return;
-        }
-      }
-      ctx.fillStyle = '#0d0d0d';
-      ctx.fillRect(0, 0, W, H);
-    };
-
-    ctx.clearRect(0, 0, W, H);
-    drawClip(clip, 1);
-    if (transAlpha > 0 && nextEntry) drawClip(nextEntry.clip, transAlpha);
-    ctx.globalAlpha = 1;
-
-    // Text overlay
-    const textClip = transAlpha < 0.5 ? clip : (nextEntry?.clip ?? clip);
-    if (textClip.text || textClip.type === 'text_overlay') {
-      const txt = textClip.text || textClip.prompt?.split('.')[0] || '';
-      if (txt) {
-        const style = textClip.text_style || {};
-        const fontSize = Math.round((style.font_size || 36) * (W / 1080));
-        const color = style.color || '#ffffff';
-        const pos = style.position || 'center';
-        ctx.font = `bold ${fontSize}px 'Bangers', sans-serif`;
-        ctx.textAlign = 'center';
-        const lines = txt.split('\n');
-        const lineH = fontSize * 1.3;
-        const totalTextH = lines.length * lineH;
-        const y = pos === 'top' ? fontSize + 20
-          : pos === 'bottom' ? H - totalTextH - 20
-          : (H - totalTextH) / 2;
-        ctx.shadowColor = 'rgba(0,0,0,0.9)';
-        ctx.shadowBlur = 12;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = fontSize * 0.08;
-        lines.forEach((line, i) => {
-          const ly = y + i * lineH;
-          ctx.strokeText(line, W / 2, ly);
-          ctx.fillStyle = color;
-          ctx.fillText(line, W / 2, ly);
-        });
-        ctx.shadowBlur = 0;
-      }
-    }
-
-    // Progress bar (inside canvas, bottom 4px)
-    const progress = Math.min(ms / total, 1);
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(0, H - 4, W, 4);
-    ctx.fillStyle = '#a855f7';
-    ctx.fillRect(0, H - 4, W * progress, 4);
-  });
-
-  const tickRef = useRef(() => {
-    const elapsed = performance.now() - startTimeRef.current + pausedAtRef.current;
-    const ms = Math.min(elapsed, totalMsRef.current);
-    setCurrentMs(ms);
-    drawFrameRef.current(ms);
-    if (ms < totalMsRef.current) {
-      rafRef.current = requestAnimationFrame(tickRef.current);
-    } else {
-      playingRef.current = false;
-      setPlaying(false);
-      pausedAtRef.current = totalMsRef.current;
-    }
-  });
-
-  const play = (fromMs?: number) => {
-    cancelAnimationFrame(rafRef.current);
-    if (fromMs !== undefined) pausedAtRef.current = fromMs;
-    else if (pausedAtRef.current >= totalMsRef.current) pausedAtRef.current = 0;
-    startTimeRef.current = performance.now();
-    playingRef.current = true;
-    setPlaying(true);
-    rafRef.current = requestAnimationFrame(tickRef.current);
-    if (audioRef.current) {
-      audioRef.current.currentTime = pausedAtRef.current / 1000;
-      audioRef.current.play().catch(() => {});
-    }
-  };
-
-  const pause = () => {
-    cancelAnimationFrame(rafRef.current);
-    pausedAtRef.current = currentMs;
-    playingRef.current = false;
-    setPlaying(false);
-    audioRef.current?.pause();
-  };
-
-  const restart = () => {
-    cancelAnimationFrame(rafRef.current);
-    pausedAtRef.current = 0;
-    playingRef.current = false;
-    setPlaying(false);
-    setCurrentMs(0);
-    drawFrameRef.current(0);
-    if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.pause(); }
-  };
-
-  useEffect(() => {
-    if (loaded) drawFrameRef.current(0);
-  }, [loaded]);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [showControls, setShowControls] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
-    cancelAnimationFrame(rafRef.current);
-    const a = audioRef.current;
-    if (a) { a.pause(); a.src = ''; a.load(); }
+    const v = videoRef.current;
+    if (v) { v.pause(); v.src = ''; v.load(); }
   }, []);
 
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); setPlaying(true); }
+    else { v.pause(); setPlaying(false); }
+  };
+
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setShowControls(false), 2500);
+  };
+
   const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
+    const v = videoRef.current;
+    if (!v || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const ms = Math.round(frac * totalMsRef.current);
-    if (playingRef.current) {
-      pausedAtRef.current = ms;
-      startTimeRef.current = performance.now();
-      if (audioRef.current) audioRef.current.currentTime = ms / 1000;
+    v.currentTime = frac * duration;
+  };
+
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  return (
+    <div
+      className="relative bg-black overflow-hidden w-full"
+      style={{ aspectRatio: '16/9' }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => playing && setShowControls(false)}
+    >
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 bg-black">
+          <div className="w-8 h-8 border-2 border-[#ff3fa4] border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      <video
+        ref={videoRef}
+        src={url}
+        autoPlay
+        muted={muted}
+        className="w-full h-full object-contain cursor-pointer"
+        onCanPlay={() => { setLoading(false); setPlaying(true); }}
+        onTimeUpdate={() => {
+          const v = videoRef.current;
+          if (!v) return;
+          setCurrentTime(v.currentTime);
+          setProgress(v.duration ? (v.currentTime / v.duration) * 100 : 0);
+        }}
+        onLoadedMetadata={() => { if (videoRef.current) setDuration(videoRef.current.duration); }}
+        onEnded={() => setPlaying(false)}
+        onClick={togglePlay}
+      />
+      {!playing && !loading && (
+        <div className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer" onClick={togglePlay}>
+          <div className="w-14 h-14 bg-[#ff3fa4] flex items-center justify-center" style={{ boxShadow: '3px 3px 0 rgba(0,0,0,0.5)' }}>
+            <Play size={24} className="text-white ml-1" />
+          </div>
+        </div>
+      )}
+      <div
+        className={`absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-300 ${showControls || !playing ? 'opacity-100' : 'opacity-0'}`}
+        style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.9))' }}
+      >
+        <div className="mx-3 mb-1 h-1 bg-white/20 cursor-pointer hover:h-1.5 transition-all" onClick={handleScrub}>
+          <div className="h-full bg-[#ff3fa4]" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="flex items-center gap-2 px-3 pb-2">
+          <button onClick={togglePlay} className="text-white hover:text-[#ff3fa4] transition-colors">
+            {playing ? <Pause size={15} /> : <Play size={15} />}
+          </button>
+          <button onClick={() => { setMuted(m => !m); if (videoRef.current) videoRef.current.muted = !muted; }} className="text-white/60 hover:text-white transition-colors">
+            {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+          </button>
+          <span className="text-white/60 text-xs font-mono tabular-nums">{fmt(currentTime)} / {fmt(duration)}</span>
+          <div className="flex-1" />
+          <a href={url} download className="text-white/50 hover:text-white transition-colors flex items-center gap-1 text-xs">
+            <Download size={13} /> Download
+          </a>
+          <button onClick={() => videoRef.current?.requestFullscreen?.()} className="text-white/50 hover:text-white transition-colors">
+            <Maximize size={13} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Clip slideshow ────────────────────────────────────────────────────────────
+
+function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: TrailerPreviewProps['musicTrack'] }) {
+  const [clipIdx, setClipIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const rafRef = useRef<number | null>(null);
+  const lastTsRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const thumbStripRef = useRef<HTMLDivElement>(null);
+
+  const current = clips[clipIdx];
+  const clipDuration = current?.duration_ms || 2000;
+
+  const tick = useCallback((ts: number) => {
+    if (lastTsRef.current === null) lastTsRef.current = ts;
+    const delta = ts - lastTsRef.current;
+    lastTsRef.current = ts;
+
+    setElapsed(prev => {
+      const next = prev + delta;
+      if (next >= clipDuration) {
+        setClipIdx(i => {
+          if (i + 1 >= clips.length) { setPlaying(false); return i; }
+          return i + 1;
+        });
+        lastTsRef.current = null;
+        return 0;
+      }
+      return next;
+    });
+    rafRef.current = requestAnimationFrame(tick);
+  }, [clipDuration, clips.length]);
+
+  useEffect(() => {
+    if (playing) {
+      lastTsRef.current = null;
+      rafRef.current = requestAnimationFrame(tick);
     } else {
-      cancelAnimationFrame(rafRef.current);
-      pausedAtRef.current = ms;
-      setCurrentMs(ms);
-      drawFrameRef.current(ms);
-      if (audioRef.current) audioRef.current.currentTime = ms / 1000;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     }
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [playing, tick]);
+
+  // Reset elapsed on clip change
+  useEffect(() => {
+    setElapsed(0);
+    lastTsRef.current = null;
+  }, [clipIdx]);
+
+  // Sync audio with playing state
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) audio.play().catch(() => {});
+    else audio.pause();
+  }, [playing]);
+
+  // Scroll thumbnail into view
+  useEffect(() => {
+    const strip = thumbStripRef.current;
+    if (!strip) return;
+    const thumb = strip.children[clipIdx] as HTMLElement;
+    if (thumb) thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [clipIdx]);
+
+  const mediaUrl = current?.generated_media_url || current?.thumbnail_url;
+  const isVideo = current?.type === 'video' && current?.generated_media_url;
+  const progress = clipDuration > 0 ? (elapsed / clipDuration) * 100 : 0;
+
+  const go = (dir: number) => {
+    setClipIdx(i => Math.max(0, Math.min(clips.length - 1, i + dir)));
+    setElapsed(0);
   };
 
-  const fmt = (ms: number) => {
-    const s = Math.floor(ms / 1000);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  };
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Main display */}
+      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+        {mediaUrl ? (
+          isVideo ? (
+            <video
+              key={mediaUrl}
+              src={mediaUrl}
+              autoPlay={playing}
+              muted
+              loop={false}
+              className="max-w-full max-h-full object-contain"
+              style={{ aspectRatio: '16/9' }}
+            />
+          ) : (
+            <img
+              key={mediaUrl}
+              src={mediaUrl}
+              alt=""
+              className="max-w-full max-h-full object-contain"
+              style={{ aspectRatio: '16/9' }}
+            />
+          )
+        ) : (
+          <div className="w-full flex items-center justify-center" style={{ aspectRatio: '16/9', background: '#111' }}>
+            <div className="text-center">
+              <Film size={32} className="text-white/20 mx-auto mb-2" />
+              <p className="text-white/30 text-xs">No media generated</p>
+            </div>
+          </div>
+        )}
 
-  const progressPct = totalMs > 0 ? Math.min((currentMs / totalMs) * 100, 100) : 0;
+        {/* Prev/Next */}
+        <button
+          className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/60 hover:bg-[#ff3fa4] flex items-center justify-center transition-colors disabled:opacity-20"
+          onClick={() => go(-1)}
+          disabled={clipIdx === 0}
+        >
+          <ChevronLeft size={18} className="text-white" />
+        </button>
+        <button
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/60 hover:bg-[#ff3fa4] flex items-center justify-center transition-colors disabled:opacity-20"
+          onClick={() => go(1)}
+          disabled={clipIdx === clips.length - 1}
+        >
+          <ChevronRight size={18} className="text-white" />
+        </button>
+
+        {/* Clip counter badge */}
+        <div className="absolute top-2 right-2 bg-black/70 px-2 py-0.5 text-white/60 text-xs font-mono">
+          {clipIdx + 1} / {clips.length}
+        </div>
+      </div>
+
+      {/* Clip progress bar */}
+      <div className="h-0.5 bg-white/10 shrink-0">
+        <div className="h-full bg-[#ff3fa4] transition-none" style={{ width: `${progress}%` }} />
+      </div>
+
+      {/* Playback controls */}
+      <div className="flex items-center gap-2 px-4 py-2 bg-[#111] shrink-0">
+        <button onClick={() => { setClipIdx(0); setElapsed(0); setPlaying(false); }} className="text-white/40 hover:text-white transition-colors">
+          <SkipBack size={15} />
+        </button>
+        <button
+          onClick={() => setPlaying(p => !p)}
+          className="w-8 h-8 bg-[#ff3fa4] hover:bg-[#c0005e] flex items-center justify-center transition-colors"
+        >
+          {playing ? <Pause size={13} className="text-white" /> : <Play size={13} className="text-white ml-0.5" />}
+        </button>
+        <button onClick={() => go(1)} className="text-white/40 hover:text-white transition-colors">
+          <SkipForward size={15} />
+        </button>
+        <div className="flex-1" />
+        {musicTrack?.url && (
+          <>
+            <audio ref={audioRef} src={musicTrack.url} loop muted={muted} />
+            <button onClick={() => setMuted(m => !m)} className="text-white/40 hover:text-white transition-colors">
+              {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+            </button>
+            <span className="text-white/30 text-xs truncate max-w-[120px]">{musicTrack.name}</span>
+          </>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
+      <div
+        ref={thumbStripRef}
+        className="flex gap-1 px-2 py-2 bg-[#0a0a0a] overflow-x-auto shrink-0"
+        style={{ borderTop: '1px solid #1f1f1f', scrollbarWidth: 'none' }}
+      >
+        {clips.map((c, i) => {
+          const thumb = c.thumbnail_url || c.generated_media_url;
+          return (
+            <button
+              key={c.id || i}
+              onClick={() => { setClipIdx(i); setElapsed(0); }}
+              className={`shrink-0 w-14 h-9 overflow-hidden transition-all ${i === clipIdx ? 'ring-2 ring-[#ff3fa4] opacity-100' : 'opacity-40 hover:opacity-70'}`}
+            >
+              {thumb ? (
+                <img src={thumb} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-[#222] flex items-center justify-center">
+                  <span className="text-white/20 text-[8px]">{i + 1}</span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+export function TrailerPreview({ clips: rawClips, musicTrack, compiledUrl, onClose }: TrailerPreviewProps) {
+  const filteredClips = useMemo(() => filterClips(rawClips), [rawClips]);
+  const [tab, setTab] = useState<'video' | 'clips'>(compiledUrl ? 'video' : 'clips');
+
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const backdrop = backdropRef.current;
+    const panel = panelRef.current;
+    if (!backdrop || !panel) return;
+    gsap.fromTo(backdrop, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'power2.out' });
+    gsap.fromTo(panel, { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'back.out(1.4)', delay: 0.05 });
+  }, []);
+
+  const handleClose = useCallback(() => {
+    const backdrop = backdropRef.current;
+    const panel = panelRef.current;
+    if (!backdrop || !panel) { onClose(); return; }
+    gsap.to(panel, { y: 20, opacity: 0, duration: 0.18, ease: 'power2.in' });
+    gsap.to(backdrop, { opacity: 0, duration: 0.22, ease: 'power2.in', onComplete: onClose });
+  }, [onClose]);
 
   return (
     <div
       ref={backdropRef}
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.88)' }}
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm"
       onClick={handleClose}
     >
-      {/* Manga halftone dot overlay on backdrop */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <pattern id="preview-dots" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
-            <circle cx="5" cy="5" r="1.2" fill="#fff" opacity="0.04" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#preview-dots)" />
-      </svg>
-
-      {/* Modal */}
       <div
-        ref={modalRef}
-        className="relative w-full mx-4 bg-white flex flex-col"
-        style={{
-          maxWidth: 820,
-          border: '3px solid #111',
-          boxShadow: '8px 8px 0px #111',
-        }}
+        ref={panelRef}
+        className="relative w-full max-w-4xl mx-4 flex flex-col bg-[#0a0a0a] overflow-hidden"
+        style={{ border: '2px solid #333', boxShadow: '0 0 60px rgba(0,0,0,0.8)', maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div
-          className="flex items-center gap-3 px-4 py-2.5 border-b-2 border-[#111] shrink-0"
-          style={{ background: '#111' }}
-        >
-          <Film size={14} className="text-[#a855f7] shrink-0" />
-          <div className="flex-1 min-w-0">
-            <span
-              className="text-sm font-black tracking-widest text-white uppercase"
-              style={{ fontFamily: 'var(--font-manga)' }}
-            >
-              {projectTitle ? `${projectTitle}` : 'TRAILER PREVIEW'}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#111] shrink-0" style={{ borderBottom: '1px solid #222' }}>
+          <div className="flex items-center gap-3">
+            <Film size={14} className="text-[#ff3fa4]" />
+            <span className="text-white text-xs tracking-widest uppercase" style={{ fontFamily: 'var(--font-manga)' }}>
+              Preview
             </span>
-            <span
-              className="text-[0.52rem] text-white/40 ml-2 font-bold tracking-widest"
-              style={{ fontFamily: 'var(--font-manga)' }}
-            >
-              {sortedClips.length} CLIPS · {fmt(totalMs)}
-            </span>
-          </div>
-          <button
-            onClick={handleClose}
-            className="w-7 h-7 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Canvas area */}
-        <div
-          className="relative bg-[#0d0d0d]"
-          style={{ aspectRatio: '16/9' }}
-        >
-          {!loaded && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-              {/* Manga-style loading spinner */}
-              <div className="relative w-12 h-12">
-                <div className="absolute inset-0 border-2 border-[#333] rounded-full" />
-                <div
-                  className="absolute inset-0 border-2 border-transparent border-t-[#a855f7] rounded-full animate-spin"
-                  style={{ animationDuration: '0.8s' }}
-                />
-              </div>
-              <span
-                className="text-[0.6rem] text-white/40 tracking-widest font-bold uppercase"
-                style={{ fontFamily: 'var(--font-manga)' }}
-              >
-                Loading…
-              </span>
-            </div>
-          )}
-          <canvas
-            ref={canvasRef}
-            width={1280}
-            height={720}
-            className="w-full h-full"
-            style={{ display: loaded ? 'block' : 'none' }}
-          />
-        </div>
-
-        {/* Controls bar */}
-        <div className="px-4 py-3 border-t-2 border-[#111] bg-white space-y-2.5">
-
-          {/* Scrubber */}
-          <div
-            className="relative w-full h-2 bg-[#e5e5e5] cursor-pointer group"
-            style={{ border: '1.5px solid #ccc' }}
-            onClick={handleScrub}
-          >
-            {/* Fill */}
-            <div
-              className="absolute inset-y-0 left-0 bg-[#a855f7] transition-none"
-              style={{ width: `${progressPct}%` }}
-            />
-            {/* Playhead thumb */}
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-[#a855f7] border-2 border-white opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{
-                left: `${progressPct}%`,
-                transform: 'translate(-50%, -50%)',
-                boxShadow: '0 0 0 2px #a855f7',
-              }}
-            />
-          </div>
-
-          {/* Buttons row */}
-          <div className="flex items-center gap-2">
-            {/* Restart */}
-            <button
-              onClick={restart}
-              className="w-8 h-8 flex items-center justify-center text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors border border-[#e5e5e5]"
-              title="Restart"
-            >
-              <RotateCcw size={14} />
-            </button>
-
-            {/* Play / Pause — main button */}
-            <button
-              onClick={playing ? pause : () => play()}
-              disabled={!loaded}
-              className="flex items-center justify-center gap-1.5 px-4 h-8 font-black text-[0.65rem] text-white transition-all disabled:opacity-40 tracking-widest"
-              style={{
-                background: '#111',
-                border: '2px solid #111',
-                boxShadow: playing ? 'none' : '3px 3px 0px #a855f7',
-                fontFamily: 'var(--font-manga)',
-                transform: playing ? 'translate(2px, 2px)' : undefined,
-              }}
-            >
-              {playing
-                ? <><Pause size={12} /> PAUSE</>
-                : <><Play size={12} className="ml-0.5" /> PLAY</>
-              }
-            </button>
-
-            {/* Timecode */}
-            <span
-              className="text-xs text-[#888] font-mono"
-              style={{ fontFamily: 'var(--font-manga)', fontSize: '0.62rem' }}
-            >
-              {fmt(currentMs)} <span className="text-[#ccc]">/</span> {fmt(totalMs)}
-            </span>
-
-            {/* Music label */}
-            {musicTrack && (
-              <div className="ml-auto flex items-center gap-1.5 min-w-0">
-                <Volume2 size={11} className="text-[#bbb] shrink-0" />
-                <span
-                  className="text-[0.55rem] text-[#bbb] truncate max-w-[140px]"
-                  style={{ fontFamily: 'var(--font-manga)' }}
+            {/* Tab switcher */}
+            {compiledUrl && (
+              <div className="flex ml-3" style={{ border: '1px solid #333' }}>
+                <button
+                  onClick={() => setTab('video')}
+                  className={`px-3 py-0.5 text-xs transition-colors ${tab === 'video' ? 'bg-[#ff3fa4] text-white' : 'text-white/40 hover:text-white'}`}
                 >
-                  {musicTrack.name}
-                </span>
+                  Compiled
+                </button>
+                <button
+                  onClick={() => setTab('clips')}
+                  className={`px-3 py-0.5 text-xs transition-colors ${tab === 'clips' ? 'bg-[#ff3fa4] text-white' : 'text-white/40 hover:text-white'}`}
+                >
+                  Clips ({filteredClips.length})
+                </button>
               </div>
             )}
           </div>
+          <button onClick={handleClose} className="text-white/40 hover:text-white transition-colors">
+            <X size={17} />
+          </button>
         </div>
 
-        {/* Corner accent — top right manga speed-line decoration */}
-        <div
-          className="absolute top-0 right-0 pointer-events-none"
-          style={{ width: 60, height: 60, overflow: 'hidden' }}
-        >
-          <div
-            style={{
-              position: 'absolute', top: 0, right: 0,
-              width: 0, height: 0,
-              borderStyle: 'solid',
-              borderWidth: '0 60px 60px 0',
-              borderColor: 'transparent #a855f7 transparent transparent',
-              opacity: 0.15,
-            }}
-          />
-        </div>
+        {/* Content */}
+        {tab === 'video' && compiledUrl ? (
+          <VideoPlayer url={compiledUrl} onClose={handleClose} />
+        ) : filteredClips.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Film size={36} className="text-white/20 mb-3" />
+            <p className="text-white/40 text-sm">No clips to preview.</p>
+            <p className="text-white/20 text-xs mt-1">Generate some clips first.</p>
+          </div>
+        ) : (
+          <ClipSlideshow clips={filteredClips} musicTrack={musicTrack ?? undefined} />
+        )}
       </div>
-
-      {musicTrack?.url && (
-        <audio
-          ref={audioRef}
-          src={musicTrack.url}
-          loop={false}
-          style={{ display: 'none' }}
-          onLoadedMetadata={() => {
-            if (audioRef.current) audioRef.current.volume = musicTrack.volume ?? 0.7;
-          }}
-        />
-      )}
     </div>
   );
 }

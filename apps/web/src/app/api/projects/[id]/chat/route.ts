@@ -259,15 +259,6 @@ User: ${message}`;
         if (m.content) parts.push({ text: m.content });
         if (parts.length) {
           geminiHistory.push({ role: 'model', parts });
-          // Gemini requires a user turn with function responses after a model turn with function calls
-          if (m.tool_calls?.length) {
-            geminiHistory.push({
-              role: 'user',
-              parts: m.tool_calls.map((tc: any) => ({
-                functionResponse: { name: tc.tool_name, response: { output: 'applied' } },
-              })),
-            });
-          }
         }
       }
     }

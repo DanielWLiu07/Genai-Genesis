@@ -127,6 +127,10 @@ async def _compose_background(data: ComposeRequest, job_id: str):
             'end card', 'coming soon', 'the end', 'credits',
             'glowing text', 'floating text', 'text appears', 'text reads',
             'logo reveal', 'brand reveal',
+            'title text', 'text on screen', 'text on black', 'text overlay',
+            'words appear', 'words on screen', 'text fades', 'text floats',
+            'chapter title', 'opening card', 'closing card',
+            'black screen with', 'fade to black with', 'text displayed',
         }
         def _is_title_card(clip: dict) -> bool:
             prompt = (clip.get('prompt') or '').lower()
@@ -142,6 +146,10 @@ async def _compose_background(data: ComposeRequest, job_id: str):
 
         timeline_settings = timeline.get("settings", {})
         music_track = timeline.get("music_track")
+        # Effects can come from the compose request directly (AMV editor) or be embedded in the
+        # timeline dict (standard render from editor page). Merge both sources.
+        effects = data.effects or timeline.get("effects") or []
+        beat_map = data.beat_map or timeline.get("beat_map")
 
         async def progress_cb(pct, msg):
             await _report_progress(job_id, data.project_id, pct, msg)
@@ -150,16 +158,27 @@ async def _compose_background(data: ComposeRequest, job_id: str):
         clips = await _download_clip_media(clips, tmpdir)
 
         # Download music if URL provided
-        if music_track and music_track.get("url", "").startswith("http"):
-            try:
-                music_bytes = await download_media(music_track["url"])
-                music_local = os.path.join(tmpdir, "music.mp3")
-                with open(music_local, "wb") as f:
-                    f.write(music_bytes)
-                music_track = {**music_track, "local_path": music_local}
-            except Exception as e:
-                logger.warning("Failed to download music: %s", e)
-                music_track = None
+        if music_track:
+            music_url = music_track.get("url", "")
+            if music_url.startswith("http"):
+                try:
+                    music_bytes = await download_media(music_url)
+                    # Preserve the real extension from the URL so FFmpeg auto-detects format correctly
+                    url_path = music_url.split("?")[0]
+                    ext = os.path.splitext(url_path)[1] or ".mp3"
+                    if ext not in (".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"):
+                        ext = ".mp3"
+                    music_local = os.path.join(tmpdir, f"music{ext}")
+                    with open(music_local, "wb") as f:
+                        f.write(music_bytes)
+                    music_track = {**music_track, "local_path": music_local}
+                    logger.info("Downloaded music: %s -> %s (%d bytes)", music_url, music_local, len(music_bytes))
+                except Exception as e:
+                    logger.warning("Failed to download music: %s", e)
+                    music_track = None
+            elif music_url and os.path.exists(music_url):
+                # Local path already valid
+                music_track = {**music_track, "local_path": music_url}
 
         # Compose trailer
         _render_jobs[job_id]["status"] = "composing"
@@ -169,8 +188,8 @@ async def _compose_background(data: ComposeRequest, job_id: str):
             settings=timeline_settings,
             music_track=music_track,
             progress_callback=progress_cb,
-            effects=data.effects or [],
-            beat_map=data.beat_map,
+            effects=effects,
+            beat_map=beat_map,
         )
 
         if result.get("status") == "done":

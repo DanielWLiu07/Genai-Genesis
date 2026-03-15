@@ -175,6 +175,25 @@ Make someone's heart race watching this. Every single frame must earn its place.
             if clip.get("type") == "text_overlay" and not clip.get("text_style"):
                 clip["text_style"] = preset["text_style"]
 
+        # Strip any text_overlay clips AND prompt-based title/outro cards
+        _STRIP_TERMS = {
+            'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+            'title reveal', 'title sequence', 'opening title', 'title shot',
+            'book title', 'movie title', 'film title', 'outro card', 'intro card',
+            'end card', 'coming soon', 'the end', 'credits',
+            'glowing text', 'floating text', 'text appears', 'text reads',
+            'logo reveal', 'brand reveal',
+            'title text', 'text on screen', 'text on black', 'text overlay',
+            'words appear', 'words on screen', 'text fades', 'text floats',
+            'chapter title', 'opening card', 'closing card',
+            'black screen with', 'fade to black with', 'text displayed',
+        }
+        def _is_bad(c: dict) -> bool:
+            if c.get("type") == "text_overlay":
+                return True
+            prompt = (c.get("prompt") or "").lower()
+            return any(term in prompt for term in _STRIP_TERMS)
+        result["clips"] = [c for c in result.get("clips", []) if not _is_bad(c)]
         total = sum(c.get("duration_ms", 1500) for c in result.get("clips", []))
         result["total_duration_ms"] = total
         result["style"] = style

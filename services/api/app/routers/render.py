@@ -117,6 +117,7 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
                         if thumbnail_url:
                             clip["thumbnail_url"] = thumbnail_url
                         break
+                clips = _strip_title_cards(clips)
                 db.table("timelines").update({"clips": clips}).eq("project_id", project_id).execute()
         except Exception:
             pass
@@ -165,6 +166,10 @@ async def render_trailer(project_id: str, background_tasks: BackgroundTasks, dat
         'end card', 'coming soon', 'the end', 'credits',
         'glowing text', 'floating text', 'text appears', 'text reads',
         'logo reveal', 'brand reveal',
+        'title text', 'text on screen', 'text on black', 'text overlay',
+        'words appear', 'words on screen', 'text fades', 'text floats',
+        'chapter title', 'opening card', 'closing card', 'title card',
+        'black screen with', 'fade to black with', 'text displayed',
     }
     _STRIP_IDS = {'title_card', 'end_card'}
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   X, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
-  ChevronLeft, ChevronRight, Download, Film, Maximize,
+  ChevronLeft, ChevronRight, Download, Film, Maximize, ExternalLink,
 } from 'lucide-react';
 import gsap from 'gsap';
 
@@ -51,9 +51,13 @@ function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [muted, setMuted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Detect URLs that will never load from a deployed frontend
+  const isLocalUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url);
 
   useEffect(() => () => {
     const v = videoRef.current;
@@ -83,6 +87,22 @@ function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+  // Show error immediately for localhost URLs — they will never load from Vercel
+  if (isLocalUrl) {
+    return (
+      <div className="relative bg-black w-full flex flex-col items-center justify-center gap-4 p-8 text-center" style={{ aspectRatio: '16/9' }}>
+        <Film size={36} className="text-[#a855f7]/60" />
+        <p className="text-white/80 text-sm font-bold">Video rendered locally — not accessible here</p>
+        <p className="text-white/40 text-xs max-w-sm">
+          The render was saved to your local machine. Re-render on the timeline page to upload the video to cloud storage so it plays here.
+        </p>
+        <a href={url} download className="mt-2 flex items-center gap-1.5 text-xs bg-[#a855f7] text-white px-4 py-2 hover:bg-[#9333ea] transition-colors">
+          <Download size={12} /> Try Download Anyway
+        </a>
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative bg-black overflow-hidden w-full"
@@ -90,9 +110,19 @@ function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playing && setShowControls(false)}
     >
-      {loading && (
+      {loading && !videoError && (
         <div className="absolute inset-0 flex items-center justify-center z-20 bg-black">
           <div className="w-8 h-8 border-2 border-[#a855f7] border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      {videoError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black gap-3 p-6 text-center">
+          <Film size={32} className="text-white/20" />
+          <p className="text-white/60 text-sm">{videoError}</p>
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            className="text-xs text-[#a855f7] hover:underline flex items-center gap-1">
+            <ExternalLink size={11} /> Open directly
+          </a>
         </div>
       )}
       <video
@@ -101,7 +131,11 @@ function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
         autoPlay
         muted={muted}
         className="w-full h-full object-contain cursor-pointer"
-        onCanPlay={() => { setLoading(false); setPlaying(true); }}
+        onCanPlay={() => { setLoading(false); setVideoError(null); setPlaying(true); }}
+        onError={() => {
+          setLoading(false);
+          setVideoError('Video failed to load. The file may have expired or been deleted.');
+        }}
         onTimeUpdate={() => {
           const v = videoRef.current;
           if (!v) return;

@@ -230,9 +230,18 @@ async def _compose_background(data: ComposeRequest, job_id: str):
             except Exception as e:
                 logger.warning("Failed to upload preview video to Supabase: %s", e)
 
+            # Prefer Supabase URL (accessible from Vercel); local URL only as last resort
+            # Note: local URLs (localhost:8002) will NOT load from a deployed frontend
             final_output_url = output_supabase_url or to_local_url(output_path)
             final_preview_url = preview_supabase_url or to_local_url(preview_path)
-            logger.info("Compiled video -> %s", "supabase" if output_supabase_url else "local")
+            if not output_supabase_url:
+                logger.error(
+                    "Supabase upload failed for compiled video — stored local URL %s which "
+                    "will NOT be playable from Vercel. Check SUPABASE_URL and SUPABASE_SERVICE_KEY.",
+                    final_output_url,
+                )
+            else:
+                logger.info("Compiled video uploaded to Supabase: %s", final_output_url)
 
             _render_jobs[job_id].update({
                 "status": "done",

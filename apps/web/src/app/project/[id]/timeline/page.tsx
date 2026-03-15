@@ -1184,7 +1184,10 @@ export default function TimelinePage() {
     const sorted = [...clips].sort((a, b) => a.order - b.order);
     const playable = sorted.filter(c => c.type !== 'transition');
     const pending = playable.filter(c =>
-      c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.thumbnail_url)
+      // Never overwrite clips that are already videos
+      c.type !== 'video' &&
+      !(c.generated_media_url || '').endsWith('.mp4') &&
+      (c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.thumbnail_url))
     );
 
     const existingThumb = currentProject?.cover_image_url;
@@ -1295,8 +1298,12 @@ export default function TimelinePage() {
     setRendering(true);
     setRenderStatus('Starting render...');
     try {
-      const { clips: c, musicTrack, settings } = useTimelineStore.getState();
-      // Exclude: text_overlay, title/end cards by ID, title cards by prompt, clips without media
+      // Always re-fetch timeline from DB so render uses the authoritative clip URLs,
+      // not potentially stale in-memory store state.
+      const dbTimeline = await api.getTimeline(id);
+      const { musicTrack, settings } = useTimelineStore.getState();
+      const dbClips: any[] = dbTimeline?.clips || [];
+
       const EXCLUDED_CLIP_IDS = new Set(['title_card', 'end_card']);
       const TITLE_CARD_TERMS = [
         'title card', 'title screen', 'title slide', 'title page', 'title treatment',
@@ -1310,7 +1317,7 @@ export default function TimelinePage() {
         const p = (cl.prompt || '').toLowerCase();
         return TITLE_CARD_TERMS.some((t) => p.includes(t));
       };
-      const renderClips = c.filter((cl: any) =>
+      const renderClips = dbClips.filter((cl: any) =>
         cl.type !== 'text_overlay' &&
         !EXCLUDED_CLIP_IDS.has(cl.id) &&
         !isTitleCardClip(cl) &&
@@ -1318,8 +1325,9 @@ export default function TimelinePage() {
       );
       const currentTimeline = {
         clips: renderClips,
-        music_track: musicTrack || null,
-        settings: settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
+        // Audio always from the music track — separate source from video clips
+        music_track: musicTrack || dbTimeline?.music_track || null,
+        settings: settings || dbTimeline?.settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
         effects,
         beat_map: beatMap,
         total_duration_ms: renderClips.reduce((s: number, cl: any) => s + (cl.duration_ms || 0), 0),

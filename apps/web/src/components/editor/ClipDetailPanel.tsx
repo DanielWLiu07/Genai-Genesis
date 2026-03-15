@@ -291,19 +291,21 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
           />
         </div>
 
-        {/* Feedback / Refinement */}
-        <div>
-          <label className="text-xs text-[#888] uppercase tracking-wider flex items-center gap-1 mb-1">
-            <Sparkles size={12} /> Feedback
-          </label>
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            rows={2}
-            placeholder="e.g. make it darker, add rain..."
-            className="manga-input w-full text-xs resize-none"
-          />
-        </div>
+        {/* Feedback / Refinement — hidden for manga panels */}
+        {!(clip as any).manga_panel && (
+          <div>
+            <label className="text-xs text-[#888] uppercase tracking-wider flex items-center gap-1 mb-1">
+              <Sparkles size={12} /> Feedback
+            </label>
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              rows={2}
+              placeholder="e.g. make it darker, add rain..."
+              className="manga-input w-full text-xs resize-none"
+            />
+          </div>
+        )}
 
         {/* Duration */}
         <div>
@@ -375,26 +377,28 @@ export function ClipDetailPanel({ clipId, onClose }: ClipDetailPanelProps) {
             <Play size={14} /> Watch Video
           </button>
         )}
-        <div className="flex gap-2">
-          <button
-            onClick={handleRegenerate}
-            disabled={clip.gen_status === 'generating'}
-            className="manga-btn flex-1 bg-[#111] text-white py-2 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
-          >
-            <RefreshCw size={13} />
-            {clip.gen_status === 'pending' ? 'Gen Image' : 'Regen Image'}
-          </button>
-          {clip.type !== 'transition' && (
+        {!(clip as any).manga_panel && (
+          <div className="flex gap-2">
             <button
-              onClick={handleGenerateVideo}
-              disabled={clip.gen_status === 'generating' || generatingVideo}
+              onClick={handleRegenerate}
+              disabled={clip.gen_status === 'generating'}
               className="manga-btn flex-1 bg-[#111] text-white py-2 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
-              <Film size={13} />
-              {generatingVideo ? 'Generating...' : 'Gen Video'}
+              <RefreshCw size={13} />
+              {clip.gen_status === 'pending' ? 'Gen Image' : 'Regen Image'}
             </button>
-          )}
-        </div>
+            {clip.type !== 'transition' && (
+              <button
+                onClick={handleGenerateVideo}
+                disabled={clip.gen_status === 'generating' || generatingVideo}
+                className="manga-btn flex-1 bg-[#111] text-white py-2 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Film size={13} />
+                {generatingVideo ? 'Generating...' : 'Gen Video'}
+              </button>
+            )}
+          </div>
+        )}
         <button
           onClick={handleDelete}
           className="manga-btn w-full bg-white text-red-600 border-red-300 py-2 text-sm flex items-center justify-center gap-2 hover:bg-red-50"

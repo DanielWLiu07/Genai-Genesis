@@ -1,6 +1,10 @@
 import asyncio
+import base64
 from functools import partial
+from typing import List
 from fastapi import APIRouter, UploadFile, File, HTTPException
+import httpx
+from app.config import get_settings
 from app.db import get_supabase
 from app.state import store_book_text, update_project_mem
 from app.services.audio_analyzer import analyze_audio
@@ -67,6 +71,111 @@ async def upload_book(project_id: str, file: UploadFile = File(...)):
         "book_text": text,
         "text_preview": text[:500],
         "status": "ready_to_analyze",
+    }
+
+
+MANGA_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+MANGA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+
+
+@router.post("/upload-manga")
+async def upload_manga(
+    project_id: str,
+    files: List[UploadFile] = File(...),
+):
+    """Upload manga/comic pages, extract action panels, and create timeline clips.
+
+    Accepts 1-50 image files (pages). Forwards them to the AI service which:
+    - Extracts panels using OpenCV
+    - Scores each panel for action intensity via Gemini vision
+    - Keeps the top action panels
+    - Returns clips with panel images embedded as data URLs (gen_status='done')
+
+    The result is persisted to the database immediately so the editor can load it.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="At least one image file is required.")
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 pages per upload.")
+
+    # Validate file types
+    for f in files:
+        ext = ("." + f.filename.rsplit(".", 1)[-1].lower()) if f.filename and "." in f.filename else ""
+        ct = (f.content_type or "").lower()
+        if ext not in MANGA_EXTENSIONS and ct not in MANGA_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported file type for '{f.filename}'. Accepted: JPG, PNG, WebP.",
+            )
+
+    # Read all pages into memory and base64-encode them
+    pages_b64: List[str] = []
+    for f in files:
+        content = await f.read()
+        pages_b64.append(base64.b64encode(content).decode())
+
+    settings = get_settings()
+
+    # Call AI service
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        try:
+            resp = await client.post(
+                f"{settings.ai_service_url}/ai/analyze-manga",
+                json={
+                    "project_id": project_id,
+                    "pages": pages_b64,
+                    "max_panels": 12,
+                },
+            )
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=503,
+                detail="AI service not running. Start it on port 8001.",
+            )
+
+    if not resp.is_success:
+        try:
+            detail = resp.json().get("detail", f"AI service error {resp.status_code}")
+        except Exception:
+            detail = f"AI service error {resp.status_code}: {resp.text[:200]}"
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    result = resp.json()
+    analysis = result.get("analysis", {})
+    clips = result.get("clips", [])
+    panel_count = result.get("panel_count", 0)
+
+    # Persist to database
+    db = get_supabase()
+    if db is not None:
+        try:
+            # Store analysis and mark project as ready for editing (skip analyze/plan steps)
+            db.table("projects").update({
+                "analysis": {**analysis, "input_mode": "manga"},
+                "status": "editing",
+            }).eq("id", project_id).execute()
+
+            # Store timeline with manga panel clips
+            total_ms = sum(c.get("duration_ms", 2000) for c in clips)
+            db.table("timelines").upsert({
+                "project_id": project_id,
+                "clips": clips,
+                "total_duration_ms": total_ms,
+                "settings": {"resolution": "1080p", "aspect_ratio": "9:16", "fps": 24},
+            }).execute()
+        except Exception as exc:
+            # Non-fatal — caller can still use the returned clips
+            import logging
+            logging.getLogger(__name__).warning(f"DB persist failed: {exc}")
+    else:
+        update_project_mem(project_id, analysis={**analysis, "input_mode": "manga"}, status="editing")
+
+    return {
+        "panel_count": panel_count,
+        "page_count": result.get("page_count", len(files)),
+        "clips": clips,
+        "analysis": analysis,
+        "status": "editing",
     }
 
 

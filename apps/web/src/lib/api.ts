@@ -54,6 +54,26 @@ export const api = {
     return res.json();
   },
 
+  uploadManga: async (projectId: string, files: File[]) => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/upload-manga`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      let message = `Manga upload error: ${res.status}`;
+      try {
+        const body = await res.json();
+        message = body.detail || body.error || message;
+      } catch {}
+      throw new Error(message);
+    }
+    return res.json();
+  },
+
   uploadAudio: async (projectId: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import analyze, plan, chat, suggest, presets
+from app.routers import analyze, plan, chat, suggest, presets, manga
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +23,7 @@ app.include_router(plan.router)
 app.include_router(chat.router)
 app.include_router(suggest.router)
 app.include_router(presets.router)
+app.include_router(manga.router)
 
 
 @app.get("/")

@@ -307,7 +307,7 @@ function SceneNodeInner({ data }: NodeProps) {
           </div>
         )}
 
-        {clip.gen_status === 'pending' && clip.type !== 'transition' && (
+        {clip.gen_status === 'pending' && clip.type !== 'transition' && !(clip as any).manga_panel && (
           <button
             onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
             className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-[#111]/30 transition-colors cursor-pointer"
@@ -326,7 +326,7 @@ function SceneNodeInner({ data }: NodeProps) {
           </div>
         )}
 
-        {clip.gen_status === 'error' && (
+        {clip.gen_status === 'error' && !(clip as any).manga_panel && (
           <button
             onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
             className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1 hover:bg-red-600/30 transition-colors cursor-pointer"
@@ -336,7 +336,7 @@ function SceneNodeInner({ data }: NodeProps) {
           </button>
         )}
 
-        {clip.gen_status === 'done' && clip.type === 'video' && (
+        {clip.gen_status === 'done' && clip.type === 'video' && !(clip as any).manga_panel && (
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
             <button
               onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
@@ -355,7 +355,7 @@ function SceneNodeInner({ data }: NodeProps) {
           </div>
         )}
 
-        {clip.gen_status === 'done' && clip.type !== 'video' && (
+        {clip.gen_status === 'done' && clip.type !== 'video' && !(clip as any).manga_panel && (
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/70 flex items-center justify-center gap-2 transition-colors opacity-0 group-hover:opacity-100">
             <button
               onClick={(e) => { e.stopPropagation(); handleGenerate(); }}

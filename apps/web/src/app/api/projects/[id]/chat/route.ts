@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { supabase } from '@/lib/supabase';
 
-const SYSTEM = `You are MangaMate's AI copilot — a cinematic trailer editor and AMV specialist.
+const SYSTEM = `You are Lotus's AI copilot — a cinematic trailer editor and AMV specialist.
 You help users edit their manga/book trailer through natural language. Think like a professional
 AMV editor who understands both cinematic storytelling AND fast-paced anime music video editing.
 

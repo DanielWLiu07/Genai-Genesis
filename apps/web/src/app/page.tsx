@@ -163,7 +163,7 @@ export default function LandingPage() {
 
   const handleGetStarted = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    navigate('/dashboard');
+    navigate('/auth');
   };
 
   return (

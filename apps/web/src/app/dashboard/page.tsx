@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import Image from 'next/image';
 import { Plus, Clock, Loader2, Users, X, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useProjectStore, type Project } from '@/stores/project-store';
 import { api } from '@/lib/api';
+import { hasLocalAuth } from '@/lib/local-auth';
 import gsap from 'gsap';
 
 const STATUS_STYLES: Record<Project['status'], string> = {
@@ -40,18 +42,30 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 export default function Dashboard() {
   const { projects, loading, setProjects, setLoading } = useProjectStore();
   const mainRef = useRef<HTMLElement>(null);
+  const router = useRouter();
+  const [authReady, setAuthReady] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null); // project id
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    api.getProjects()
-      .then((data: any) => setProjects(Array.isArray(data) ? data : data.projects || []))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [setProjects, setLoading]);
+    if (!hasLocalAuth()) {
+      router.replace('/auth');
+      return;
+    }
+    setAuthReady(true);
+  }, [router]);
 
   useEffect(() => {
+    if (!authReady) return;
+    setLoading(true);
+    api.getProjects()
+      .then((data: Project[] | { projects?: Project[] }) => setProjects(Array.isArray(data) ? data : data.projects || []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [authReady, setProjects, setLoading]);
+
+  useEffect(() => {
+    if (!authReady) return;
     const ctx = gsap.context(() => {
       gsap.fromTo('.hero-title', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: 'power3.out' });
       gsap.fromTo('.hero-cta', { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.4, delay: 0.2, ease: 'power2.out' });
@@ -98,9 +112,10 @@ export default function Dashboard() {
       });
     }, mainRef);
     return () => ctx.revert();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
+    if (!authReady) return;
     if (!loading && projects.length > 0) {
       gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 0.9, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
       gsap.fromTo('.shelf-line', { opacity: 0, scaleX: 0, transformOrigin: 'left' }, { opacity: 1, scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.65, ease: 'power2.out' });
@@ -138,7 +153,7 @@ export default function Dashboard() {
 
       return () => controller.abort();
     }
-  }, [projects, loading]);
+  }, [authReady, projects, loading]);
 
   async function handleDeleteConfirmed() {
     if (!confirmDelete) return;
@@ -156,6 +171,14 @@ export default function Dashboard() {
 
   const sorted = [...projects].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const shelfRows = chunkArray(sorted, 5);
+
+  if (!authReady) {
+    return (
+      <main className="min-h-screen flex items-center justify-center" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <Loader2 size={28} className="text-[#444] animate-spin" />
+      </main>
+    );
+  }
 
   return (
     <main ref={mainRef} className="h-screen flex flex-col">

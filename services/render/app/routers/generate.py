@@ -31,6 +31,7 @@ class CharacterInfo(BaseModel):
 
 class GenerateRequest(BaseModel):
     clip_id: str
+    project_id: str = ""
     prompt: str
     type: str = "image"
     aspect_ratio: str = "16:9"
@@ -66,12 +67,13 @@ class GenerateResponse(BaseModel):
     message: str = ""
 
 
-async def _notify_progress(clip_id: str, status: str, media_url: str = "", thumbnail_url: str = "", error: str = "", extra: dict = {}):
+async def _notify_progress(clip_id: str, status: str, media_url: str = "", thumbnail_url: str = "", error: str = "", extra: dict = {}, project_id: str = ""):
     settings = get_settings()
     try:
         async with httpx.AsyncClient() as client:
             payload = {
                 "clip_id": clip_id,
+                "project_id": project_id,
                 "status": status,
                 "media_url": media_url,
                 "thumbnail_url": thumbnail_url,
@@ -90,7 +92,7 @@ async def _notify_progress(clip_id: str, status: str, media_url: str = "", thumb
 async def _generate_and_callback(data: GenerateRequest):
     """Background task: build rich prompt, generate, notify."""
     try:
-        await _notify_progress(data.clip_id, "generating")
+        await _notify_progress(data.clip_id, "generating", project_id=data.project_id)
 
         chars = [c.model_dump() for c in (data.characters or [])]
         neg = data.negative_prompt or build_negative_prompt(genre=data.genre)
@@ -152,13 +154,13 @@ async def _generate_and_callback(data: GenerateRequest):
                 logger.warning("Thumbnail creation failed: %s", e)
 
             await _notify_progress(data.clip_id, "done", media_url, thumbnail_url,
-                                   extra={"actual_type": actual_type})
+                                   extra={"actual_type": actual_type}, project_id=data.project_id)
         else:
-            await _notify_progress(data.clip_id, "error", error=result.get("message", "Generation failed"))
+            await _notify_progress(data.clip_id, "error", error=result.get("message", "Generation failed"), project_id=data.project_id)
 
     except Exception as e:
         logger.error("Generation background task failed: %s", e)
-        await _notify_progress(data.clip_id, "error", error=str(e))
+        await _notify_progress(data.clip_id, "error", error=str(e), project_id=data.project_id)
 
 
 @router.post("/generate", response_model=GenerateResponse)

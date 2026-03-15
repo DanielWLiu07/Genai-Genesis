@@ -16,6 +16,7 @@ router = APIRouter(prefix="/internal", tags=["internal"])
 
 class ClipStatusUpdate(BaseModel):
     clip_id: str
+    project_id: str = ""
     status: str  # "generating" | "done" | "error"
     media_url: str = ""
     thumbnail_url: str = ""
@@ -40,14 +41,23 @@ async def update_clip_status(data: ClipStatusUpdate):
 
     from app.db import get_supabase
     db = get_supabase()
-    if db:
+    if db and data.project_id:
         try:
-            db.rpc("update_clip_status", {
-                "p_clip_id": data.clip_id,
-                "p_status": data.status,
-                "p_media_url": data.media_url,
-                "p_error": data.error,
-            }).execute()
+            tl_row = db.table("timelines").select("clips").eq("project_id", data.project_id).execute()
+            if tl_row.data:
+                clips = tl_row.data[0].get("clips", [])
+                for clip in clips:
+                    if clip.get("id") == data.clip_id:
+                        clip["gen_status"] = data.status
+                        if data.media_url:
+                            clip["generated_media_url"] = data.media_url
+                            clip["thumbnail_url"] = data.thumbnail_url or data.media_url
+                        if data.actual_type:
+                            clip["type"] = data.actual_type
+                        if data.error:
+                            clip["gen_error"] = data.error
+                        break
+                db.table("timelines").update({"clips": clips}).eq("project_id", data.project_id).execute()
         except Exception as e:
             logger.warning("DB update failed for clip status: %s", e)
 
@@ -61,8 +71,12 @@ async def update_clip_status(data: ClipStatusUpdate):
     }
     if data.actual_type:
         ws_message["actual_type"] = data.actual_type
-    for project_id in list(manager.connections.keys()):
-        await manager.broadcast(project_id, ws_message)
+    # Broadcast to the specific project if known, otherwise all connected projects
+    if data.project_id:
+        await manager.broadcast(data.project_id, ws_message)
+    else:
+        for project_id in list(manager.connections.keys()):
+            await manager.broadcast(project_id, ws_message)
 
     return {"ok": True}
 

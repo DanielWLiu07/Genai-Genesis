@@ -251,15 +251,17 @@ User: ${message}`;
         geminiHistory.push({ role: 'user', parts: [{ text: m.content }] });
       } else if (m.role === 'assistant') {
         const parts: any[] = [];
+        const responseParts: any[] = [];
         if (m.tool_calls?.length) {
           for (const tc of m.tool_calls) {
             parts.push({ functionCall: { name: tc.tool_name, args: tc.arguments || {} } });
+            // Gemini requires a functionResponse for every functionCall in history
+            responseParts.push({ functionResponse: { name: tc.tool_name, response: { result: 'applied' } } });
           }
         }
         if (m.content) parts.push({ text: m.content });
-        if (parts.length) {
-          geminiHistory.push({ role: 'model', parts });
-        }
+        if (parts.length) geminiHistory.push({ role: 'model', parts });
+        if (responseParts.length) geminiHistory.push({ role: 'user', parts: responseParts });
       }
     }
 

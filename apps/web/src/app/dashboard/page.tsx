@@ -363,18 +363,18 @@ export default function Dashboard() {
             </p>
             <div className="flex gap-2 justify-end">
               <button
-                className="px-3 py-1.5 text-xs border border-[#ccc] text-[#666] hover:bg-[#f5f5f5] transition-colors"
+                className="manga-badge text-[0.6rem] bg-white text-[#111] border-[#111] hover:bg-[#f0f0f0] transition-colors flex items-center gap-1 px-2 py-1"
                 onClick={() => setConfirmDelete(null)}
               >
-                Cancel
+                <X size={9} /> CANCEL
               </button>
               <button
-                className="px-3 py-1.5 text-xs bg-red-500 text-white border border-red-600 hover:bg-red-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                className="manga-badge text-[0.6rem] bg-red-600 text-white border-red-800 hover:bg-red-700 transition-colors flex items-center gap-1 px-2 py-1 disabled:opacity-50"
                 onClick={handleDeleteConfirmed}
                 disabled={deleting}
               >
-                {deleting ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                Delete
+                {deleting ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
+                DELETE
               </button>
             </div>
           </div>

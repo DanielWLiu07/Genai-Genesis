@@ -34,6 +34,7 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
 
     generate_payload: dict = {
         "clip_id": data.clip_id,
+        "project_id": project_id,
         "prompt": data.prompt,
         "type": data.type,
         "aspect_ratio": "16:9",

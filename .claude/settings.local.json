@@ -25,7 +25,10 @@
       "Bash(git config:*)",
       "Bash(git diff:*)",
       "Bash(pkill:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(lsof:*)",
+      "Bash(ls:*)",
+      "Bash(gcloud config:*)"
     ]
   }
 }

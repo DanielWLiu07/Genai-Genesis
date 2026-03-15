@@ -41,9 +41,15 @@ CREATE TABLE IF NOT EXISTS timelines (
   music_track JSONB,
   total_duration_ms INT DEFAULT 0,
   settings JSONB DEFAULT '{"resolution":"1080p","aspect_ratio":"16:9","fps":24}'::JSONB,
+  effects JSONB DEFAULT '[]'::JSONB,
+  beat_map JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add missing columns to existing timelines table (idempotent)
+ALTER TABLE timelines ADD COLUMN IF NOT EXISTS effects JSONB DEFAULT '[]'::JSONB;
+ALTER TABLE timelines ADD COLUMN IF NOT EXISTS beat_map JSONB;
 
 -- Render jobs table
 CREATE TABLE IF NOT EXISTS render_jobs (
@@ -52,9 +58,13 @@ CREATE TABLE IF NOT EXISTS render_jobs (
   status TEXT DEFAULT 'queued',
   progress INT DEFAULT 0,
   output_url TEXT,
+  preview_url TEXT,
   error TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add missing columns to existing render_jobs table (idempotent)
+ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS preview_url TEXT;
 
 -- Chat history table
 CREATE TABLE IF NOT EXISTS chat_history (

@@ -6,6 +6,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import {
   ArrowLeft, Zap, Play, Pause, Download, Loader2, Trash2, ZoomIn, ZoomOut, Music, MessageSquare, Save, Check,
+  Share2, Globe, Volume2, VolumeX,
 } from 'lucide-react';
 import { useTimelineStore, type Clip, type Effect, type EffectType, type BeatMap } from '@/stores/timeline-store';
 import { useProjectStore } from '@/stores/project-store';
@@ -663,6 +664,11 @@ export default function TimelinePage() {
   const [compiledUrl, setCompiledUrl] = useState<string | null>(null);
   const [compiledReady, setCompiledReady] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [resultPublished, setResultPublished] = useState(false);
+  const [resultPublishing, setResultPublishing] = useState(false);
+  const [resultMuted, setResultMuted] = useState(true);
+  const resultModalRef = useRef<HTMLDivElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const router = useRouter();
 
@@ -847,6 +853,17 @@ export default function TimelinePage() {
     if (isRich && current?.bpm === bpm) return;
     setBeatMap(generateBeatMap(bpm));
   }, [bpm, generateBeatMap, setBeatMap]);
+
+  // ── Result modal GSAP animation ─────────────────────────────────────────
+
+  useEffect(() => {
+    if (showResultModal && resultModalRef.current) {
+      gsap.fromTo(resultModalRef.current,
+        { y: 60, opacity: 0, scale: 0.93 },
+        { y: 0, opacity: 1, scale: 1, duration: 0.55, ease: 'back.out(1.5)' }
+      );
+    }
+  }, [showResultModal]);
 
   // ── Chat panel GSAP slide animation ─────────────────────────────────────
 
@@ -1232,8 +1249,22 @@ Respond ONLY with compact JSON (no markdown, no explanation):
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const handlePublishToCommunity = useCallback(async () => {
+    if (!id || resultPublishing || resultPublished) return;
+    setResultPublishing(true);
+    try {
+      await fetch(`/api/projects/${id}/publish`, { method: 'POST' });
+      setResultPublished(true);
+    } catch { /* non-fatal */ } finally {
+      setResultPublishing(false);
+    }
+  }, [id, resultPublishing, resultPublished]);
+
   const handleRender = useCallback(async () => {
     if (!id || rendering) return;
+    setShowResultModal(false);
+    setResultPublished(false);
+    setResultPublishing(false);
     setRendering(true);
     setRenderStatus('Starting render...');
     try {
@@ -1284,6 +1315,7 @@ Respond ONLY with compact JSON (no markdown, no explanation):
               setCompiledUrl(previewUrl);
               setCompiledReady(false);
               setShareUrl(previewUrl);
+              setShowResultModal(true);
             }
             break;
           } else if (status.status === 'error') {
@@ -1628,7 +1660,7 @@ Respond ONLY with compact JSON (no markdown, no explanation):
           </button>
 
           <button
-            onClick={handleRender}
+            onClick={() => !rendering && handleRender()}
             disabled={rendering}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white text-black font-bold border border-white hover:bg-[#e5e5e5] disabled:opacity-40 transition-colors"
             style={{ fontFamily: 'var(--font-manga)' }}
@@ -2501,6 +2533,116 @@ Respond ONLY with compact JSON (no markdown, no explanation):
             outputUrl={shareUrl}
             onClose={() => setShareUrl(null)}
           />
+        )}
+
+        {/* ── RESULT MODAL ──────────────────────────────────────────────── */}
+        {showResultModal && compiledUrl && (
+          <div
+            className="fixed inset-0 z-[999] flex items-center justify-center px-4"
+            style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowResultModal(false); }}
+          >
+            <div
+              ref={resultModalRef}
+              className="relative w-full max-w-2xl border-4 border-[#111] shadow-[12px_12px_0px_#000] overflow-hidden"
+              style={{ background: '#0a0a0a', fontFamily: 'var(--font-manga)' }}
+            >
+              {/* Manga speed-line bg */}
+              <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+                style={{ backgroundImage: 'repeating-conic-gradient(#fff 0deg, transparent 0.2deg, transparent 8deg)' }}
+              />
+
+              {/* Header */}
+              <div className="relative flex items-center justify-between px-6 pt-5 pb-4 border-b-2 border-[#1e1e1e]">
+                <div>
+                  <h2
+                    className="text-white text-2xl font-black tracking-widest"
+                    style={{ textShadow: '3px 3px 0px #a855f7, 5px 5px 0px #6b21a8' }}
+                  >
+                    RENDER COMPLETE!
+                  </h2>
+                  <p className="text-[#555] text-[0.65rem] tracking-[0.2em] mt-0.5 uppercase">Your trailer is ready to share</p>
+                </div>
+                <button
+                  onClick={() => setShowResultModal(false)}
+                  className="text-[#444] hover:text-white transition-colors text-2xl font-bold leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Video player */}
+              <div className="relative bg-black border-b-2 border-[#1e1e1e]" style={{ aspectRatio: '16/9' }}>
+                <video
+                  key={compiledUrl}
+                  src={compiledUrl}
+                  autoPlay
+                  loop
+                  muted={resultMuted}
+                  playsInline
+                  className="w-full h-full object-contain"
+                />
+                {/* Compiled badge */}
+                <div className="absolute top-3 left-3 bg-[#a855f7]/80 text-white text-[0.5rem] px-2 py-0.5 uppercase tracking-widest flex items-center gap-1">
+                  ✦ COMPILED
+                </div>
+                {/* Mute toggle */}
+                <button
+                  onClick={() => setResultMuted(m => !m)}
+                  className="absolute bottom-3 right-3 bg-black/70 text-white p-2 border border-[#333] hover:border-[#a855f7] transition-colors"
+                >
+                  {resultMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                </button>
+              </div>
+
+              {/* Action buttons */}
+              <div className="relative px-6 py-5 grid grid-cols-3 gap-3">
+                {/* Download */}
+                <a
+                  href={compiledUrl}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-center justify-center gap-2 py-4 border-2 border-[#222] text-[#888] hover:border-[#a855f7] hover:text-[#a855f7] transition-colors text-[0.6rem] tracking-widest uppercase"
+                >
+                  <Download size={20} />
+                  DOWNLOAD
+                </a>
+
+                {/* Share */}
+                <button
+                  onClick={() => { setShowResultModal(false); setShareUrl(compiledUrl); }}
+                  className="flex flex-col items-center justify-center gap-2 py-4 border-2 border-[#222] text-[#888] hover:border-[#a855f7] hover:text-[#a855f7] transition-colors text-[0.6rem] tracking-widest uppercase"
+                >
+                  <Share2 size={20} />
+                  SHARE
+                </button>
+
+                {/* Submit to community */}
+                {resultPublished ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-4 border-2 border-[#a855f7] bg-[#a855f7]/10 text-[#a855f7] text-[0.6rem] tracking-widest uppercase">
+                    <Check size={20} />
+                    PUBLISHED
+                  </div>
+                ) : (
+                  <button
+                    onClick={handlePublishToCommunity}
+                    disabled={resultPublishing}
+                    className="flex flex-col items-center justify-center gap-2 py-4 border-2 border-[#222] text-[#888] hover:border-[#a855f7] hover:text-[#a855f7] transition-colors text-[0.6rem] tracking-widest uppercase disabled:opacity-40"
+                  >
+                    {resultPublishing ? <Loader2 size={20} className="animate-spin" /> : <Globe size={20} />}
+                    {resultPublishing ? 'PUBLISHING' : 'COMMUNITY'}
+                  </button>
+                )}
+              </div>
+
+              {resultPublished && (
+                <p className="px-6 pb-4 text-[0.6rem] text-[#a855f7] tracking-wider -mt-2">
+                  ✦ Your trailer is now live in the community feed.
+                </p>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Chat panel — always mounted, GSAP slide overlay (no layout shift) */}

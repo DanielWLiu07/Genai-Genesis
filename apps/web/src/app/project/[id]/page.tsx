@@ -336,9 +336,11 @@ export default function EditorPage() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [generatingVideos, setGeneratingVideos] = useState(false);
+  const [videoCancelled, setVideoCancelled] = useState(false);
   const [videoGenProgress, setVideoGenProgress] = useState({ done: 0, total: 0 });
   const [batchGenerating, setBatchGenerating] = useState(false);
   const cancelImagesRef = useRef(false);
+  const cancelVideosRef = useRef(false);
   const cancelExportRef = useRef(false);
   const cancelledVideoClipsRef = useRef<Set<string>>(new Set());
   const [selectedStyle, setSelectedStyle] = useState('cinematic');
@@ -405,6 +407,12 @@ export default function EditorPage() {
     if (!id) return;
     setProjectId(id);
 
+    // Restore video-cancelled flag from sessionStorage — but only if no stuck clips exist
+    // (stuck clips take priority and need to be re-run, so don't lock out the generate button)
+    if (sessionStorage.getItem(`video_cancelled_${id}`)) {
+      setVideoCancelled(true);
+    }
+
     Promise.all([
       api.getProject(id).catch(() => null),
       api.getTimeline(id).catch(() => ({ clips: [], music_track: null, settings: null })),
@@ -438,6 +446,19 @@ export default function EditorPage() {
       }
       if (timeline) {
         loadTimeline(timeline);
+        // Reset any clips stuck in 'generating' — happens when page is refreshed mid-generation
+        // or when a WebSocket callback was never received. Re-generate will pick them up.
+        const stuckClips = (timeline.clips || []).filter((c: any) => c.gen_status === 'generating');
+        if (stuckClips.length > 0) {
+          const resetClips = (timeline.clips || []).map((c: any) =>
+            c.gen_status === 'generating' ? { ...c, gen_status: 'pending' } : c
+          );
+          stuckClips.forEach((c: any) => updateClip(c.id, { gen_status: 'pending' }));
+          api.updateTimeline(id, { clips: resetClips }).catch(() => {});
+          // Also clear videoCancelled so the generate button reappears
+          sessionStorage.removeItem(`video_cancelled_${id}`);
+          setVideoCancelled(false);
+        }
         // If project has no cover, use the first generated clip's thumbnail
         if (project && !project.cover_image_url) {
           const firstThumb = (timeline.clips || []).find((c: any) => c.thumbnail_url)?.thumbnail_url;
@@ -954,10 +975,15 @@ export default function EditorPage() {
       `fast-paced ${analysis?.mood || 'intense'} ${analysis?.genre || 'action'} tone`,
     ].filter(Boolean).join('. ') || undefined;
 
+    cancelVideosRef.current = false;
     setGeneratingVideos(true);
     setVideoGenProgress({ done: 0, total: toConvert.length });
 
     for (let i = 0; i < toConvert.length; i++) {
+      if (cancelVideosRef.current) {
+        updateClip(toConvert[i].id, { gen_status: 'pending' });
+        break;
+      }
       const clip = toConvert[i];
       const order = sorted.findIndex(c => c.id === clip.id);
       const isCont = (clip as any).shot_type === 'continuous';
@@ -1157,6 +1183,25 @@ export default function EditorPage() {
               {loadingSuggestions ? <Loader2 size={14} className="animate-spin" /> : <Lightbulb size={14} />} Suggest
             </button>
           )}
+          {/* Emergency reset — always visible when clips are stuck but no active batch running */}
+          {anyGenerating && !batchGenerating && !generatingVideos && (
+            <button
+              onClick={() => {
+                const stuck = useTimelineStore.getState().clips.filter(c => c.gen_status === 'generating');
+                stuck.forEach(c => updateClip(c.id, { gen_status: 'pending' }));
+                setGeneratingVideos(false);
+                setBatchGenerating(false);
+                setVideoCancelled(false);
+                if (id) sessionStorage.removeItem(`video_cancelled_${id}`);
+                const updatedClips = useTimelineStore.getState().clips;
+                if (id) api.updateTimeline(id, { clips: updatedClips }).catch(() => {});
+              }}
+              className="manga-btn bg-red-50 text-red-600 px-3 py-1.5 text-sm flex items-center gap-1.5 border-red-300 hover:bg-red-100 transition-colors"
+              title="Reset clips stuck in generating state"
+            >
+              <X size={13} /> Reset Stuck ({playableClips.filter(c => c.gen_status === 'generating').length})
+            </button>
+          )}
           {/* Phase-aware primary CTA */}
           {workflowPhase === 'images' && batchGenerating && (
             <button
@@ -1172,15 +1217,24 @@ export default function EditorPage() {
               <Sparkles size={14} /> {playableClips.some(c => c.gen_status === 'error') ? 'Retry Failed' : 'Generate All Images'}
             </button>
           )}
-          {(workflowPhase === 'videos') && anyGenerating && (
+          {(workflowPhase === 'videos') && anyGenerating && !videoCancelled && (
             <button
               onClick={() => {
+                cancelVideosRef.current = true;
                 const generating = playableClips.filter(c => c.gen_status === 'generating');
                 generating.forEach(c => {
                   cancelledVideoClipsRef.current.add(c.id);
-                  updateClip(c.id, { gen_status: 'done' });
+                  // Reset to pending (not done) — no video was actually generated
+                  updateClip(c.id, { gen_status: 'pending' });
                 });
                 setGeneratingVideos(false);
+                setVideoCancelled(true);
+                if (id) sessionStorage.setItem(`video_cancelled_${id}`, '1');
+                // Persist to DB so re-entry doesn't see stale 'generating' status
+                if (id) {
+                  const updatedClips = useTimelineStore.getState().clips;
+                  api.updateTimeline(id, { clips: updatedClips }).catch(() => {});
+                }
               }}
               className="manga-btn bg-blue-600/20 text-blue-700 px-3 py-1.5 text-sm flex items-center gap-2 border-blue-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
             >
@@ -1188,9 +1242,13 @@ export default function EditorPage() {
               {playableClips.filter(c => c.type === 'video' && c.gen_status === 'done').length}/{playableClips.length} Generating Videos… <X size={12} />
             </button>
           )}
-          {imagesAllDone && !allVideosGenerated && !anyGenerating && !generatingVideos && (
+          {imagesAllDone && !allVideosGenerated && !anyGenerating && !generatingVideos && !videoCancelled && (
             <button
-              onClick={handleGenerateAllVideos}
+              onClick={() => {
+                if (id) sessionStorage.removeItem(`video_cancelled_${id}`);
+                setVideoCancelled(false);
+                handleGenerateAllVideos();
+              }}
               className="manga-btn bg-blue-600 text-white px-3 py-1.5 text-sm flex items-center gap-1.5 border-blue-600"
             >
               <Film size={14} /> Generate Videos

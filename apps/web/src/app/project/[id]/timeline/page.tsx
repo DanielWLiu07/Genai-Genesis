@@ -628,6 +628,12 @@ export default function TimelinePage() {
           setBpm(tl.beat_map.bpm);
         }
       }).catch(() => { isTimelineLoadedRef.current = true; });
+
+      // Load existing compiled video + project data from DB
+      api.getProject(id).then((proj: any) => {
+        if (proj?.compiled_video_url) setCompiledUrl(proj.compiled_video_url);
+        setCurrentProject(proj);
+      }).catch(() => {});
     });
   }, [id, isDemoMode, loadTimeline, setProjectId]);
 
@@ -666,6 +672,11 @@ export default function TimelinePage() {
   const [previewLoadError, setPreviewLoadError] = useState<string | null>(null);
   const [compiledUrl, setCompiledUrl] = useState<string | null>(null);
   const [compiledReady, setCompiledReady] = useState(false);
+  const [currentProject, setCurrentProject] = useState<any>(null);
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [generatingVideos, setGeneratingVideos] = useState(false);
+  const cancelImagesRef = useRef(false);
+  const cancelVideosRef = useRef(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
   const [resultPublished, setResultPublished] = useState(false);
@@ -1146,6 +1157,136 @@ export default function TimelinePage() {
     }
   }, [id, resultPublishing, resultPublished, compiledUrl]);
 
+  const handleGenerateAllImages = useCallback(async () => {
+    if (!id || batchGenerating) return;
+    cancelImagesRef.current = false;
+    setBatchGenerating(true);
+    const analysis = currentProject?.analysis;
+    const chars = (analysis?.characters as any[] || []).map((c: any) => ({
+      name: c.name, description: c.description, appearance: c.appearance, image_url: c.image_url,
+    }));
+    const moodLower = (analysis?.mood || '').toLowerCase();
+    const genreLower = (analysis?.genre || '').toLowerCase();
+    const palette = genreLower.includes('horror') ? 'deep blacks, blood red, desaturated greens'
+      : genreLower.includes('romance') ? 'soft pinks, warm golds, gentle pastels'
+      : moodLower.includes('epic') || moodLower.includes('somber') ? 'muted earth tones, deep navy shadows, amber fire highlights'
+      : 'rich jewel tones, high contrast shadows';
+    const charLines = chars.map((c: any) => c.appearance ? `${c.name} — ${c.appearance}` : '').filter(Boolean).join('; ');
+    const styleSeed = [
+      'ART STYLE: hand-drawn manga illustration, thick bold black ink outlines, heavy chiaroscuro ink-wash shading, flat cel-shading, no photorealism, no 3D CGI, no watercolor',
+      'ACTION: every frame shows MAXIMUM physical action — full-body heavy swings, explosive impacts, dramatic leaps at peak extension, bodies mid-motion with full weight and force visible, never static or posed',
+      'MOTION: speed lines radiating from impact, motion blur on limbs, shockwave distortion rings, debris and dust from impacts, energy crackles',
+      `COLOR PALETTE: ${palette}, consistent across every scene, high contrast black shadows`,
+      charLines ? `CHARACTERS (draw identically every scene): ${charLines}` : '',
+      `TONE: ${analysis?.mood || 'intense'}, fast-paced ${analysis?.genre || 'action'} manga AMV`,
+    ].filter(Boolean).join('. ');
+
+    const sorted = [...clips].sort((a, b) => a.order - b.order);
+    const playable = sorted.filter(c => c.type !== 'transition');
+    const pending = playable.filter(c =>
+      c.gen_status === 'pending' || c.gen_status === 'error' || (c.gen_status === 'done' && !c.thumbnail_url)
+    );
+
+    const existingThumb = currentProject?.cover_image_url;
+    let prevUrl: string | undefined = (existingThumb && !existingThumb.startsWith('data:')) ? existingThumb : undefined;
+    let prevPrompt: string | undefined;
+
+    for (const clip of pending) {
+      if (cancelImagesRef.current) { updateClip(clip.id, { gen_status: 'pending' }); break; }
+      const order = sorted.findIndex(c => c.id === clip.id);
+      const clipStart = sorted.slice(0, order).reduce((sum, c) => sum + (c.duration_ms || 0), 0);
+      const { beatMap: bm } = useTimelineStore.getState();
+      let musicEnergy: number | undefined;
+      if (bm?.beats?.length) {
+        const nearbyBeats = bm.beats.filter((b: number) => Math.abs(b - clipStart) < 500).length;
+        const windowBeats = bm.beats.filter((b: number) => b >= clipStart - 2000 && b <= clipStart + 2000).length;
+        musicEnergy = Math.min(1, windowBeats / 8);
+        if (nearbyBeats > 0) musicEnergy = Math.min(1, musicEnergy + 0.3);
+      }
+      if (!prevUrl) {
+        const prevDone = sorted.slice(0, order).reverse().find(
+          c => c.type !== 'text_overlay' && c.type !== 'transition' && c.generated_media_url && !c.generated_media_url.startsWith('data:')
+        );
+        if (prevDone) prevUrl = prevDone.generated_media_url!;
+      }
+      if (!prevPrompt) {
+        const prevDone = sorted.slice(0, order).reverse().find(c => c.type !== 'text_overlay' && c.type !== 'transition' && c.prompt);
+        if (prevDone) prevPrompt = prevDone.prompt;
+      }
+      updateClip(clip.id, { gen_status: 'generating' });
+      let result: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 3000));
+        try {
+          const clipType = clip.type === 'text_overlay' ? 'text_overlay' : 'image';
+          result = await api.generateClip(id, clip.id, clip.prompt, clipType, {
+            clip_order: order, clip_total: playable.length,
+            scene_image_url: clip.type !== 'text_overlay' ? prevUrl : undefined,
+            reference_image_url: prevUrl && clip.type !== 'text_overlay' ? prevUrl : undefined,
+            characters: chars.length > 0 ? chars : undefined,
+            mood: analysis?.mood, genre: analysis?.genre, style_seed: styleSeed,
+            prev_scene_prompt: clip.type !== 'text_overlay' ? prevPrompt : undefined,
+            text: (clip as any).text || undefined,
+            music_timestamp_ms: clipStart, music_energy: musicEnergy,
+          });
+          if (result.status === 'done' || result.media_url) break;
+        } catch (err: any) { result = { status: 'error', message: String(err) }; }
+      }
+      const url = result?.media_url || result?.output_url || result?.generated_media_url;
+      if (url) {
+        updateClip(clip.id, { gen_status: 'done', generated_media_url: url, thumbnail_url: result.thumbnail_url || url });
+        if (clip.type !== 'text_overlay') { prevUrl = url; prevPrompt = clip.prompt; }
+      } else if (result?.status !== 'generating') {
+        updateClip(clip.id, { gen_status: 'error', gen_error: result?.message || 'No image returned' });
+      }
+      if (!cancelImagesRef.current) await new Promise(r => setTimeout(r, 1500));
+    }
+    setBatchGenerating(false);
+  }, [id, clips, currentProject, updateClip, batchGenerating]);
+
+  const handleGenerateAllVideos = useCallback(async () => {
+    if (!id || generatingVideos) return;
+    const analysis = currentProject?.analysis;
+    const chars = (analysis?.characters as any[] || []).map((c: any) => ({
+      name: c.name, description: c.description, appearance: c.appearance,
+      image_url: c.image_url || c.reference_image_url,
+    }));
+    const sorted = [...clips].sort((a, b) => a.order - b.order);
+    const toConvert = sorted.filter(c => c.type !== 'transition' && c.type !== 'video' && c.thumbnail_url);
+    const styleSeed = [
+      'manga AMV style, thick bold ink outlines, heavy cel-shading, no photorealism, no 3D CGI',
+      'MOTION: massive full-body action every clip — heavy sword swings, explosive impacts, dramatic leaps, shockwave rings, speed lines, motion blur',
+      `fast-paced ${analysis?.mood || 'intense'} ${analysis?.genre || 'action'} tone`,
+    ].filter(Boolean).join('. ') || undefined;
+
+    cancelVideosRef.current = false;
+    setGeneratingVideos(true);
+    for (let i = 0; i < toConvert.length; i++) {
+      if (cancelVideosRef.current) { updateClip(toConvert[i].id, { gen_status: 'pending' }); break; }
+      const clip = toConvert[i];
+      const order = sorted.findIndex(c => c.id === clip.id);
+      const prev = order > 0 ? sorted[order - 1] : null;
+      const next = order < sorted.length - 1 ? sorted[order + 1] : null;
+      const isCont = (clip as any).shot_type === 'continuous';
+      const startFrame = isCont
+        ? (prev?.thumbnail_url && !prev.thumbnail_url.startsWith('data:') ? prev.thumbnail_url : clip.thumbnail_url)
+        : (clip.thumbnail_url && !clip.thumbnail_url.startsWith('data:') ? clip.thumbnail_url : undefined);
+      updateClip(clip.id, { gen_status: 'generating' });
+      try {
+        const result: any = await api.generateClip(id, clip.id, clip.prompt, 'video', {
+          clip_order: order, clip_total: sorted.length,
+          scene_image_url: startFrame,
+          characters: chars.length > 0 ? chars : undefined,
+          mood: analysis?.mood, genre: analysis?.genre, style_seed: styleSeed,
+          shot_type: (clip as any).shot_type || 'cut', is_continuous: isCont,
+          prev_scene_prompt: prev?.prompt, next_scene_prompt: next?.prompt,
+        });
+        if (result?.status === 'error') updateClip(clip.id, { gen_status: 'error', gen_error: result?.message });
+      } catch (err) { updateClip(clip.id, { gen_status: 'error', gen_error: String(err) }); }
+    }
+    setGeneratingVideos(false);
+  }, [id, clips, currentProject, updateClip, generatingVideos]);
+
   const handleRender = useCallback(async () => {
     if (!id || rendering) return;
     setShowResultModal(false);
@@ -1552,6 +1693,26 @@ export default function TimelinePage() {
             style={{ fontFamily: 'var(--font-manga)' }}
           >
             <MessageSquare size={13} /> COPILOT
+          </button>
+
+          <button
+            onClick={() => batchGenerating ? (cancelImagesRef.current = true) : handleGenerateAllImages()}
+            disabled={generatingVideos}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border transition-colors border-[#a855f7] text-[#a855f7] hover:bg-[#a855f7] hover:text-white disabled:opacity-40"
+            style={{ fontFamily: 'var(--font-manga)' }}
+          >
+            {batchGenerating ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+            {batchGenerating ? 'CANCEL' : 'GEN IMAGES'}
+          </button>
+
+          <button
+            onClick={() => generatingVideos ? (cancelVideosRef.current = true) : handleGenerateAllVideos()}
+            disabled={batchGenerating}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border transition-colors border-[#f97316] text-[#f97316] hover:bg-[#f97316] hover:text-white disabled:opacity-40"
+            style={{ fontFamily: 'var(--font-manga)' }}
+          >
+            {generatingVideos ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+            {generatingVideos ? 'CANCEL' : 'GEN VIDEOS'}
           </button>
 
           <button

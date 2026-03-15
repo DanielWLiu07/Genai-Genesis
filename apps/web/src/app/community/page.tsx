@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX, Heart, Eye, BookOpen,
-  ChevronUp, ChevronDown, Search, Filter, Clock, Sparkles, Film, Users,
+  ChevronUp, ChevronDown, Search, Filter, Clock, Sparkles, Film, Users, Library,
 } from 'lucide-react';
 import gsap from 'gsap';
+import BookAvailability from '@/components/community/BookAvailability';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,17 @@ function ReelCard({
   const [muted, setMuted] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
+  const [showBorrow, setShowBorrow] = useState(false);
   const heartRef = useRef<HTMLDivElement>(null);
+  const borrowRef = useRef<HTMLDivElement>(null);
+
+  // Animate borrow panel in/out
+  useEffect(() => {
+    if (!borrowRef.current) return;
+    if (showBorrow) {
+      gsap.fromTo(borrowRef.current, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power2.out' });
+    }
+  }, [showBorrow]);
 
   // compiled video > first video clip > first image clip
   const videoSrc = project.compiled_url
@@ -186,10 +197,33 @@ function ReelCard({
           <Film size={24} className="text-white group-hover:text-[#a855f7] transition-colors" />
           <span className="text-white text-xs">Open</span>
         </Link>
+        <button
+          onClick={() => setShowBorrow(b => !b)}
+          className="flex flex-col items-center gap-1 group"
+          title="Borrow this book"
+        >
+          <Library size={22} className={`transition-colors ${showBorrow ? 'text-[#a855f7]' : 'text-white group-hover:text-[#a855f7]'}`} />
+          <span className="text-white text-xs">Borrow</span>
+        </button>
         <button onClick={() => setMuted(m => !m)} className="flex flex-col items-center gap-1">
           {muted ? <VolumeX size={22} className="text-white" /> : <Volume2 size={22} className="text-white" />}
         </button>
       </div>
+
+      {/* Borrow panel — slides up from bottom */}
+      {showBorrow && (
+        <div
+          ref={borrowRef}
+          className="absolute bottom-0 left-0 right-14 z-20"
+        >
+          <BookAvailability
+            title={project.title}
+            author={project.author}
+            variant="reel"
+            onClose={() => setShowBorrow(false)}
+          />
+        </div>
+      )}
 
       {/* Compiled badge */}
       {project.compiled_url && (
@@ -232,7 +266,7 @@ function BrowseCard({ project, onLike }: { project: TrailerProject; onLike: (id:
         )}
 
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-2">
           <Link
             href={`/project/${project.id}`}
             className="bg-[#a855f7] text-white text-[0.6rem] px-3 py-1.5 font-bold hover:bg-[#9333ea] transition-colors w-full text-center"
@@ -247,6 +281,25 @@ function BrowseCard({ project, onLike }: { project: TrailerProject; onLike: (id:
             <Heart size={10} className={project.liked ? 'fill-[#a855f7] text-[#a855f7]' : ''} />
             {project.liked ? 'Liked' : 'Like'}
           </button>
+          {/* Quick borrow links — no API call needed */}
+          <a
+            href={`https://www.worldcat.org/search?q=${encodeURIComponent([project.title, project.author].filter(Boolean).join(' '))}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="flex items-center gap-1 text-[0.6rem] px-3 py-1 w-full justify-center border border-sky-400/60 text-sky-300 hover:border-sky-300 transition-colors"
+          >
+            <Library size={9} /> Library
+          </a>
+          <a
+            href={`https://openlibrary.org/search?title=${encodeURIComponent(project.title)}${project.author ? `&author=${encodeURIComponent(project.author)}` : ''}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="flex items-center gap-1 text-[0.6rem] px-3 py-1 w-full justify-center border border-emerald-400/60 text-emerald-300 hover:border-emerald-300 transition-colors"
+          >
+            <BookOpen size={9} /> Read Online
+          </a>
         </div>
 
         {/* Compiled badge */}

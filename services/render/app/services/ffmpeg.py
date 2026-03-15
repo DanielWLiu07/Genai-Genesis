@@ -427,10 +427,100 @@ async def compose_trailer(
         local_paths = await asyncio.gather(*[_download(c, i) for i, c in enumerate(playable_clips)])
 
         # Step 1: Create standardized clips
+        # Fast path: if ALL clips are already videos, normalize+concat in a single FFmpeg pass
+        # so the video codec is only touched once (no per-clip re-encode → original quality preserved).
+        all_video = all(
+            clip.get("type") == "video" or (local_paths[i] or "").endswith(".mp4")
+            for i, clip in enumerate(playable_clips)
+        )
+
         if progress_callback:
             await progress_callback(10, "Preparing clips...")
 
         clip_video_paths = []
+
+        if all_video and len(playable_clips) > 0:
+            # Single-pass: scale each clip to target resolution, concat, no intermediate re-encodes
+            scale_filter = (
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+                f"fps={fps},format=yuv420p"
+            )
+            inputs = []
+            filter_parts = []
+            for i, (clip, path) in enumerate(zip(playable_clips, local_paths)):
+                inputs += ["-i", path]
+                dur = clip.get("duration_ms", 3000) / 1000.0
+                filter_parts.append(f"[{i}:v]trim=duration={dur},{scale_filter}[v{i}]")
+            concat_labels = "".join(f"[v{i}]" for i in range(len(playable_clips)))
+            filter_parts.append(f"{concat_labels}concat=n={len(playable_clips)}:v=1:a=0[vout]")
+            concat_output = os.path.join(tmpdir, "concat.mp4")
+            cmd = [
+                FFMPEG, "-y",
+                *inputs,
+                "-filter_complex", ";".join(filter_parts),
+                "-map", "[vout]",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+                "-pix_fmt", "yuv420p",
+                "-an",
+                concat_output,
+            ]
+            ok = await asyncio.to_thread(_run_ffmpeg, cmd, "single-pass video normalize+concat")
+            if ok:
+                if progress_callback:
+                    await progress_callback(55, "Clips concatenated")
+                # Skip straight to text overlays / music — no per-clip paths needed
+                has_text = any(c.get("text") for c in playable_clips)
+                text_output = os.path.join(tmpdir, "with_text.mp4")
+                if has_text:
+                    if not await asyncio.to_thread(_add_text_overlays, concat_output, text_output, playable_clips, width, height):
+                        text_output = concat_output
+                else:
+                    text_output = concat_output
+
+                if progress_callback:
+                    await progress_callback(85, "Mixing audio...")
+                music_output = os.path.join(tmpdir, "with_music.mp4")
+                music_path = None
+                if music_track:
+                    music_path = music_track.get("local_path") or music_track.get("url")
+                if music_path and os.path.exists(music_path):
+                    volume = music_track.get("volume", 0.3)
+                    if not await asyncio.to_thread(_add_music, text_output, music_path, music_output, volume):
+                        music_output = text_output
+                else:
+                    music_output = text_output
+
+                if effects:
+                    if progress_callback:
+                        await progress_callback(90, f"Applying {len(effects)} AMV effects...")
+                    effects_output = os.path.join(tmpdir, "with_effects.mp4")
+                    ok2 = await apply_amv_effects(music_output, effects_output, effects, width, height)
+                    final_input = effects_output if ok2 else music_output
+                else:
+                    final_input = music_output
+
+                if progress_callback:
+                    await progress_callback(97, "Final encoding...")
+                faststart_cmd = [
+                    FFMPEG, "-y", "-i", final_input,
+                    "-c", "copy", "-movflags", "+faststart", output_path,
+                ]
+                if not await asyncio.to_thread(_run_ffmpeg, faststart_cmd, "faststart remux"):
+                    shutil.copy2(final_input, output_path)
+
+                total_duration_ms = sum(c.get("duration_ms", 3000) for c in playable_clips)
+                if progress_callback:
+                    await progress_callback(97, "Finalising...")
+                return {
+                    "status": "done",
+                    "output_path": output_path,
+                    "message": f"Trailer rendered: {len(playable_clips)} clips, {total_duration_ms/1000:.1f}s",
+                    "duration_ms": total_duration_ms,
+                }
+            # Fast path failed — fall through to per-clip encoding below
+            logger.warning("Single-pass concat failed, falling back to per-clip encoding")
+
         for i, clip in enumerate(playable_clips):
             media_path = local_paths[i]
             clip_output = os.path.join(tmpdir, f"clip_{i:03d}.mp4")
@@ -554,7 +644,7 @@ async def compose_trailer(
         total_duration_ms = sum(c.get("duration_ms", 3000) for c in playable_clips)
 
         if progress_callback:
-            await progress_callback(100, "Render complete!")
+            await progress_callback(97, "Finalising...")
 
         return {
             "status": "done",

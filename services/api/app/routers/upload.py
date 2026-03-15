@@ -2,13 +2,17 @@ import asyncio
 import base64
 import logging
 from functools import partial
+from pathlib import Path
 from typing import List
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
 import httpx
 from app.config import get_settings
 from app.db import get_supabase
 from app.state import store_book_text, update_project_mem
 from app.services.audio_analyzer import analyze_audio
+
+_AUDIO_LOCAL_DIR = Path("/tmp/mangamate_audio")
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +186,26 @@ async def upload_manga(
     }
 
 
+@router.get("/audio/{filename}")
+async def serve_local_audio(project_id: str, filename: str):
+    """Serve locally-stored audio file (fallback when Supabase storage is unavailable)."""
+    safe_name = Path(filename).name  # prevent path traversal
+    audio_path = _AUDIO_LOCAL_DIR / project_id / safe_name
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    return FileResponse(str(audio_path), media_type="audio/mpeg")
+
+
+def _save_audio_locally(project_id: str, filename: str, content: bytes) -> str:
+    """Save audio bytes to local filesystem and return a localhost URL."""
+    safe_name = Path(filename).name
+    out_dir = _AUDIO_LOCAL_DIR / project_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / safe_name
+    out_path.write_bytes(content)
+    return f"http://localhost:8000/api/v1/projects/{project_id}/audio/{safe_name}"
+
+
 @router.post("/upload-audio")
 async def upload_audio(project_id: str, file: UploadFile = File(...)):
     """Upload an audio clip and run analysis (BPM, beats, energy, sections)."""
@@ -210,9 +234,13 @@ async def upload_audio(project_id: str, file: UploadFile = File(...)):
 
     db = get_supabase()
 
+    # Always save locally as a fallback so the render service can always fetch it
+    local_audio_url = _save_audio_locally(project_id, file.filename or "audio.mp3", content)
+
     if db is None:
-        update_project_mem(project_id, audio_file_url=None, audio_analysis=analysis)
+        update_project_mem(project_id, audio_file_url=local_audio_url, audio_analysis=analysis)
         return {
+            "file_url": local_audio_url,
             "file_name": file.filename,
             "size": len(content),
             "audio_analysis": analysis,
@@ -221,7 +249,7 @@ async def upload_audio(project_id: str, file: UploadFile = File(...)):
 
     # Upload raw file to Supabase Storage
     storage_path = f"audio/{project_id}/{file.filename}"
-    audio_url = None
+    audio_url = local_audio_url  # default to local if Supabase storage fails
     try:
         db.storage.from_("audio").upload(
             storage_path,
@@ -230,7 +258,7 @@ async def upload_audio(project_id: str, file: UploadFile = File(...)):
         )
         audio_url = db.storage.from_("audio").get_public_url(storage_path)
     except Exception:
-        pass  # storage may not be configured — analysis still returned
+        pass  # storage may not be configured — fall back to local URL
 
     # Persist to projects row
     db.table("projects").update({

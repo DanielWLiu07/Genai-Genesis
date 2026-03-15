@@ -643,6 +643,10 @@ export default function TimelinePage() {
   const [selectedType, setSelectedType] = useState<EffectType | null>(null);
   const [hoveredType, setHoveredType]   = useState<EffectType | null>(null);
   const [selectedEffectId, setSelectedEffectId] = useState<string | null>(null);
+  const [prePlaceDuration, setPrePlaceDuration]   = useState(200);
+  const [prePlaceIntensity, setPrePlaceIntensity] = useState(0.8);
+  const [prePlaceParams, setPrePlaceParams]       = useState<Record<string, number>>({});
+  const [hoveredTrack, setHoveredTrack] = useState<'clips' | 'fx' | null>(null);
   const [bpm, setBpm]           = useState(() => useTimelineStore.getState().beatMap?.bpm || 128);
   const [pxPerMs, setPxPerMs]   = useState(0.1);
   const [playheadMs, setPlayheadMs] = useState(0);
@@ -1146,21 +1150,21 @@ Respond ONLY with compact JSON (no markdown, no explanation):
     setPlayheadMs(timestamp_ms);
 
     if (selectedType !== null) {
-      // FLASH button: white stays as flash_white; any other color uses red_flash + color param
       const flashType: EffectType = selectedType === 'flash_white' && flashColor !== '#ffffff'
         ? 'red_flash' : selectedType;
       const flashParams = selectedType === 'flash_white' && flashColor !== '#ffffff'
         ? { color: flashColor } : undefined;
+      const mergedParams = { ...prePlaceParams, ...(flashParams ?? {}) };
       addEffect({
         id: crypto.randomUUID(),
         type: flashType,
         timestamp_ms,
-        duration_ms: 200,
-        intensity: 0.8,
-        ...(flashParams ? { params: flashParams as unknown as Record<string, number> } : {}),
+        duration_ms: prePlaceDuration,
+        intensity: prePlaceIntensity,
+        ...(Object.keys(mergedParams).length > 0 ? { params: mergedParams as Record<string, number> } : {}),
       });
     }
-  }, [addEffect, flashColor, pxPerMs, selectedType, totalMs]);
+  }, [addEffect, flashColor, prePlaceDuration, prePlaceIntensity, prePlaceParams, pxPerMs, selectedType, totalMs]);
 
   // ── Cycle transition type on a clip ─────────────────────────────────────
 
@@ -1173,12 +1177,24 @@ Respond ONLY with compact JSON (no markdown, no explanation):
     setRenderStatus('Starting render...');
     try {
       const { clips: c, musicTrack, settings } = useTimelineStore.getState();
-      // Exclude: text_overlay overlays, old title_card/end_card auto-generated cards,
-      // and any clip without actual AI-generated media
+      // Exclude: text_overlay, title/end cards by ID, title cards by prompt, clips without media
       const EXCLUDED_CLIP_IDS = new Set(['title_card', 'end_card']);
+      const TITLE_CARD_TERMS = [
+        'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+        'title reveal', 'title sequence', 'opening title', 'title shot',
+        'book title', 'movie title', 'film title', 'outro card', 'intro card',
+        'end card', 'coming soon', 'the end', 'credits',
+        'glowing text', 'floating text', 'text appears', 'text reads',
+        'logo reveal', 'brand reveal',
+      ];
+      const isTitleCardClip = (cl: any) => {
+        const p = (cl.prompt || '').toLowerCase();
+        return TITLE_CARD_TERMS.some((t) => p.includes(t));
+      };
       const renderClips = c.filter((cl: any) =>
         cl.type !== 'text_overlay' &&
         !EXCLUDED_CLIP_IDS.has(cl.id) &&
+        !isTitleCardClip(cl) &&
         cl.generated_media_url
       );
       const currentTimeline = {
@@ -1984,11 +2000,13 @@ Respond ONLY with compact JSON (no markdown, no explanation):
         </div>
 
         {/* ── EFFECTS PALETTE ───────────────────────────────────────────── */}
-        <div className="max-h-[5.5rem] border-b border-[#333] bg-black/70 backdrop-blur-sm flex flex-wrap content-start items-center px-4 py-2 gap-2.5 shrink-0 overflow-y-auto palette-scroll">
+        <div className="max-h-[9rem] border-b border-[#333] bg-black/70 backdrop-blur-sm flex shrink-0 overflow-hidden">
+          {/* Effect type buttons — scrollable */}
+          <div className="flex-1 min-w-0 flex flex-wrap content-start items-center px-4 py-2 gap-2.5 overflow-y-auto palette-scroll">
           <div className="mr-2 flex min-w-[5.5rem] flex-col self-stretch justify-center">
             <span className="text-xs text-[#555] tracking-[0.22em]" style={{ fontFamily: 'var(--font-manga)' }}>FX</span>
             <span className="text-[0.62rem] text-[#444] tracking-[0.12em]" style={{ fontFamily: 'var(--font-manga)' }}>
-              PICK THEN PLACE
+              PICK + PLACE
             </span>
           </div>
           {EFFECT_TYPES.map((type) => {
@@ -2006,7 +2024,7 @@ Respond ONLY with compact JSON (no markdown, no explanation):
             return (
               <button
                 key={type}
-                onClick={() => setSelectedType(prev => prev === type ? null : type)}
+                onClick={() => { setSelectedType(prev => { const next = prev === type ? null : type; if (next !== prev) setPrePlaceParams({}); return next; }); }}
                 onMouseEnter={() => setHoveredType(type)}
                 onMouseLeave={() => setHoveredType(null)}
                 className="relative shrink-0 flex flex-col items-center gap-1 border transition-all"
@@ -2085,10 +2103,58 @@ Respond ONLY with compact JSON (no markdown, no explanation):
               </button>
             );
           })}
-        </div>
+          </div>{/* end scrollable buttons */}
+
+          {/* Pre-placement config — fixed right panel, fits within palette height */}
+          {selectedType && (
+            <div className="w-72 shrink-0 border-l border-[#2a2a2a] bg-[#090909] flex flex-col justify-center gap-2 px-3 py-2">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: EFFECT_META[selectedType]?.color }} />
+                <span className="text-[0.6rem] tracking-[0.2em] text-white truncate" style={{ fontFamily: 'var(--font-manga)' }}>
+                  {EFFECT_META[selectedType]?.label}
+                </span>
+                <span className="text-[0.52rem] text-[#444] ml-auto shrink-0">click timeline to place</span>
+              </div>
+              {/* Horizontal controls row */}
+              <div className="flex flex-col gap-1.5">
+                {/* Duration */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[0.55rem] text-[#555] tracking-widest w-6 shrink-0" style={{ fontFamily: 'var(--font-manga)' }}>DUR</span>
+                  <input type="range" min={50} max={1000} step={25} value={prePlaceDuration}
+                    onChange={(e) => setPrePlaceDuration(Number(e.target.value))}
+                    className="flex-1 cursor-pointer accent-[#fbbf24] h-1" />
+                  <span className="text-[0.6rem] text-[#fbbf24] w-12 text-right tabular-nums shrink-0">{prePlaceDuration}ms</span>
+                </div>
+                {/* Intensity */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[0.55rem] text-[#555] tracking-widest w-6 shrink-0" style={{ fontFamily: 'var(--font-manga)' }}>INT</span>
+                  <input type="range" min={0.1} max={1.0} step={0.05} value={prePlaceIntensity}
+                    onChange={(e) => setPrePlaceIntensity(Number(e.target.value))}
+                    className="flex-1 cursor-pointer accent-[#a855f7] h-1" />
+                  <span className="text-[0.6rem] text-[#a855f7] w-12 text-right tabular-nums shrink-0">{prePlaceIntensity.toFixed(2)}</span>
+                </div>
+                {/* Type-specific params (first 2, compact) */}
+                {(EFFECT_PARAM_DEFS[selectedType] || []).filter(d => d.type !== 'color_hex').slice(0, 2).map((def) => {
+                  const val = prePlaceParams[def.key] ?? def.default;
+                  return (
+                    <div key={def.key} className="flex items-center gap-2">
+                      <span className="text-[0.55rem] text-[#555] tracking-widest w-6 shrink-0 truncate" style={{ fontFamily: 'var(--font-manga)' }} title={def.label}>
+                        {def.label.slice(0, 3).toUpperCase()}
+                      </span>
+                      <input type="range" min={def.min} max={def.max} step={def.step} value={val}
+                        onChange={(e) => setPrePlaceParams(p => ({ ...p, [def.key]: Number(e.target.value) }))}
+                        className="flex-1 cursor-pointer accent-[#fbbf24] h-1" />
+                      <span className="text-[0.6rem] text-[#fbbf24] w-12 text-right tabular-nums shrink-0">{Number(val.toFixed(2))}{def.unit ? def.unit : ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>{/* end palette wrapper */}
 
         {/* ── TIMELINE ──────────────────────────────────────────────────── */}
-        <div ref={containerRef} className="relative min-h-[14rem] flex-1 overflow-hidden flex flex-col bg-black/60 backdrop-blur-sm">
+        <div ref={containerRef} className="relative min-h-[7rem] flex-1 overflow-hidden flex flex-col bg-black/60 backdrop-blur-sm">
           {/* Decorative stylized elements */}
           <img src="/stylized_imgs/stone3.png" alt="" aria-hidden className="absolute -bottom-6 right-24 w-52 pointer-events-none select-none z-0" style={{ opacity: 0.28, filter: 'brightness(0.55) saturate(0)', transform: 'rotate(-6deg)' }} />
           <img src="/stylized_imgs/flower4.png" alt="" aria-hidden className="absolute top-2 right-4 w-36 pointer-events-none select-none z-0" style={{ opacity: 0.3, filter: 'brightness(0.6) saturate(0)', transform: 'rotate(12deg) scaleX(-1)' }} />
@@ -2163,9 +2229,11 @@ Respond ONLY with compact JSON (no markdown, no explanation):
 
                 {/* ── Clips track ──────────────────────────────────────── */}
                 <div
-                  className="h-16 border-b border-[#222] relative shrink-0 bg-[#0e0e0e] cursor-crosshair"
-                  style={{ width: timelineWidth + 100, minWidth: '100%', order: 2 }}
+                  className="h-16 border-b border-[#222] relative shrink-0 cursor-crosshair transition-colors duration-100"
+                  style={{ width: timelineWidth + 100, minWidth: '100%', order: 2, backgroundColor: hoveredTrack === 'clips' ? '#161616' : '#0e0e0e', boxShadow: hoveredTrack === 'clips' ? 'inset 0 1px 0 #333, inset 0 -1px 0 #333' : 'none' }}
                   onClick={handleTimelineClick}
+                  onMouseEnter={() => setHoveredTrack('clips')}
+                  onMouseLeave={() => setHoveredTrack(null)}
                 >
                   {visualSortedClips.map((clip, idx) => {
                     const x    = clipStartMs[clip.id] * pxPerMs;
@@ -2253,9 +2321,11 @@ Respond ONLY with compact JSON (no markdown, no explanation):
 
                 {/* ── Effects track ─────────────────────────────────────── */}
                 <div
-                  className="flex-1 relative bg-[#080808] cursor-crosshair"
-                  style={{ width: timelineWidth + 100, minWidth: '100%', minHeight: 60, order: 1 }}
+                  className="flex-1 relative cursor-crosshair transition-colors duration-100"
+                  style={{ width: timelineWidth + 100, minWidth: '100%', minHeight: 60, order: 1, backgroundColor: hoveredTrack === 'fx' ? '#0e0e0e' : '#080808', boxShadow: hoveredTrack === 'fx' && selectedType ? `inset 0 1px 0 ${EFFECT_META[selectedType]?.color}44, inset 0 -1px 0 ${EFFECT_META[selectedType]?.color}44` : 'none' }}
                   onClick={handleTimelineClick}
+                  onMouseEnter={() => setHoveredTrack('fx')}
+                  onMouseLeave={() => setHoveredTrack(null)}
                 >
                   {/* Beat grid lines */}
                   {beatTicks.map((beatMs, idx) => {

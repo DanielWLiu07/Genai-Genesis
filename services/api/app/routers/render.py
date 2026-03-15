@@ -157,6 +157,30 @@ async def render_trailer(project_id: str, background_tasks: BackgroundTasks, dat
     timeline = data.timeline if data and data.timeline else None
     title = ""
     author = ""
+
+    _TITLE_CARD_TERMS = {
+        'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+        'title reveal', 'title sequence', 'opening title', 'title shot',
+        'book title', 'movie title', 'film title', 'outro card', 'intro card',
+        'end card', 'coming soon', 'the end', 'credits',
+        'glowing text', 'floating text', 'text appears', 'text reads',
+        'logo reveal', 'brand reveal',
+    }
+    _STRIP_IDS = {'title_card', 'end_card'}
+
+    def _strip_title_cards(clips: list) -> list:
+        out = []
+        for c in (clips or []):
+            if c.get('id') in _STRIP_IDS:
+                continue
+            if c.get('type') == 'text_overlay':
+                continue
+            prompt = (c.get('prompt') or '').lower()
+            if any(term in prompt for term in _TITLE_CARD_TERMS):
+                continue
+            out.append(c)
+        return out
+
     try:
         if db is not None:
             if timeline is None:
@@ -169,6 +193,10 @@ async def render_trailer(project_id: str, background_tasks: BackgroundTasks, dat
                 author = proj_row.data[0].get("author", "")
     except Exception as e:
         logger.warning("DB fetch error: %s", e)
+
+    # Strip title cards from whichever timeline source was used
+    if timeline and timeline.get("clips"):
+        timeline = {**timeline, "clips": _strip_title_cards(timeline["clips"])}
 
     clips_count = len((timeline or {}).get("clips", []))
     clips_with_media = sum(1 for c in (timeline or {}).get("clips", []) if c.get("generated_media_url") or c.get("thumbnail_url"))

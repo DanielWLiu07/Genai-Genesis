@@ -1,4 +1,4 @@
-# MangaMate - AI Book Trailer Generator
+# Lotus - AI Book Trailer Generator
 
 ## Stack
 - Frontend: Next.js 14 (App Router), Radix UI, Tailwind, React Flow, Zustand, GSAP

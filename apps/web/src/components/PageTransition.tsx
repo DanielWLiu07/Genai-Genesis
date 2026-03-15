@@ -28,7 +28,7 @@ const FULL         = poly(-DIAG, 100 + DIAG);
 const HIDDEN_RIGHT = poly(100 + DIAG, 100 + DIAG);
 // ────────────────────────────────────────────────────────────────
 
-const LETTERS = 'MANGAMATE'.split('');
+const LETTERS = 'LOTUS'.split('');
 
 export function PageTransitionProvider({ children }: { children: ReactNode }) {
   const router     = useRouter();
@@ -265,7 +265,7 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
             <div ref={logoRef} className="relative shrink-0">
               <Image
                 src="/logo.png"
-                alt="MangaMate"
+                alt="Lotus"
                 width={88}
                 height={88}
                 className="drop-shadow-[0_0_24px_rgba(168,85,247,0.5)]"
@@ -274,7 +274,7 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
               <div className="absolute inset-[-28px] rounded-full border border-[#a855f7]/10" />
             </div>
 
-            {/* MANGAMATE letters */}
+            {/* LOTUS letters */}
             <div className="flex items-center gap-[0.02em]" style={{ fontFamily: 'var(--font-manga)' }}>
               {LETTERS.map((char, i) => (
                 <span

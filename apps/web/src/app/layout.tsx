@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const bangers = Bangers({ weight: '400', subsets: ['latin'], variable: '--font-manga' });
 
 export const metadata: Metadata = {
-  title: 'MangaMate - AI Book Trailer Generator',
+  title: 'Lotus - AI Book Trailer Generator',
   description: 'Transform written stories into cinematic book trailers using AI',
   icons: {
     icon: '/logo.png',

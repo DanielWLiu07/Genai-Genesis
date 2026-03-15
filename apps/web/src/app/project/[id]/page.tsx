@@ -1286,12 +1286,12 @@ export default function EditorPage() {
           <div className="flex items-center gap-4">
             {/* Logo */}
             <div className="relative shrink-0">
-              <img src="/logo.png" alt="Sakuga" width={88} height={88} className="drop-shadow-[0_0_24px_rgba(168,85,247,0.5)]" />
+              <img src="/logo.png" alt="Lotus" width={88} height={88} className="drop-shadow-[0_0_24px_rgba(168,85,247,0.5)]" />
               <div className="absolute inset-[-16px] rounded-full border-[3px] border-[#a855f7]/20 animate-ping" style={{ animationDuration: '1.6s' }} />
             </div>
-            {/* SAKUGA letters */}
+            {/* LOTUS letters */}
             <div className="flex items-center gap-[0.02em]" style={{ fontFamily: 'var(--font-manga)' }}>
-              {'SAKUGA'.split('').map((char, i) => (
+              {'LOTUS'.split('').map((char, i) => (
                 <span
                   key={i}
                   className="inline-block select-none"
@@ -1343,7 +1343,7 @@ export default function EditorPage() {
             className="font-bold text-2xl"
             style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000', whiteSpace: 'nowrap' }}
           >
-            {currentProject?.title || 'Sakuga Editor'}
+            {currentProject?.title || 'Lotus Editor'}
           </span>
         </div>
         <div className="ml-auto flex items-stretch gap-2">

@@ -1,4 +1,4 @@
-# MangaMate — AI Book Trailer Generator
+# Lotus — AI Book Trailer Generator
 
 Upload a story. AI builds a cinematic trailer. You edit with a visual copilot.
 

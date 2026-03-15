@@ -230,8 +230,36 @@ def _build_timeline_context(timeline: dict | None, analysis: dict | None = None)
         if len(effects) > 5:
             lines.append(f"  ... and {len(effects)-5} more")
 
+    # Music track
+    music_track = timeline.get("music_track")
+    if music_track and music_track.get("url"):
+        lines.append(f"\nMUSIC TRACK: \"{music_track.get('name', 'unknown')}\" | volume={music_track.get('volume', 0.8)}")
+
     if beat_map:
-        lines.append(f"\nBEAT MAP: {beat_map.get('bpm')} BPM, {len(beat_map.get('beats', []))} beats")
+        bpm = beat_map.get('bpm')
+        beats = beat_map.get('beats', [])
+        hihats = beat_map.get('hihats', [])
+        kicks = beat_map.get('kicks', [])
+        snares = beat_map.get('snares', [])
+        crashes = beat_map.get('crashes', [])
+        energy_peaks = beat_map.get('energy_peaks', [])
+        lines.append(f"\nBEAT MAP: {bpm} BPM | {len(beats)} beats | total={total_ms/1000:.1f}s")
+        if hihats:
+            lines.append(f"  hihats ({len(hihats)}): {hihats[:20]}")
+        if kicks:
+            lines.append(f"  kicks ({len(kicks)}): {kicks[:20]}")
+        if snares:
+            lines.append(f"  snares ({len(snares)}): {snares[:20]}")
+        if crashes:
+            lines.append(f"  crashes ({len(crashes)}): {crashes[:10]}")
+        if energy_peaks:
+            lines.append(f"  energy_peaks ({len(energy_peaks)}): {energy_peaks[:10]}")
+        if not hihats and not kicks:
+            lines.append(f"  beats (first 20): {beats[:20]}")
+        lines.append(f"  → Use instrument='hihats'/'kicks'/'snares'/'crashes' in add_amv_effects_on_beats to target specific hits.")
+        lines.append(f"  → Use add_amv_effect with exact timestamp_ms values from the lists above.")
+    else:
+        lines.append(f"\nBEAT MAP: none — call set_bpm first (e.g. set_bpm(128)) then add effects.")
 
     return "\n".join(lines)
 

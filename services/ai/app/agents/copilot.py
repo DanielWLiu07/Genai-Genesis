@@ -231,11 +231,16 @@ try:
                                        every_n_beats: int = 1,
                                        duration_ms: int = 200,
                                        intensity: float = 0.8,
-                                       bpm: Optional[int] = None) -> str:
-        """Add an AMV effect on beats within an optional time range."""
+                                       bpm: Optional[int] = None,
+                                       instrument: Optional[str] = None) -> str:
+        """Add an AMV effect on beats within an optional time range.
+        instrument: 'hihats'|'kicks'|'snares'|'crashes'|'energy_peaks'|'beats' — use instrument-specific
+        timestamps from the beat_map instead of the generic beat grid. When the context lists hihat/kick
+        timestamps, pass instrument='hihats' or 'kicks' to target those exact hits."""
         _record("add_amv_effects_on_beats", type=type, start_ms=start_ms, end_ms=end_ms,
-                every_n_beats=every_n_beats, duration_ms=duration_ms, intensity=intensity, bpm=bpm)
-        return f"Added {type} on every {every_n_beats} beat(s)"
+                every_n_beats=every_n_beats, duration_ms=duration_ms, intensity=intensity,
+                bpm=bpm, instrument=instrument)
+        return f"Added {type} on every {every_n_beats} {instrument or 'beat'}(s)"
 
     @rt.function_node
     async def auto_amv(bpm: Optional[int] = None, style: str = "aggressive") -> str:
@@ -269,6 +274,10 @@ SCENE PACING: Hook 2-3s cut | Establishing 3-4s dissolve | Action 1.5-2.5s cut |
 AMV: flash on strong beats 100-200ms (color=16777215 for white, 16711680 for red, 0 for black) |
      zoom_burst/zoom_pulse every 4th beat | chromatic/vhs for tension | cyberpunk/horror for atmosphere |
      scanlines/halftone/impact_lines for manga style | rain/glow_bloom for mood | stutter/tv_noise for glitch
+AMV BEAT SYNC: When context lists hihat/kick/snare timestamps, use add_amv_effects_on_beats with instrument='hihats'/'kicks'/'snares'/'crashes'.
+     Never ask for BPM if the context already includes BEAT MAP — use it directly.
+     If no beat_map: call set_bpm with a reasonable default (128 for action, 90 for drama), then add effects.
+     When user says "use hihats" → instrument='hihats'. "use kicks" → instrument='kicks'. "on every beat" → instrument='beats'.
 AMV EDITING: use update_amv_effect to tweak placed effects, clear_amv_effects to remove groups of effects,
              add_amv_effect_range for repeated effects over a section, add_amv_effects_on_beats for beat-matched sequences
 SHOT TYPE: continuous = same scene flowing | cut = new scene

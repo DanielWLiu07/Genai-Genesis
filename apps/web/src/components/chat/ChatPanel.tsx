@@ -225,7 +225,12 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
         const startMs = Number.isFinite(args.start_ms) ? args.start_ms : 0;
         const endMs = Number.isFinite(args.end_ms) ? args.end_ms : totalMs;
         const everyNBeats = Math.max(1, args.every_n_beats || 1);
-        const timestamps = nextBeatMap.beats.filter((beatMs, index) => (
+
+        // Use instrument-specific timestamps if available
+        type BeatMapKey = 'hihats' | 'kicks' | 'snares' | 'crashes' | 'energy_peaks' | 'beats';
+        const instrumentKey = (args.instrument as BeatMapKey) || 'beats';
+        const sourceTimestamps: number[] = (nextBeatMap as any)[instrumentKey] || nextBeatMap.beats;
+        const timestamps = sourceTimestamps.filter((beatMs, index) => (
           beatMs >= startMs && beatMs <= endMs && index % everyNBeats === 0
         ));
 

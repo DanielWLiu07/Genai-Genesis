@@ -1581,17 +1581,6 @@ Respond ONLY with compact JSON (no markdown, no explanation):
         {/* ── PREVIEW AREA ─────────────────────────────────────────────── */}
         <div ref={previewAreaRef} className="relative min-h-[13rem] border-b border-[#333] flex flex-wrap items-center justify-center gap-6 px-6 py-4 shrink-0 lg:min-h-[15rem] lg:flex-nowrap lg:gap-10 overflow-hidden" style={{ backgroundImage: 'url(/stylized_imgs/dark_bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
 
-          {/* Decor edit toggle */}
-          <div className="absolute top-2 right-2 z-50 flex gap-1">
-            {decorEditMode && (
-              <button onClick={() => navigator.clipboard.writeText(JSON.stringify(decorPos, null, 2))} className="text-[0.5rem] px-2 py-1 border border-[#fbbf24] bg-[#fbbf24] text-black font-bold tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>
-                COPY JSON
-              </button>
-            )}
-            <button onClick={() => setDecorEditMode(m => !m)} className={`text-[0.5rem] px-2 py-1 border font-bold tracking-widest transition-colors ${decorEditMode ? 'bg-[#a855f7] border-[#a855f7] text-white' : 'bg-black/60 border-[#444] text-[#666] hover:text-white'}`} style={{ fontFamily: 'var(--font-manga)' }}>
-              {decorEditMode ? 'DONE' : 'EDIT POS'}
-            </button>
-          </div>
 
           {/* Decorative stylized elements — draggable in edit mode */}
           {([

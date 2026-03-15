@@ -232,6 +232,7 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
               autoPlay={playing}
               muted
               loop={false}
+              poster={current?.thumbnail_url || undefined}
               className="w-full h-full object-contain"
             />
           ) : (

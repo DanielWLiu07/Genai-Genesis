@@ -610,10 +610,12 @@ export default function TimelinePage() {
   const storeProjectId = useTimelineStore((s) => s.projectId);
   useEffect(() => {
     if (!id) return;
+    isTimelineLoadedRef.current = false;
     setProjectId(id);
 
     if (isDemoMode) {
       loadTimeline(createDemoTimeline());
+      isTimelineLoadedRef.current = true;
       return;
     }
 
@@ -621,10 +623,11 @@ export default function TimelinePage() {
     import('@/lib/api').then(({ api }) => {
       api.getTimeline(id).then((tl: any) => {
         loadTimeline(tl);
+        isTimelineLoadedRef.current = true;
         if (tl.beat_map?.bpm) {
           setBpm(tl.beat_map.bpm);
         }
-      }).catch(() => {});
+      }).catch(() => { isTimelineLoadedRef.current = true; });
     });
   }, [id, isDemoMode, loadTimeline, setProjectId]);
 
@@ -778,6 +781,8 @@ export default function TimelinePage() {
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<(() => void) | null>(null);
+  // Guard: don't auto-save until the timeline has been fetched from DB (prevents wiping effects)
+  const isTimelineLoadedRef = useRef(false);
 
   const saveNow = useCallback(async () => {
     if (!id || isDemoMode) return;
@@ -799,7 +804,7 @@ export default function TimelinePage() {
   }, [id, isDemoMode, clips, musicTrack, effects, beatMap, totalMs]);
 
   useEffect(() => {
-    if (!id || isDemoMode) return;
+    if (!id || isDemoMode || !isTimelineLoadedRef.current) return;
     setSaveStatus('unsaved');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     const doSave = () => {

@@ -35,15 +35,17 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const payload = {
+  // Only include effects/beat_map when explicitly provided — omitting them from the upsert
+  // preserves existing DB values so partial saves (stuck-clip reset, beat-sync) don't wipe them.
+  const payload: Record<string, any> = {
     project_id: id,
     clips: stripBadClips(body.clips ?? []),
     music_track: body.music_track ?? null,
     total_duration_ms: body.total_duration_ms ?? 0,
     settings: body.settings ?? DEFAULT_SETTINGS,
-    effects: body.effects ?? [],
-    beat_map: body.beat_map ?? null,
   };
+  if ('effects' in body) payload.effects = body.effects ?? [];
+  if ('beat_map' in body) payload.beat_map = body.beat_map ?? null;
   const { data, error } = await supabase.from('timelines').upsert(payload).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);

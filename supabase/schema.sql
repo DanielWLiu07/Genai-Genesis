@@ -33,6 +33,10 @@ ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS preview_url TEXT;
 -- Migration: add published flag to projects
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT FALSE;
 
+-- Migration: add effects + beat_map to timelines
+ALTER TABLE timelines ADD COLUMN IF NOT EXISTS effects JSONB DEFAULT '[]'::JSONB;
+ALTER TABLE timelines ADD COLUMN IF NOT EXISTS beat_map JSONB;
+
 -- Timelines table (one per project)
 CREATE TABLE IF NOT EXISTS timelines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

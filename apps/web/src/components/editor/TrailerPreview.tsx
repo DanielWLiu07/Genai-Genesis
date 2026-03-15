@@ -92,7 +92,7 @@ function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
     >
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center z-20 bg-black">
-          <div className="w-8 h-8 border-2 border-[#ff3fa4] border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-[#a855f7] border-t-transparent rounded-full animate-spin" />
         </div>
       )}
       <video
@@ -114,7 +114,7 @@ function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
       />
       {!playing && !loading && (
         <div className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer" onClick={togglePlay}>
-          <div className="w-14 h-14 bg-[#ff3fa4] flex items-center justify-center" style={{ boxShadow: '3px 3px 0 rgba(0,0,0,0.5)' }}>
+          <div className="w-14 h-14 bg-[#a855f7] flex items-center justify-center" style={{ boxShadow: '3px 3px 0 #111' }}>
             <Play size={24} className="text-white ml-1" />
           </div>
         </div>
@@ -124,10 +124,10 @@ function VideoPlayer({ url, onClose }: { url: string; onClose: () => void }) {
         style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.9))' }}
       >
         <div className="mx-3 mb-1 h-1 bg-white/20 cursor-pointer hover:h-1.5 transition-all" onClick={handleScrub}>
-          <div className="h-full bg-[#ff3fa4]" style={{ width: `${progress}%` }} />
+          <div className="h-full bg-[#a855f7]" style={{ width: `${progress}%` }} />
         </div>
         <div className="flex items-center gap-2 px-3 pb-2">
-          <button onClick={togglePlay} className="text-white hover:text-[#ff3fa4] transition-colors">
+          <button onClick={togglePlay} className="text-white hover:text-[#a855f7] transition-colors">
             {playing ? <Pause size={15} /> : <Play size={15} />}
           </button>
           <button onClick={() => { setMuted(m => !m); if (videoRef.current) videoRef.current.muted = !muted; }} className="text-white/60 hover:text-white transition-colors">
@@ -192,13 +192,11 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [playing, tick]);
 
-  // Reset elapsed on clip change
   useEffect(() => {
     setElapsed(0);
     lastTsRef.current = null;
   }, [clipIdx]);
 
-  // Sync audio with playing state
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -206,7 +204,6 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
     else audio.pause();
   }, [playing]);
 
-  // Scroll thumbnail into view
   useEffect(() => {
     const strip = thumbStripRef.current;
     if (!strip) return;
@@ -224,9 +221,9 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col min-h-0 flex-1">
       {/* Main display */}
-      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+      <div className="relative bg-black flex items-center justify-center overflow-hidden" style={{ aspectRatio: '16/9' }}>
         {mediaUrl ? (
           isVideo ? (
             <video
@@ -235,20 +232,18 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
               autoPlay={playing}
               muted
               loop={false}
-              className="max-w-full max-h-full object-contain"
-              style={{ aspectRatio: '16/9' }}
+              className="w-full h-full object-contain"
             />
           ) : (
             <img
               key={mediaUrl}
               src={mediaUrl}
               alt=""
-              className="max-w-full max-h-full object-contain"
-              style={{ aspectRatio: '16/9' }}
+              className="w-full h-full object-contain"
             />
           )
         ) : (
-          <div className="w-full flex items-center justify-center" style={{ aspectRatio: '16/9', background: '#111' }}>
+          <div className="w-full h-full flex items-center justify-center bg-[#111]">
             <div className="text-center">
               <Film size={32} className="text-white/20 mx-auto mb-2" />
               <p className="text-white/30 text-xs">No media generated</p>
@@ -258,14 +253,14 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
 
         {/* Prev/Next */}
         <button
-          className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/60 hover:bg-[#ff3fa4] flex items-center justify-center transition-colors disabled:opacity-20"
+          className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/60 hover:bg-[#a855f7] flex items-center justify-center transition-colors disabled:opacity-20"
           onClick={() => go(-1)}
           disabled={clipIdx === 0}
         >
           <ChevronLeft size={18} className="text-white" />
         </button>
         <button
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/60 hover:bg-[#ff3fa4] flex items-center justify-center transition-colors disabled:opacity-20"
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/60 hover:bg-[#a855f7] flex items-center justify-center transition-colors disabled:opacity-20"
           onClick={() => go(1)}
           disabled={clipIdx === clips.length - 1}
         >
@@ -273,38 +268,38 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
         </button>
 
         {/* Clip counter badge */}
-        <div className="absolute top-2 right-2 bg-black/70 px-2 py-0.5 text-white/60 text-xs font-mono">
+        <div className="absolute top-2 right-2 bg-[#111]/80 px-2 py-0.5 text-white/70 text-xs font-mono" style={{ border: '1px solid #333' }}>
           {clipIdx + 1} / {clips.length}
         </div>
       </div>
 
       {/* Clip progress bar */}
-      <div className="h-0.5 bg-white/10 shrink-0">
-        <div className="h-full bg-[#ff3fa4] transition-none" style={{ width: `${progress}%` }} />
+      <div className="h-0.5 bg-[#e5e5e5] shrink-0">
+        <div className="h-full bg-[#a855f7] transition-none" style={{ width: `${progress}%` }} />
       </div>
 
       {/* Playback controls */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-[#111] shrink-0">
-        <button onClick={() => { setClipIdx(0); setElapsed(0); setPlaying(false); }} className="text-white/40 hover:text-white transition-colors">
+      <div className="flex items-center gap-2 px-4 py-2 bg-white shrink-0" style={{ borderTop: '2px solid #111' }}>
+        <button onClick={() => { setClipIdx(0); setElapsed(0); setPlaying(false); }} className="text-[#111]/40 hover:text-[#111] transition-colors">
           <SkipBack size={15} />
         </button>
         <button
           onClick={() => setPlaying(p => !p)}
-          className="w-8 h-8 bg-[#ff3fa4] hover:bg-[#c0005e] flex items-center justify-center transition-colors"
+          className="w-8 h-8 bg-[#111] hover:bg-[#a855f7] flex items-center justify-center transition-colors"
         >
           {playing ? <Pause size={13} className="text-white" /> : <Play size={13} className="text-white ml-0.5" />}
         </button>
-        <button onClick={() => go(1)} className="text-white/40 hover:text-white transition-colors">
+        <button onClick={() => go(1)} className="text-[#111]/40 hover:text-[#111] transition-colors">
           <SkipForward size={15} />
         </button>
         <div className="flex-1" />
         {musicTrack?.url && (
           <>
             <audio ref={audioRef} src={musicTrack.url} loop muted={muted} />
-            <button onClick={() => setMuted(m => !m)} className="text-white/40 hover:text-white transition-colors">
+            <button onClick={() => setMuted(m => !m)} className="text-[#111]/40 hover:text-[#111] transition-colors">
               {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
             </button>
-            <span className="text-white/30 text-xs truncate max-w-[120px]">{musicTrack.name}</span>
+            <span className="text-[#111]/40 text-xs truncate max-w-[120px]">{musicTrack.name}</span>
           </>
         )}
       </div>
@@ -312,8 +307,8 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
       {/* Thumbnail strip */}
       <div
         ref={thumbStripRef}
-        className="flex gap-1 px-2 py-2 bg-[#0a0a0a] overflow-x-auto shrink-0"
-        style={{ borderTop: '1px solid #1f1f1f', scrollbarWidth: 'none' }}
+        className="flex gap-1.5 px-3 py-2.5 bg-white overflow-x-auto shrink-0"
+        style={{ borderTop: '1px solid #ddd', scrollbarWidth: 'none' }}
       >
         {clips.map((c, i) => {
           const thumb = c.thumbnail_url || c.generated_media_url;
@@ -321,13 +316,17 @@ function ClipSlideshow({ clips, musicTrack }: { clips: any[]; musicTrack?: Trail
             <button
               key={c.id || i}
               onClick={() => { setClipIdx(i); setElapsed(0); }}
-              className={`shrink-0 w-14 h-9 overflow-hidden transition-all ${i === clipIdx ? 'ring-2 ring-[#ff3fa4] opacity-100' : 'opacity-40 hover:opacity-70'}`}
+              className={`shrink-0 w-16 h-10 overflow-hidden transition-all ${i === clipIdx ? 'opacity-100' : 'opacity-40 hover:opacity-70'}`}
+              style={{
+                border: i === clipIdx ? '2px solid #a855f7' : '2px solid #ddd',
+                outline: i === clipIdx ? '1px solid #111' : 'none',
+              }}
             >
               {thumb ? (
                 <img src={thumb} alt="" className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full bg-[#222] flex items-center justify-center">
-                  <span className="text-white/20 text-[8px]">{i + 1}</span>
+                <div className="w-full h-full bg-[#f5f5f5] flex items-center justify-center">
+                  <span className="text-[#111]/30 text-[8px] font-bold">{i + 1}</span>
                 </div>
               )}
             </button>
@@ -366,41 +365,42 @@ export function TrailerPreview({ clips: rawClips, musicTrack, compiledUrl, onClo
   return (
     <div
       ref={backdropRef}
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={handleClose}
     >
       <div
         ref={panelRef}
-        className="relative w-full max-w-4xl mx-4 flex flex-col bg-[#0a0a0a] overflow-hidden"
-        style={{ border: '2px solid #333', boxShadow: '0 0 60px rgba(0,0,0,0.8)', maxHeight: '90vh' }}
+        className="relative w-full max-w-3xl mx-4 flex flex-col bg-white overflow-hidden"
+        style={{ border: '3px solid #111', boxShadow: '6px 6px 0 #111', maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-[#111] shrink-0" style={{ borderBottom: '1px solid #222' }}>
+        <div className="flex items-center justify-between px-4 py-2.5 bg-white shrink-0" style={{ borderBottom: '2px solid #111' }}>
           <div className="flex items-center gap-3">
-            <Film size={14} className="text-[#ff3fa4]" />
-            <span className="text-white text-xs tracking-widest uppercase" style={{ fontFamily: 'var(--font-manga)' }}>
+            <Film size={14} className="text-[#a855f7]" />
+            <span className="text-[#111] text-xs font-bold tracking-widest uppercase" style={{ fontFamily: 'var(--font-manga)' }}>
               Preview
             </span>
             {/* Tab switcher */}
-            {compiledUrl && (
-              <div className="flex ml-3" style={{ border: '1px solid #333' }}>
+            <div className="flex ml-3" style={{ border: '2px solid #111' }}>
+              {compiledUrl && (
                 <button
                   onClick={() => setTab('video')}
-                  className={`px-3 py-0.5 text-xs transition-colors ${tab === 'video' ? 'bg-[#ff3fa4] text-white' : 'text-white/40 hover:text-white'}`}
+                  className={`px-3 py-0.5 text-xs font-bold transition-colors ${tab === 'video' ? 'bg-[#111] text-white' : 'text-[#111]/50 hover:text-[#111]'}`}
                 >
                   Compiled
                 </button>
-                <button
-                  onClick={() => setTab('clips')}
-                  className={`px-3 py-0.5 text-xs transition-colors ${tab === 'clips' ? 'bg-[#ff3fa4] text-white' : 'text-white/40 hover:text-white'}`}
-                >
-                  Clips ({filteredClips.length})
-                </button>
-              </div>
-            )}
+              )}
+              <button
+                onClick={() => setTab('clips')}
+                className={`px-3 py-0.5 text-xs font-bold transition-colors ${tab === 'clips' ? 'bg-[#a855f7] text-white' : 'text-[#111]/50 hover:text-[#111]'}`}
+                style={compiledUrl ? { borderLeft: '2px solid #111' } : {}}
+              >
+                Clips ({filteredClips.length})
+              </button>
+            </div>
           </div>
-          <button onClick={handleClose} className="text-white/40 hover:text-white transition-colors">
+          <button onClick={handleClose} className="text-[#111]/40 hover:text-[#111] transition-colors">
             <X size={17} />
           </button>
         </div>
@@ -410,9 +410,9 @@ export function TrailerPreview({ clips: rawClips, musicTrack, compiledUrl, onClo
           <VideoPlayer url={compiledUrl} onClose={handleClose} />
         ) : filteredClips.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Film size={36} className="text-white/20 mb-3" />
-            <p className="text-white/40 text-sm">No clips to preview.</p>
-            <p className="text-white/20 text-xs mt-1">Generate some clips first.</p>
+            <Film size={36} className="text-[#111]/20 mb-3" />
+            <p className="text-[#111]/40 text-sm">No clips to preview.</p>
+            <p className="text-[#111]/20 text-xs mt-1">Generate some clips first.</p>
           </div>
         ) : (
           <ClipSlideshow clips={filteredClips} musicTrack={musicTrack ?? undefined} />

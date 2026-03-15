@@ -222,10 +222,13 @@ async def render_trailer(project_id: str, background_tasks: BackgroundTasks, dat
         "title": title,
         "author": author,
     }
-    if data and data.effects:
-        compose_payload["effects"] = data.effects
-    if data and data.beat_map:
-        compose_payload["beat_map"] = data.beat_map
+    # Prefer top-level effects/beat_map from the request; fall back to what's embedded in the timeline
+    effects = (data and data.effects) or (timeline or {}).get("effects") or []
+    beat_map = (data and data.beat_map) or (timeline or {}).get("beat_map")
+    if effects:
+        compose_payload["effects"] = effects
+    if beat_map:
+        compose_payload["beat_map"] = beat_map
 
     # Call render service synchronously (it queues the job and returns fast)
     render_job_id = job_id

@@ -802,7 +802,7 @@ export default function EditorPage() {
     setExportStatus('Saving timeline...');
     try {
       // Merge Zustand + Supabase: Zustand has latest UI state; Supabase has async video URLs from fal.ai
-      const { clips: currentClips, musicTrack, settings: tlSettings } = useTimelineStore.getState();
+      const { clips: currentClips, musicTrack, settings: tlSettings, effects: tlEffects, beatMap: tlBeatMap } = useTimelineStore.getState();
 
       // Fetch latest from DB to pick up fal video URLs that arrived via background callback
       let mergedClips = currentClips;
@@ -830,6 +830,8 @@ export default function EditorPage() {
         music_track: musicTrack || null,
         settings: tlSettings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
         total_duration_ms: mergedClips.reduce((s: number, c: any) => s + (c.duration_ms || 0), 0),
+        effects: tlEffects || [],
+        beat_map: tlBeatMap || null,
       };
       // Persist merged state to DB
       api.updateTimeline(id, currentTimeline).catch(() => {});

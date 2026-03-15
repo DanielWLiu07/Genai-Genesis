@@ -2,10 +2,10 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import gsap from 'gsap';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import {
-  ArrowLeft, Zap, Play, Pause, Download, Loader2, Trash2, ZoomIn, ZoomOut, Music, MessageSquare,
+  ArrowLeft, Zap, Play, Pause, Download, Loader2, Trash2, ZoomIn, ZoomOut, Music, MessageSquare, Save, Check,
 } from 'lucide-react';
 import { useTimelineStore, type Clip, type Effect, type EffectType, type BeatMap } from '@/stores/timeline-store';
 import { useProjectStore } from '@/stores/project-store';
@@ -661,6 +661,8 @@ export default function TimelinePage() {
   const [previewLoadError, setPreviewLoadError] = useState<string | null>(null);
   const [compiledUrl, setCompiledUrl] = useState<string | null>(null);
   const [compiledReady, setCompiledReady] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const router = useRouter();
 
   const timelineRef   = useRef<HTMLDivElement>(null);
   const containerRef  = useRef<HTMLDivElement>(null);
@@ -769,10 +771,31 @@ export default function TimelinePage() {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<(() => void) | null>(null);
 
+  const saveNow = useCallback(async () => {
+    if (!id || isDemoMode) return;
+    setSaveStatus('saving');
+    const { settings } = useTimelineStore.getState();
+    try {
+      await api.updateTimeline(id, {
+        clips,
+        music_track: musicTrack,
+        settings,
+        effects,
+        beat_map: beatMap,
+        total_duration_ms: totalMs,
+      });
+      setSaveStatus('saved');
+    } catch {
+      setSaveStatus('unsaved');
+    }
+  }, [id, isDemoMode, clips, musicTrack, effects, beatMap, totalMs]);
+
   useEffect(() => {
     if (!id || isDemoMode) return;
+    setSaveStatus('unsaved');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     const doSave = () => {
+      setSaveStatus('saving');
       const { settings } = useTimelineStore.getState();
       import('@/lib/api').then(({ api }) => {
         api.updateTimeline(id, {
@@ -782,7 +805,7 @@ export default function TimelinePage() {
           effects,
           beat_map: beatMap,
           total_duration_ms: totalMs,
-        }).catch(() => {});
+        }).then(() => setSaveStatus('saved')).catch(() => setSaveStatus('unsaved'));
       });
     };
     pendingSaveRef.current = doSave;
@@ -1129,9 +1152,9 @@ Respond ONLY with compact JSON (no markdown, no explanation):
         if (effects.length > 0) { setEffects(effects); applied = true; break; }
       }
 
-      if (!applied && result?.message) {
+      if (!applied && result?.content) {
         try {
-          const jsonMatch = result.message.match(/\{[\s\S]*"effects"[\s\S]*\}/);
+          const jsonMatch = result.content.match(/\{[\s\S]*"effects"[\s\S]*\}/);
           if (jsonMatch) {
             const effects = parseEffects(JSON.parse(jsonMatch[0]).effects || []);
             if (effects.length > 0) { setEffects(effects); applied = true; }
@@ -1469,10 +1492,13 @@ Respond ONLY with compact JSON (no markdown, no explanation):
 
       {/* ── TOP BAR ──────────────────────────────────────────────────────── */}
       <header className="h-12 border-b border-[#333] flex items-center px-4 gap-3 shrink-0 bg-black/75 backdrop-blur-sm">
-        <Link href={`/project/${id}`} className="text-[#888] hover:text-white transition-colors flex items-center gap-1.5 text-sm">
+        <button
+          onClick={async () => { await saveNow(); router.push(`/project/${id}`); }}
+          className="text-[#888] hover:text-white transition-colors flex items-center gap-1.5 text-sm"
+        >
           <ArrowLeft size={16} />
           <span className="text-xs tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>BACK</span>
-        </Link>
+        </button>
 
         <div className="w-px h-5 bg-[#333] mx-1" />
 
@@ -1528,6 +1554,24 @@ Respond ONLY with compact JSON (no markdown, no explanation):
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Save status + button */}
+          {!isDemoMode && (
+            <>
+              <span className={`text-[0.6rem] tracking-widest transition-colors ${saveStatus === 'saved' ? 'text-[#555]' : saveStatus === 'saving' ? 'text-[#fbbf24]' : 'text-red-400'}`} style={{ fontFamily: 'var(--font-manga)' }}>
+                {saveStatus === 'saved' ? '✓ SAVED' : saveStatus === 'saving' ? 'SAVING...' : '● UNSAVED'}
+              </span>
+              <button
+                onClick={saveNow}
+                disabled={saveStatus === 'saving'}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-[0.65rem] font-bold border border-[#444] text-[#aaa] hover:border-[#a855f7] hover:text-[#a855f7] transition-colors disabled:opacity-40"
+                style={{ fontFamily: 'var(--font-manga)' }}
+              >
+                {saveStatus === 'saved' ? <Check size={11} /> : <Save size={11} />}
+                SAVE
+              </button>
+              <div className="w-px h-5 bg-[#333]" />
+            </>
+          )}
           {/* Effect count badge */}
           <span className="text-xs text-[#999] tracking-wider" style={{ fontFamily: 'var(--font-manga)' }}>
             {effects.length} EFFECTS

@@ -91,31 +91,54 @@ def _create_clip_video(
         f"fps={fps}"
     )
     if is_video:
+        # Keep original audio — normalize to stereo aac 44.1 kHz so concat is consistent.
         cmd = [
             FFMPEG, "-y",
             "-i", media_path,
             "-t", str(duration_sec),
             "-vf", scale_filter,
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-            "-an",
+            "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
             "-pix_fmt", "yuv420p",
             output_path,
         ]
+        if _run_ffmpeg(cmd, f"create video clip {os.path.basename(output_path)}"):
+            return True
+        # Clip had no audio stream — create video-only then add silent track
+        vo = output_path.replace(".mp4", "_vo.mp4")
+        cmd_vo = [
+            FFMPEG, "-y", "-i", media_path, "-t", str(duration_sec),
+            "-vf", scale_filter,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-pix_fmt", "yuv420p", "-an", vo,
+        ]
+        if not _run_ffmpeg(cmd_vo, f"create video clip (no audio) {os.path.basename(output_path)}"):
+            return False
+        cmd_sil = [
+            FFMPEG, "-y",
+            "-i", vo,
+            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+            "-shortest", output_path,
+        ]
+        return _run_ffmpeg(cmd_sil, f"add silence to clip {os.path.basename(output_path)}")
     else:
-        # FFmpeg 8.0 removed -loop as an input option for images.
-        # Use the loop video filter instead: loop=-1 loops forever, size=1 reads 1 frame.
+        # Image → static video with silent audio so concat streams are consistent.
         loop_scale_filter = f"loop=loop=-1:size=1:start=0,{scale_filter}"
         cmd = [
             FFMPEG, "-y",
             "-i", media_path,
+            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
             "-t", str(duration_sec),
-            "-vf", loop_scale_filter,
+            "-filter_complex", f"[0:v]{loop_scale_filter}[vout]",
+            "-map", "[vout]", "-map", "1:a",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
             "-pix_fmt", "yuv420p",
-            output_path,
+            "-shortest", output_path,
         ]
-
-    return _run_ffmpeg(cmd, f"create clip {os.path.basename(output_path)}")
+        return _run_ffmpeg(cmd, f"create image clip {os.path.basename(output_path)}")
 
 
 def _build_text_overlay_filter(
@@ -241,26 +264,27 @@ def _add_music(
     output_path: str,
     volume: float = 0.8,
 ) -> bool:
-    """Mix background music into the video (source clips are silent so no merge needed)."""
-    # Primary: loop music, apply volume, pad to video length, copy video stream unchanged.
+    """Mix background music with the existing clip audio (amix blend)."""
+    # Primary: loop music, blend with existing clip audio via amix.
     cmd = [
         FFMPEG, "-y",
         "-i", video_path,
         "-stream_loop", "-1", "-i", music_path,
-        "-filter_complex", f"[1:a]volume={volume},apad[a]",
+        "-filter_complex",
+            f"[1:a]volume={volume},apad[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]",
         "-map", "0:v",
-        "-map", "[a]",
+        "-map", "[aout]",
         "-c:v", "copy",
         "-c:a", "aac", "-b:a", "192k",
         "-shortest",
         output_path,
     ]
-    if _run_ffmpeg(cmd, "add music"):
+    if _run_ffmpeg(cmd, "add music (amix)"):
         return True
 
-    # Fallback: simpler command without filter_complex
+    # Fallback: replace audio with music only (if clip audio stream missing)
     cmd2 = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", video_path,
         "-stream_loop", "-1", "-i", music_path,
         "-map", "0:v",
@@ -452,17 +476,19 @@ async def compose_trailer(
                 inputs += ["-i", path]
                 dur = clip.get("duration_ms", 3000) / 1000.0
                 filter_parts.append(f"[{i}:v]trim=duration={dur},{scale_filter}[v{i}]")
-            concat_labels = "".join(f"[v{i}]" for i in range(len(playable_clips)))
-            filter_parts.append(f"{concat_labels}concat=n={len(playable_clips)}:v=1:a=0[vout]")
+                filter_parts.append(f"[{i}:a:0]atrim=duration={dur},aresample=44100,aformat=channel_layouts=stereo[a{i}]")
+            concat_v = "".join(f"[v{i}]" for i in range(len(playable_clips)))
+            concat_a = "".join(f"[a{i}]" for i in range(len(playable_clips)))
+            filter_parts.append(f"{concat_v}{concat_a}concat=n={len(playable_clips)}:v=1:a=1[vout][aout]")
             concat_output = os.path.join(tmpdir, "concat.mp4")
             cmd = [
                 FFMPEG, "-y",
                 *inputs,
                 "-filter_complex", ";".join(filter_parts),
-                "-map", "[vout]",
+                "-map", "[vout]", "-map", "[aout]",
                 "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+                "-c:a", "aac", "-b:a", "128k",
                 "-pix_fmt", "yuv420p",
-                "-an",
                 concat_output,
             ]
             ok = await asyncio.to_thread(_run_ffmpeg, cmd, "single-pass video normalize+concat")
@@ -563,6 +589,7 @@ async def compose_trailer(
                 "-f", "concat", "-safe", "0",
                 "-i", concat_list,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
                 "-pix_fmt", "yuv420p",
                 concat_output,
             ]
@@ -582,6 +609,7 @@ async def compose_trailer(
                     "-f", "concat", "-safe", "0",
                     "-i", concat_list,
                     "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k",
                     "-pix_fmt", "yuv420p",
                     concat_output,
                 ]

@@ -5,8 +5,20 @@ const DEFAULT_SETTINGS = { resolution: '1080p', aspect_ratio: '16:9', fps: 24 };
 const DEFAULT_TIMELINE = { clips: [], music_track: null, total_duration_ms: 0, effects: [], beat_map: null, settings: DEFAULT_SETTINGS };
 
 const STRIP_CLIP_IDS = new Set(['title_card', 'end_card']);
+const TITLE_CARD_TERMS = [
+  'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+  'title reveal', 'title sequence', 'opening title', 'title shot',
+  'book title', 'movie title', 'film title', 'outro card', 'intro card',
+  'end card', 'coming soon', 'the end', 'credits',
+  'glowing text', 'floating text', 'text appears', 'text reads',
+  'logo reveal', 'brand reveal',
+];
+function isTitleCard(c: any): boolean {
+  const prompt = (c.prompt || '').toLowerCase();
+  return TITLE_CARD_TERMS.some((t) => prompt.includes(t));
+}
 function stripBadClips(clips: any[]): any[] {
-  return (clips || []).filter((c: any) => !STRIP_CLIP_IDS.has(c.id) && c.type !== 'text_overlay');
+  return (clips || []).filter((c: any) => !STRIP_CLIP_IDS.has(c.id) && c.type !== 'text_overlay' && !isTitleCard(c));
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -196,8 +196,20 @@ export const useTimelineStore = create<TimelineState>((set) => ({
   loadTimeline: (timeline) => {
     // Ensure all clips have valid positions and orders; strip title/end cards permanently
     const STRIP_IDS = new Set(['title_card', 'end_card']);
+    const TITLE_CARD_TERMS = [
+      'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+      'title reveal', 'title sequence', 'opening title', 'title shot',
+      'book title', 'movie title', 'film title', 'outro card', 'intro card',
+      'end card', 'coming soon', 'the end', 'credits',
+      'glowing text', 'floating text', 'text appears', 'text reads',
+      'logo reveal', 'brand reveal',
+    ];
+    const isTitleCard = (c: any) => {
+      const prompt = (c.prompt || '').toLowerCase();
+      return TITLE_CARD_TERMS.some((t) => prompt.includes(t));
+    };
     const rawClips = (timeline.clips || []).filter(
-      (c: any) => !STRIP_IDS.has(c.id) && c.type !== 'text_overlay'
+      (c: any) => !STRIP_IDS.has(c.id) && c.type !== 'text_overlay' && !isTitleCard(c)
     );
     const clips = rawClips.map((c: any, i: number) => ({
       ...c,

@@ -559,7 +559,9 @@ export default function EditorPage() {
   const [batchGenerating, setBatchGenerating] = useState(false);
   const cancelImagesRef = useRef(false);
   const cancelExportRef = useRef(false);
+  const cancelledVideoClipsRef = useRef<Set<string>>(new Set());
   const [selectedStyle, setSelectedStyle] = useState('cinematic');
+  const [genDismissed, setGenDismissed] = useState(false);
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
@@ -641,6 +643,7 @@ export default function EditorPage() {
         setEditTitle(project.title || '');
         setEditDesc(project.description || '');
         setEditStoryText(project.book_text || project.story_text || sessionStorage.getItem(`book_text_${id}`) || '');
+        if (localStorage.getItem(`gen_dismissed_${id}`)) setGenDismissed(true);
         // Prefer localStorage thumbnail (data URLs persist there; API only stores URLs)
         const localThumb = localStorage.getItem(`cover_image_${id}`);
         const thumb = localThumb || project.cover_image_url || '';
@@ -672,6 +675,11 @@ export default function EditorPage() {
       try {
         const msg = JSON.parse(event.data);
         if ((msg.type === 'clip_update' || msg.type === 'clip_updated') && msg.clip_id) {
+          // Skip update if user cancelled video generation for this clip
+          if (cancelledVideoClipsRef.current.has(msg.clip_id)) {
+            cancelledVideoClipsRef.current.delete(msg.clip_id);
+            return;
+          }
           const updates: Record<string, any> = {};
           if (msg.gen_status) updates.gen_status = msg.gen_status;
           if (msg.status) updates.gen_status = msg.status;
@@ -743,6 +751,8 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (genStep === 'done' && prevGenStepRef.current !== 'done') {
+      localStorage.removeItem(`gen_dismissed_${id}`);
+      setGenDismissed(false);
       if (flashOverlayRef.current) {
         gsap.fromTo(flashOverlayRef.current,
           { opacity: 0.8, display: 'block' },
@@ -751,7 +761,7 @@ export default function EditorPage() {
       }
     }
     prevGenStepRef.current = genStep;
-  }, [genStep]);
+  }, [genStep, id]);
 
   useEffect(() => {
     if (clips.length > 0 && !hadClipsRef.current) {
@@ -1222,7 +1232,7 @@ export default function EditorPage() {
     (typeof window !== 'undefined' && sessionStorage.getItem(`book_text_${id}`))
   );
   const alreadyEditing = ['editing', 'rendering', 'done'].includes(currentProject?.status || '');
-  const showOnboarding = !loading && !error && clips.length === 0 && hasBook && genStep !== 'done' && !alreadyEditing;
+  const showOnboarding = !loading && !error && clips.length === 0 && hasBook && genStep !== 'done' && !alreadyEditing && !genDismissed;
   const isGenerating = genStep === 'analyzing' || genStep === 'planning';
 
   // Workflow phase detection
@@ -1377,10 +1387,20 @@ export default function EditorPage() {
             </button>
           )}
           {(workflowPhase === 'videos') && anyGenerating && (
-            <div className="manga-btn bg-blue-600/20 text-blue-700 px-3 py-1.5 text-sm flex items-center gap-2 border-blue-300 cursor-default select-none">
+            <button
+              onClick={() => {
+                const generating = playableClips.filter(c => c.gen_status === 'generating');
+                generating.forEach(c => {
+                  cancelledVideoClipsRef.current.add(c.id);
+                  updateClip(c.id, { gen_status: 'done' });
+                });
+                setGeneratingVideos(false);
+              }}
+              className="manga-btn bg-blue-600/20 text-blue-700 px-3 py-1.5 text-sm flex items-center gap-2 border-blue-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
+            >
               <Loader2 size={14} className="animate-spin" />
-              {playableClips.filter(c => c.type === 'video' && c.gen_status === 'done').length}/{playableClips.length} Generating Videos...
-            </div>
+              {playableClips.filter(c => c.type === 'video' && c.gen_status === 'done').length}/{playableClips.length} Generating Videos… <X size={12} />
+            </button>
           )}
           {imagesAllDone && !allVideosGenerated && !anyGenerating && !generatingVideos && (
             <button
@@ -2073,7 +2093,14 @@ export default function EditorPage() {
         {showOnboarding && (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/90 backdrop-blur-sm">
             <div className="max-w-md w-full mx-4">
-              <div ref={onboardingCardRef} className="manga-panel-accent p-8">
+              <div ref={onboardingCardRef} className="manga-panel-accent p-8 relative">
+                <button
+                  onClick={() => { setGenDismissed(true); localStorage.setItem(`gen_dismissed_${id}`, 'true'); }}
+                  className="absolute top-3 right-3 text-[#aaa] hover:text-[#111] transition-colors"
+                  title="Exit"
+                >
+                  <X size={16} />
+                </button>
                 <div className="w-14 h-14 flex items-center justify-center mx-auto mb-6">
                   <Sparkles size={28} className="text-[#111]" />
                 </div>

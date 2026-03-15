@@ -11,6 +11,7 @@ import httpx
 from app.services.ffmpeg import compose_trailer, generate_preview
 from app.services.music import suggest_music
 from app.services.kling import download_media
+from app.services.veo import _supabase_upload_video
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -179,21 +180,46 @@ async def _compose_background(data: ComposeRequest, job_id: str):
 
             render_base = settings.render_service_url
             output_dir_base = settings.render_output_dir.rstrip("/")
-            def to_public_url(path: str) -> str:
+            def to_local_url(path: str) -> str:
                 rel = path[len(output_dir_base):].lstrip("/")
                 return f"{render_base}/outputs/{rel}"
+
+            # Upload compiled videos to Supabase Storage
+            import asyncio as _asyncio
+            output_supabase_url = None
+            preview_supabase_url = None
+            try:
+                with open(output_path, "rb") as f:
+                    output_bytes = f.read()
+                output_supabase_url = await _asyncio.to_thread(
+                    _supabase_upload_video, f"compiled/{data.project_id}/{job_id}.mp4", output_bytes
+                )
+            except Exception as e:
+                logger.warning("Failed to upload compiled video to Supabase: %s", e)
+            try:
+                with open(preview_path, "rb") as f:
+                    preview_bytes = f.read()
+                preview_supabase_url = await _asyncio.to_thread(
+                    _supabase_upload_video, f"compiled/{data.project_id}/{job_id}_preview.mp4", preview_bytes
+                )
+            except Exception as e:
+                logger.warning("Failed to upload preview video to Supabase: %s", e)
+
+            final_output_url = output_supabase_url or to_local_url(output_path)
+            final_preview_url = preview_supabase_url or to_local_url(preview_path)
+            logger.info("Compiled video -> %s", "supabase" if output_supabase_url else "local")
 
             _render_jobs[job_id].update({
                 "status": "done",
                 "progress": 100,
-                "output_url": to_public_url(output_path),
-                "preview_url": to_public_url(preview_path),
+                "output_url": final_output_url,
+                "preview_url": final_preview_url,
                 "duration_ms": result.get("duration_ms", 0),
                 "message": result.get("message", ""),
             })
             await _report_progress(job_id, data.project_id, 100, "Render complete!",
-                                   output_url=to_public_url(output_path),
-                                   preview_url=to_public_url(preview_path))
+                                   output_url=final_output_url,
+                                   preview_url=final_preview_url)
         else:
             _render_jobs[job_id].update({
                 "status": "error",

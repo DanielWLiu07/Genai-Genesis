@@ -245,7 +245,7 @@ export default function LandingPage() {
       <div ref={contentRef} className="relative z-10 flex flex-col items-end text-right pr-[8vw]" style={{ marginTop: '-4vh' }}>
         <div className="flex items-center gap-5 mb-1">
           <div ref={logoRef} style={{ opacity: 0 }}>
-            <Image src="/logo.png" alt="Lotus" width={140} height={140} className="drop-shadow-[0_0_20px_rgba(0,0,0,0.3)]" priority />
+            <Image src="/logo.png" alt="Lotus" width={140} height={140} className="drop-shadow-[0_0_20px_rgba(168,85,247,0.5)]" priority />
           </div>
           <h1
             ref={titleRef}

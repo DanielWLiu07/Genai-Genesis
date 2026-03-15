@@ -1111,16 +1111,40 @@ export default function TimelinePage() {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const handleDownload = useCallback(async () => {
+    if (!compiledUrl) return;
+    try {
+      // Fetch as blob so cross-origin downloads work (plain <a download> is blocked for cross-origin URLs)
+      const resp = await fetch(compiledUrl);
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `lotus-trailer-${id || 'video'}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch {
+      // Fallback: open in new tab
+      window.open(compiledUrl, '_blank');
+    }
+  }, [compiledUrl, id]);
+
   const handlePublishToCommunity = useCallback(async () => {
     if (!id || resultPublishing || resultPublished) return;
     setResultPublishing(true);
     try {
-      await fetch(`/api/projects/${id}/publish`, { method: 'POST' });
+      await fetch(`/api/projects/${id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ compiled_video_url: compiledUrl || null }),
+      });
       setResultPublished(true);
     } catch { /* non-fatal */ } finally {
       setResultPublishing(false);
     }
-  }, [id, resultPublishing, resultPublished]);
+  }, [id, resultPublishing, resultPublished, compiledUrl]);
 
   const handleRender = useCallback(async () => {
     if (!id || rendering) return;
@@ -1183,14 +1207,18 @@ export default function TimelinePage() {
           }
         } catch { /* keep polling */ }
       }
-      // Show result modal for any completed render — even if previewUrl is missing
+      // Prefer output_url (full quality, always created) over preview_url (optional downscale that can fail)
       if (finalStatus?.status === 'done') {
         setRenderStatus('Done!');
-        const previewUrl = finalStatus.preview_url || finalStatus.output_url || '';
-        setCompiledUrl(previewUrl);
-        setCompiledReady(false);
-        setShareUrl(previewUrl);
-        setShowResultModal(true);
+        const videoUrl = finalStatus.output_url || finalStatus.preview_url || '';
+        if (videoUrl) {
+          setCompiledUrl(videoUrl);
+          setCompiledReady(false);
+          setShareUrl(videoUrl);
+          setShowResultModal(true);
+        } else {
+          alert('Render completed but video URL is missing. Check the render service logs.');
+        }
       }
     } catch (err) {
       console.error('Render failed:', err);
@@ -2466,16 +2494,13 @@ export default function TimelinePage() {
               {/* Action buttons */}
               <div className="relative px-6 py-5 grid grid-cols-3 gap-3">
                 {/* Download */}
-                <a
-                  href={compiledUrl}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={handleDownload}
                   className="flex flex-col items-center justify-center gap-2 py-4 border-2 border-[#222] text-[#888] hover:border-[#a855f7] hover:text-[#a855f7] transition-colors text-[0.6rem] tracking-widest uppercase"
                 >
                   <Download size={20} />
                   DOWNLOAD
-                </a>
+                </button>
 
                 {/* Share */}
                 <button

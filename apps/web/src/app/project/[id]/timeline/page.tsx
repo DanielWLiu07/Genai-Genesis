@@ -11,6 +11,7 @@ import { useTimelineStore, type Clip, type Effect, type EffectType, type BeatMap
 import { useProjectStore } from '@/stores/project-store';
 import { api } from '@/lib/api';
 import { ChatPanel, cancelClipGeneration } from '@/components/chat/ChatPanel';
+import { ShareModal } from '@/components/editor/ShareModal';
 
 // ─── Beat sync ──────────────────────────────────────────────────────────────
 
@@ -661,6 +662,7 @@ export default function TimelinePage() {
   const [previewLoadError, setPreviewLoadError] = useState<string | null>(null);
   const [compiledUrl, setCompiledUrl] = useState<string | null>(null);
   const [compiledReady, setCompiledReady] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const router = useRouter();
 
@@ -1262,6 +1264,7 @@ Respond ONLY with compact JSON (no markdown, no explanation):
             if (previewUrl) {
               setCompiledUrl(previewUrl);
               setCompiledReady(false);
+              setShareUrl(previewUrl);
             }
             break;
           } else if (status.status === 'error') {
@@ -2472,6 +2475,14 @@ Respond ONLY with compact JSON (no markdown, no explanation):
           </div>
         </div>
         </div>{/* end timeline content */}
+
+        {shareUrl && (
+          <ShareModal
+            projectId={id!}
+            outputUrl={shareUrl}
+            onClose={() => setShareUrl(null)}
+          />
+        )}
 
         {/* Chat panel — always mounted, GSAP slide overlay (no layout shift) */}
         <div

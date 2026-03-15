@@ -30,6 +30,9 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS manga_file_url TEXT;
 -- Migration: add preview_url to render_jobs
 ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS preview_url TEXT;
 
+-- Migration: add published flag to projects
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT FALSE;
+
 -- Timelines table (one per project)
 CREATE TABLE IF NOT EXISTS timelines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -6,7 +6,7 @@ export async function GET() {
   const { data: projects, error } = await supabase
     .from('projects')
     .select('id,title,author,description,status,cover_image_url,created_at')
-    .eq('status', 'done')
+    .eq('published', true)
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

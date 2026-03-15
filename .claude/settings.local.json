@@ -24,13 +24,8 @@
       "Bash(git push:*)",
       "Bash(git config:*)",
       "Bash(git diff:*)",
-      "Bash(where ffmpeg:*)",
-      "Bash(powershell.exe -Command \"Get-Command ffmpeg -ErrorAction SilentlyContinue; \\(Get-Command ffmpeg\\).Source 2>$null\")",
-      "Bash(powershell.exe -Command \"Get-Command ffmpeg -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source\")",
-      "Bash(powershell.exe -Command \"winget install Gyan.FFmpeg --accept-package-agreements --accept-source-agreements\")",
-      "Bash(powershell.exe -Command \"& 'C:\\\\Users\\\\jonwu\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\ffmpeg-8.0.1-full_build\\\\bin\\\\ffmpeg.exe' -version 2>&1 | Select-Object -First 2\")",
-      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Users\\\\jonwu\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages' -Recurse -Filter 'ffmpeg.exe' 2>$null | Select-Object -ExpandProperty FullName\")",
-      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Users\\\\jonwu\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages' -Recurse -Filter 'ffmpeg.exe' | Select-Object -ExpandProperty FullName\")"
+      "Bash(pkill:*)",
+      "Bash(pnpm build:*)"
     ]
   }
 }

@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS projects (
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS audio_file_url TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS audio_analysis JSONB;
 
+-- Migration: add manga/content-type columns
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS content_type TEXT DEFAULT NULL;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS manga_panels JSONB DEFAULT '[]'::JSONB;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS manga_file_url TEXT;
+
 -- Migration: add preview_url to render_jobs
 ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS preview_url TEXT;
 

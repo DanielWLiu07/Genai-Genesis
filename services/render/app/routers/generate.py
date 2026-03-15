@@ -67,8 +67,36 @@ class GenerateResponse(BaseModel):
     message: str = ""
 
 
+def _update_clip_in_supabase(project_id: str, clip_id: str, status: str, media_url: str, thumbnail_url: str, error: str, actual_type: Optional[str]) -> None:
+    """Direct Supabase fallback: update clip status when API service callback fails."""
+    from app.config import get_settings as _gs
+    s = _gs()
+    if not (s.supabase_url and s.supabase_service_key):
+        return
+    from supabase import create_client
+    client = create_client(s.supabase_url, s.supabase_service_key)
+    row = client.table("timelines").select("clips").eq("project_id", project_id).execute()
+    if not row.data:
+        return
+    clips = row.data[0].get("clips", [])
+    for clip in clips:
+        if clip.get("id") == clip_id:
+            clip["gen_status"] = status
+            if media_url:
+                clip["generated_media_url"] = media_url
+                clip["thumbnail_url"] = thumbnail_url or media_url
+            if actual_type:
+                clip["type"] = actual_type
+            if error:
+                clip["gen_error"] = error
+            break
+    client.table("timelines").update({"clips": clips}).eq("project_id", project_id).execute()
+    logger.info("Supabase fallback: clip %s → %s", clip_id, status)
+
+
 async def _notify_progress(clip_id: str, status: str, media_url: str = "", thumbnail_url: str = "", error: str = "", extra: dict = {}, project_id: str = ""):
     settings = get_settings()
+    notified = False
     try:
         async with httpx.AsyncClient() as client:
             payload = {
@@ -85,8 +113,20 @@ async def _notify_progress(clip_id: str, status: str, media_url: str = "", thumb
                 json=payload,
                 timeout=10,
             )
+        notified = True
     except Exception as e:
         logger.warning("Failed to notify API service: %s", e)
+
+    # Fallback: write directly to Supabase so DB polling on the frontend can recover
+    if not notified and project_id and status in ("done", "error"):
+        try:
+            await asyncio.to_thread(
+                _update_clip_in_supabase,
+                project_id, clip_id, status, media_url, thumbnail_url, error,
+                extra.get("actual_type"),
+            )
+        except Exception as e2:
+            logger.error("Supabase fallback also failed: %s", e2)
 
 
 async def _generate_and_callback(data: GenerateRequest):
@@ -114,12 +154,19 @@ async def _generate_and_callback(data: GenerateRequest):
                 style_seed=data.style_seed,
             )
             async with _VIDEO_SEM:
-                result = await generate_video_fal(
-                    prompt=prompt,
-                    aspect_ratio=data.aspect_ratio,
-                    duration_sec=data.duration_ms / 1000,
-                    start_frame_url=data.scene_image_url,
-                )
+                try:
+                    result = await asyncio.wait_for(
+                        generate_video_fal(
+                            prompt=prompt,
+                            aspect_ratio=data.aspect_ratio,
+                            duration_sec=data.duration_ms / 1000,
+                            start_frame_url=data.scene_image_url,
+                        ),
+                        timeout=600,  # 10-minute hard cap
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Video generation timed out for clip %s", data.clip_id)
+                    result = {"status": "error", "message": "Generation timed out after 10 minutes"}
                 # fal failed — fall back to Gemini image so clip isn't stranded
                 if result.get("status") != "done":
                     logger.warning("fal video failed (%s), falling back to Gemini image", result.get("message"))

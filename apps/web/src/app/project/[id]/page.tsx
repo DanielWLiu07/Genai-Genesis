@@ -521,6 +521,34 @@ export default function EditorPage() {
     return () => { ws.close(); wsRef.current = null; };
   }, [id, setProjectId, loadTimeline, setCurrentProject, updateClip]);
 
+  // Fallback polling — if WebSocket callback never arrives, sync clip statuses from DB every 15s.
+  // Checks inside the interval so it catches clips that go into 'generating' after mount.
+  useEffect(() => {
+    if (!id || loading) return;
+    const interval = setInterval(async () => {
+      const store = useTimelineStore.getState();
+      const generatingNow = store.clips.filter((c: any) => c.gen_status === 'generating');
+      if (generatingNow.length === 0) return;
+      try {
+        const tl: any = await api.getTimeline(id);
+        const dbClips: any[] = tl.clips || [];
+        for (const dbClip of dbClips) {
+          const local = store.clips.find((c: any) => c.id === dbClip.id);
+          if (local?.gen_status === 'generating' && dbClip.gen_status !== 'generating') {
+            updateClip(dbClip.id, {
+              gen_status: dbClip.gen_status,
+              generated_media_url: dbClip.generated_media_url,
+              thumbnail_url: dbClip.thumbnail_url,
+              type: dbClip.type,
+              gen_error: dbClip.gen_error,
+            });
+          }
+        }
+      } catch { /* ignore */ }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id, loading, updateClip]);
+
   useEffect(() => {
     if (loading || error) return;
     const ctx = gsap.context(() => {

@@ -413,17 +413,20 @@ export default function EditorPage() {
       setVideoCancelled(true);
     }
 
-    Promise.all([
-      api.getProject(id).catch(() => null),
-      api.getTimeline(id).catch(() => ({ clips: [], music_track: null, settings: null })),
-      api.getRenderJobs(id).catch(() => []),
-    ]).then(([project, timeline, renderJobs]: [any, any, any]) => {
-      // Restore compiled video URL from most recent done render job (sort by created_at DESC)
+    // Restore compiled video URL from most recent done render job — loaded in background
+    // so it doesn't block the critical project/timeline fetch
+    api.getRenderJobs(id).then((renderJobs: any) => {
       const sortedJobs = [...(renderJobs || [])].sort((a: any, b: any) =>
         new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
       );
       const latestDone = sortedJobs.find((j: any) => j.status === 'done' && (j.preview_url || j.output_url));
       if (latestDone) setCompiledUrl(latestDone.preview_url || latestDone.output_url);
+    }).catch(() => {});
+
+    Promise.all([
+      api.getProject(id).catch(() => null),
+      api.getTimeline(id).catch(() => ({ clips: [], music_track: null, settings: null })),
+    ]).then(([project, timeline]: [any, any]) => {
       if (project) {
         const storedBookText = sessionStorage.getItem(`book_text_${id}`);
         if (storedBookText && !project.book_text) project.book_text = storedBookText;

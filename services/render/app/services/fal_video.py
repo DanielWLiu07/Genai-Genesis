@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 _FAL_QUEUE_BASE = "https://queue.fal.run"
 
+
 # Models
 _KLING_I2V = "fal-ai/kling-video/v1.6/standard/image-to-video"
 _KLING_T2V = "fal-ai/kling-video/v1.6/standard/text-to-video"

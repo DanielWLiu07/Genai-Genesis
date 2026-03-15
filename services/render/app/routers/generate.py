@@ -1,9 +1,13 @@
 """Clip generation endpoint — generates a single image or video via Kling 3.0 or Gemini fallback."""
+import asyncio
 import logging
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 import httpx
+
+# Cap concurrent video gen tasks so the async event loop stays responsive for composes/health checks
+_VIDEO_SEM = asyncio.Semaphore(3)
 
 from app.services.kling import generate_image, generate_video as generate_video_kling, download_media
 from app.services.veo import generate_video_veo
@@ -107,18 +111,19 @@ async def _generate_and_callback(data: GenerateRequest):
                 feedback=data.feedback,
                 style_seed=data.style_seed,
             )
-            result = await generate_video_fal(
-                prompt=prompt,
-                aspect_ratio=data.aspect_ratio,
-                duration_sec=data.duration_ms / 1000,
-                start_frame_url=data.scene_image_url,
-            )
-            # fal failed — fall back to Gemini image so clip isn't stranded
-            if result.get("status") != "done":
-                logger.warning("fal video failed (%s), falling back to Gemini image", result.get("message"))
-                img_prompt = build_image_prompt(data.prompt, characters=chars, mood=data.mood)
-                result = await generate_image_gemini(img_prompt, data.aspect_ratio)
-                actual_type = "image"
+            async with _VIDEO_SEM:
+                result = await generate_video_fal(
+                    prompt=prompt,
+                    aspect_ratio=data.aspect_ratio,
+                    duration_sec=data.duration_ms / 1000,
+                    start_frame_url=data.scene_image_url,
+                )
+                # fal failed — fall back to Gemini image so clip isn't stranded
+                if result.get("status") != "done":
+                    logger.warning("fal video failed (%s), falling back to Gemini image", result.get("message"))
+                    img_prompt = build_image_prompt(data.prompt, characters=chars, mood=data.mood)
+                    result = await generate_image_gemini(img_prompt, data.aspect_ratio)
+                    actual_type = "image"
         else:
             prompt = build_image_prompt(
                 data.prompt,

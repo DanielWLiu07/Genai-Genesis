@@ -420,7 +420,7 @@ export default function EditorPage() {
         new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
       );
       const latestDone = sortedJobs.find((j: any) => j.status === 'done' && (j.preview_url || j.output_url));
-      if (latestDone) setCompiledUrl(latestDone.preview_url || latestDone.output_url);
+      if (latestDone) setCompiledUrl(latestDone.output_url || latestDone.preview_url);
     }).catch(() => {});
 
     Promise.all([
@@ -520,7 +520,7 @@ export default function EditorPage() {
           if (msg.progress !== undefined && ses) ses(`Rendering... ${msg.progress}%`);
           if (msg.status === 'done' && (msg.preview_url || msg.output_url)) {
             if (ses) ses('Done!');
-            if (scu) scu(msg.preview_url || msg.output_url);
+            if (scu) scu(msg.output_url || msg.preview_url);
             if (ssrc) ssrc(true);
             if (se) se(false);
           } else if (msg.status === 'error') {
@@ -715,7 +715,7 @@ export default function EditorPage() {
           setExportStatus(`Rendering... ${status.progress || 0}%`);
           if (status.status === 'done') {
             setExportStatus('Done!');
-            const playbackUrl = status.preview_url || status.output_url || '';
+            const playbackUrl = status.output_url || status.preview_url || '';
             setCompiledUrl(playbackUrl || null);
             setShowRenderComplete(true);
             break;

@@ -31,6 +31,11 @@ TEXTURE:     panel_split (manga panels 400ms), cross_cut (X-slash action hit 150
              film_grain (cinematic grit 200-400ms), blur_out (memory/dream 400-600ms),
              pixelate (digital world 200-400ms)
 
+TOOLS FOR BEAT-SYNCED EDITING:
+- add_amv_effects_on_beats: place one effect type on every Nth beat in a range — best for "flash on every beat at 140bpm from 0-8s"
+- add_amv_effect_range: evenly distribute effects across a time range by interval_ms OR count — best for "add 5 shakes between 4s and 12s"
+- clear_amv_effects: wipe all effects, or filter by type + time range before rebuilding
+
 COMBOS for sick edits:
 - Heavy action hit: heavy_shake + red_flash + chromatic at same timestamp
 - Climax moment: zoom_burst + overexpose + manga_ink layered 2 beats apart
@@ -130,6 +135,79 @@ const TOOLS = [
   },
   { name: 'set_bpm', description: 'Set the BPM for beat-synced effects and generate the beat map grid.', parameters: { type: SchemaType.OBJECT, properties: { bpm: { type: SchemaType.INTEGER } }, required: ['bpm'] } },
   { name: 'auto_amv', description: 'Auto-fill the effects timeline with beat-synced AMV effects across the whole trailer.', parameters: { type: SchemaType.OBJECT, properties: { bpm: { type: SchemaType.INTEGER }, style: { type: SchemaType.STRING } }, required: [] } },
+  {
+    name: 'clear_amv_effects',
+    description: 'Remove AMV effects — all, or filtered by type and/or time range. Use before rebuilding the effects layer.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        type: { type: SchemaType.STRING, description: 'Effect type to clear (omit to clear all types)' },
+        start_ms: { type: SchemaType.INTEGER, description: 'Start of time range in ms (omit for start of timeline)' },
+        end_ms: { type: SchemaType.INTEGER, description: 'End of time range in ms (omit for end of timeline)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'add_amv_effect_range',
+    description: 'Add a repeated AMV effect across a time range — by interval_ms (every Xms) or count (N evenly-spaced). Best for "add shake every 500ms between 2s and 10s" or "add 6 flashes between 0 and 5s".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        type: { type: SchemaType.STRING, description: 'Effect type name' },
+        start_ms: { type: SchemaType.INTEGER, description: 'Start timestamp in ms' },
+        end_ms: { type: SchemaType.INTEGER, description: 'End timestamp in ms' },
+        interval_ms: { type: SchemaType.INTEGER, description: 'Gap between effects in ms (use instead of count)' },
+        count: { type: SchemaType.INTEGER, description: 'Number of evenly-spaced effects (use instead of interval_ms)' },
+        duration_ms: { type: SchemaType.INTEGER },
+        intensity: { type: SchemaType.NUMBER },
+        params: {
+          type: SchemaType.OBJECT,
+          properties: {
+            scale: { type: SchemaType.NUMBER }, center_x: { type: SchemaType.NUMBER }, center_y: { type: SchemaType.NUMBER },
+            radius: { type: SchemaType.NUMBER }, sigma: { type: SchemaType.NUMBER }, shift: { type: SchemaType.NUMBER },
+            brightness: { type: SchemaType.NUMBER }, saturation: { type: SchemaType.NUMBER }, contrast: { type: SchemaType.NUMBER },
+            hue_shift: { type: SchemaType.NUMBER }, glow: { type: SchemaType.NUMBER },
+            frames: { type: SchemaType.INTEGER }, decay: { type: SchemaType.NUMBER },
+            thickness: { type: SchemaType.INTEGER }, count: { type: SchemaType.INTEGER },
+            bar_size: { type: SchemaType.NUMBER }, size: { type: SchemaType.INTEGER },
+            amount: { type: SchemaType.NUMBER }, angle: { type: SchemaType.NUMBER },
+          },
+        },
+      },
+      required: ['type', 'start_ms', 'end_ms'],
+    },
+  },
+  {
+    name: 'add_amv_effects_on_beats',
+    description: 'Place an AMV effect on specific beats — e.g. every beat, every 2nd beat, etc. Best for "add flash on every beat at 140bpm from 0s to 8s". Provide bpm if not already set.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        type: { type: SchemaType.STRING, description: 'Effect type name' },
+        bpm: { type: SchemaType.INTEGER, description: 'BPM — required if no beat map is set yet' },
+        every_n_beats: { type: SchemaType.INTEGER, description: '1=every beat, 2=every other, 4=every 4th, etc.' },
+        start_ms: { type: SchemaType.INTEGER, description: 'Start timestamp in ms (default: 0)' },
+        end_ms: { type: SchemaType.INTEGER, description: 'End timestamp in ms (default: end of timeline)' },
+        duration_ms: { type: SchemaType.INTEGER },
+        intensity: { type: SchemaType.NUMBER },
+        params: {
+          type: SchemaType.OBJECT,
+          properties: {
+            scale: { type: SchemaType.NUMBER }, center_x: { type: SchemaType.NUMBER }, center_y: { type: SchemaType.NUMBER },
+            radius: { type: SchemaType.NUMBER }, sigma: { type: SchemaType.NUMBER }, shift: { type: SchemaType.NUMBER },
+            brightness: { type: SchemaType.NUMBER }, saturation: { type: SchemaType.NUMBER }, contrast: { type: SchemaType.NUMBER },
+            hue_shift: { type: SchemaType.NUMBER }, glow: { type: SchemaType.NUMBER },
+            frames: { type: SchemaType.INTEGER }, decay: { type: SchemaType.NUMBER },
+            thickness: { type: SchemaType.INTEGER }, count: { type: SchemaType.INTEGER },
+            bar_size: { type: SchemaType.NUMBER }, size: { type: SchemaType.INTEGER },
+            amount: { type: SchemaType.NUMBER }, angle: { type: SchemaType.NUMBER },
+          },
+        },
+      },
+      required: ['type', 'every_n_beats'],
+    },
+  },
   { name: 'trigger_generate_clip', description: 'Trigger image generation for a specific clip via the AI pipeline.', parameters: { type: SchemaType.OBJECT, properties: { clip_id: { type: SchemaType.STRING }, new_prompt: { type: SchemaType.STRING } }, required: ['clip_id'] } },
   { name: 'bulk_update_clips', description: 'Batch-update multiple clips at once.', parameters: { type: SchemaType.OBJECT, properties: { updates: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {} } } }, required: ['updates'] } },
 ];
@@ -166,12 +244,33 @@ User: ${message}`;
       tools: [{ functionDeclarations: TOOLS as any }],
     });
 
-    // Convert history to Gemini format
-    const geminiHistory = history.flatMap((m: any) => {
-      if (m.role === 'user') return [{ role: 'user', parts: [{ text: m.content }] }];
-      if (m.role === 'assistant') return [{ role: 'model', parts: [{ text: m.content }] }];
-      return [];
-    });
+    // Convert history to Gemini format, preserving tool calls as proper function call/response pairs
+    const geminiHistory: any[] = [];
+    for (const m of history) {
+      if (m.role === 'user') {
+        geminiHistory.push({ role: 'user', parts: [{ text: m.content }] });
+      } else if (m.role === 'assistant') {
+        const parts: any[] = [];
+        if (m.tool_calls?.length) {
+          for (const tc of m.tool_calls) {
+            parts.push({ functionCall: { name: tc.tool_name, args: tc.arguments || {} } });
+          }
+        }
+        if (m.content) parts.push({ text: m.content });
+        if (parts.length) {
+          geminiHistory.push({ role: 'model', parts });
+          // Gemini requires a user turn with function responses after a model turn with function calls
+          if (m.tool_calls?.length) {
+            geminiHistory.push({
+              role: 'user',
+              parts: m.tool_calls.map((tc: any) => ({
+                functionResponse: { name: tc.tool_name, response: { output: 'applied' } },
+              })),
+            });
+          }
+        }
+      }
+    }
 
     const chat = model.startChat({ history: geminiHistory });
     const result = await chat.sendMessage(contextPrompt);

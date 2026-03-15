@@ -305,7 +305,7 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
               <RotateCcw size={16} />
             </button>
             <button
-              onClick={playing ? pause : play}
+              onClick={playing ? pause : () => play()}
               disabled={!loaded}
               className="bg-[#a855f7] text-white rounded-full w-9 h-9 flex items-center justify-center hover:bg-[#9333ea] disabled:opacity-40"
             >

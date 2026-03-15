@@ -43,7 +43,8 @@ class MusicSuggestRequest(BaseModel):
     duration_ms: int = 0
 
 
-async def _report_progress(job_id: str, project_id: str, progress: int, message: str):
+async def _report_progress(job_id: str, project_id: str, progress: int, message: str,
+                           output_url: str = "", preview_url: str = ""):
     """Update job status and notify API service."""
     if job_id in _render_jobs:
         _render_jobs[job_id]["progress"] = progress
@@ -62,6 +63,8 @@ async def _report_progress(job_id: str, project_id: str, progress: int, message:
                     "progress": progress,
                     "status": "composing" if progress < 100 else "done",
                     "message": message,
+                    "output_url": output_url,
+                    "preview_url": preview_url,
                 },
                 timeout=10,
             )
@@ -174,7 +177,9 @@ async def _compose_background(data: ComposeRequest, job_id: str):
                 "duration_ms": result.get("duration_ms", 0),
                 "message": result.get("message", ""),
             })
-            await _report_progress(job_id, data.project_id, 100, "Render complete!")
+            await _report_progress(job_id, data.project_id, 100, "Render complete!",
+                                   output_url=to_public_url(output_path),
+                                   preview_url=to_public_url(preview_path))
         else:
             _render_jobs[job_id].update({
                 "status": "error",

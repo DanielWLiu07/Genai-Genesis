@@ -6,7 +6,7 @@ const DEFAULT_TIMELINE = { clips: [], music_track: null, total_duration_ms: 0, e
 
 const STRIP_CLIP_IDS = new Set(['title_card', 'end_card']);
 function stripBadClips(clips: any[]): any[] {
-  return (clips || []).filter((c: any) => !STRIP_CLIP_IDS.has(c.id));
+  return (clips || []).filter((c: any) => !STRIP_CLIP_IDS.has(c.id) && c.type !== 'text_overlay');
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {

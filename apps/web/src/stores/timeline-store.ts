@@ -56,7 +56,18 @@ export interface Effect {
 export interface BeatMap {
   bpm: number;
   offset_ms: number;
-  beats: number[];         // beat timestamps in ms
+  beats: number[];             // all beat timestamps in ms
+  beat_strengths?: number[];   // 0-1 strength per beat (parallel to beats[])
+  downbeats?: number[];        // bar starts (every 4th beat) in ms
+  energy_peaks?: number[];     // energy spike timestamps in ms — HIGH PRIORITY sync points
+  energy_curve?: number[];     // 0-1 energy value per 100ms — full energy envelope
+  section_boundaries?: number[]; // structural section changes in ms — major transition points
+  crashes?: number[];          // crash/open-hihat timestamps in ms — HEAVIEST impact moments
+  kicks?: number[];            // kick drum timestamps in ms
+  snares?: number[];           // snare/clap timestamps in ms
+  hihats?: number[];           // closed hihat timestamps in ms
+  horns?: number[];            // horn/brass/synth stab timestamps in ms
+  onsets?: number[];           // all percussion onset timestamps in ms
 }
 
 interface TimelineState {
@@ -141,7 +152,9 @@ export const useTimelineStore = create<TimelineState>((set) => ({
   loadTimeline: (timeline) => {
     // Ensure all clips have valid positions and orders; strip title/end cards permanently
     const STRIP_IDS = new Set(['title_card', 'end_card']);
-    const rawClips = (timeline.clips || []).filter((c: any) => !STRIP_IDS.has(c.id));
+    const rawClips = (timeline.clips || []).filter(
+      (c: any) => !STRIP_IDS.has(c.id) && c.type !== 'text_overlay'
+    );
     const clips = rawClips.map((c: any, i: number) => ({
       ...c,
       prompt: c.prompt ?? '',

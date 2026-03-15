@@ -1548,22 +1548,25 @@ export default function EditorPage() {
                         bpm: analysis.bpm,
                       };
                       // Build beat_map from actual detected beat timestamps (not just BPM grid)
-                      // beat_timestamps are in seconds → convert to ms
-                      const rawBeats: number[] = (analysis.beat_timestamps || []).map((t: number) => Math.round(t * 1000));
+                      // ALL times from librosa are in seconds → convert everything to ms
+                      const s2ms = (t: number) => Math.round(t * 1000);
+                      const rawBeats: number[] = (analysis.beat_timestamps || []).map(s2ms);
                       const beat_map = rawBeats.length > 0 ? {
                         bpm: analysis.bpm || 120,
                         offset_ms: rawBeats[0] || 0,
                         beats: rawBeats,
-                        downbeats: (analysis.downbeat_timestamps || []).map((t: number) => Math.round(t * 1000)),
-                        onsets: (analysis.onset_times || []).map((t: number) => Math.round(t * 1000)),
-                        energy_peaks: (analysis.energy_peaks || []).map((t: number) => Math.round(t * 1000)),
-                        // Per-instrument hit times (seconds, from HPSS + decay classification)
-                        kick_times: analysis.kick_times || [],
-                        snare_times: analysis.snare_times || [],
-                        hihat_times: analysis.hihat_times || [],
-                        crash_times: analysis.crash_times || [],
-                        horn_times: analysis.horn_times || [],
-                        melodic_times: analysis.melodic_times || [],
+                        beat_strengths: analysis.beat_strengths || [],
+                        downbeats: (analysis.downbeat_timestamps || []).map(s2ms),
+                        onsets: (analysis.onset_times || []).map(s2ms),
+                        energy_peaks: (analysis.energy_peaks || []).map(s2ms),
+                        energy_curve: analysis.energy_curve || [],   // already 0-1, one per 100ms
+                        section_boundaries: (analysis.section_boundaries || []).map(s2ms),
+                        // Per-instrument — all converted from seconds to ms
+                        kicks: (analysis.kick_times || []).map(s2ms),
+                        snares: (analysis.snare_times || []).map(s2ms),
+                        hihats: (analysis.hihat_times || []).map(s2ms),
+                        crashes: (analysis.crash_times || []).map(s2ms),
+                        horns: (analysis.horn_times || []).map(s2ms),
                       } : null;
                       const { setMusicTrack, setBeatMap, clips: tlClips, settings: tlSettings, effects: tlEffects } = useTimelineStore.getState();
                       setMusicTrack(music_track);

@@ -7,13 +7,12 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are an elite cinematic trailer editor and AMV director AI. Your job is to create FAST-PACED, MUSIC-SYNCED book trailer timelines that feel like high-budget Hollywood teasers or anime AMVs.
 
-TRAILER STRUCTURE (tight, punchy):
-- HOOK (0-2s): Single text_overlay — title or killer tagline. Immediate impact.
-- WORLD (2-8s): 3-4 rapid establishing shots. Set the scene fast.
-- CHARACTER (8-14s): 3-4 rapid close-ups/action shots of key characters. Make them iconic.
-- ESCALATION (14-28s): 6-8 rapid-fire action/tension cuts. Each shot more intense than the last. This is the heart.
-- CLIMAX (28-34s): 2-3 most dramatic frames. Slow slightly for impact — emotional peak.
-- TITLE OUT (34-38s): text_overlay with title + tagline. Fade to black.
+TRAILER STRUCTURE (tight, punchy — ALL visual shots, no text slides):
+- HOOK (0-4s): 2-3 rapid impact shots that immediately grab attention. Start in the action.
+- WORLD (4-10s): 3-4 rapid establishing shots. Set the scene fast.
+- CHARACTER (10-16s): 3-4 rapid close-ups/action shots of key characters. Make them iconic.
+- ESCALATION (16-30s): 6-8 rapid-fire action/tension cuts. Each shot more intense than the last. This is the heart.
+- CLIMAX (30-38s): 2-3 most dramatic frames. Slow slightly for impact — emotional peak. End on a powerful final image.
 
 You MUST return a JSON object with this structure:
 
@@ -49,8 +48,6 @@ RULES:
     * Establishing/world shot (location reveal, wide pan): 2000–2500ms
     * Emotional beat (reaction, realization, grief): 2000–3000ms
     * Climax peak frame (most dramatic moment): 2500–3500ms
-    * Text overlay (title card, tagline): 1500–2500ms
-    * Opening hook text: 1000–1500ms
 - BIAS: 70%+ of clips should be action cuts (800–1800ms). Only slow down for earned emotional/climax moments.
 - Use "cut" transition for 90%+ of clips — hard cuts ARE the energy. "dissolve" only at the very end.
 - Every visual prompt MUST describe dynamic ACTION or intense EMOTION — NEVER "stands looking at", "walks toward", "sits by"
@@ -59,15 +56,14 @@ RULES:
 - Describe MOTION TRAJECTORY: left-to-right lunge, downward slash, backward recoil, upward burst — gives video AI direction to animate
 - Camera angles must be dramatic: Dutch angle, extreme close-up, low angle hero shot, crash zoom, tracking shot
 - For manga/anime: MANDATORY speed lines radiating from impact, motion blur streaks on limbs, sakuga smear frames, shockwave distortion rings, debris/dust from force
-- text_style.animation: fade_in for titles, typewriter for taglines, slide_up for action text
 - The trailer must build RELENTLESSLY — each section more intense than the last
+- NEVER use type="text_overlay" — ALL clips must be type="image" or type="video" with visual scene prompts. No title slides, no text intros, no outro cards.
 
 SHOT CONTINUITY (critical for AI video generation):
 - shot_type: "continuous" means this clip flows directly from the previous one (same scene, camera moves, no cut). The AI will use the previous frame as a start frame.
 - shot_type: "cut" means a new scene entirely — different location, time jump, or hard edit.
 - scene_group: integer grouping clips that belong to the same continuous sequence. Clips in the same group share visual context. Start a new group number for each new scene/location.
-- Example: establishing shot + two reaction shots of same character = same scene_group, shot_type="continuous" after first. A jump cut to a new location = new scene_group, shot_type="cut".
-- text_overlay clips should have shot_type="cut" and their own scene_group."""
+- Example: establishing shot + two reaction shots of same character = same scene_group, shot_type="continuous" after first. A jump cut to a new location = new scene_group, shot_type="cut"."""
 
 
 STYLE_MODIFIERS = {
@@ -128,7 +124,7 @@ MUSIC MOOD: {preset.get('music_mood', 'epic')}"""
 
     pacing_hint = ""
     if pacing == "fast" or preset.get("pacing") == "fast":
-        pacing_hint = "\nPACING: Ultra fast-paced manga AMV. Rapid-fire cuts 800–1200ms each. 18-22 clips. Flash cuts for impacts (500–800ms). Only slow at emotional peak and title out."
+        pacing_hint = "\nPACING: Ultra fast-paced manga AMV. Rapid-fire cuts 800–1200ms each. 18-22 clips. Flash cuts for impacts (500–800ms). Only slow at emotional peak and climax."
     elif pacing == "slow" or preset.get("pacing") == "slow":
         pacing_hint = "\nPACING: Atmospheric trailer. Longer holds 2000–3000ms. Dissolve transitions. 12-14 clips."
     else:
@@ -145,7 +141,7 @@ BOOK ANALYSIS:
 DIRECTOR'S BRIEF:
 This trailer must feel like a high-energy AMV / Hollywood blockbuster teaser — not a slideshow.
 Every scene should be action-packed or emotionally charged. No slow, boring holds.
-Think rapid cuts between: character close-ups → sweeping landscape → action moment → emotional beat → title card.
+Think rapid cuts between: character close-ups → sweeping landscape → action moment → emotional beat → climax shot.
 The energy should BUILD relentlessly toward a climax, then land on the title with impact.
 Make someone's heart race watching this. Every single frame must earn its place."""
 

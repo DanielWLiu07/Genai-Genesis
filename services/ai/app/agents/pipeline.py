@@ -268,9 +268,6 @@ try:
             fx = transition_fx[idx % len(transition_fx)]
             effects.append(eff(fx, b, 400, 0.7))
 
-        # 5. Opening cinematic letterbox
-        effects.append(eff("letterbox", 0, 600, 0.8, bar_size=8))
-
         effects.sort(key=lambda e: e["timestamp_ms"])
 
         # Use actual detected beats if available, else BPM grid
@@ -455,7 +452,6 @@ def _rt_amv_suggest_fallback(analysis: dict, plan: dict, bpm: int = 120, music_b
         fx = transition_fx[idx % len(transition_fx)]
         effects.append(eff(fx, b, 400, 0.7))
 
-    effects.append(eff("letterbox", 0, 600, 0.8, bar_size=8))
     effects.sort(key=lambda e: e["timestamp_ms"])
 
     # Use actual detected beats if available, else BPM grid

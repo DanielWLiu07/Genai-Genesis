@@ -104,6 +104,7 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
 
     switch (name) {
       case 'add_clip':
+        if (args.type === 'text_overlay') break;
         addClip({ type: args.type || 'image', duration_ms: args.duration_ms || 3000, prompt: args.prompt || '', gen_status: 'pending', text: args.text });
         break;
       case 'remove_clip':
@@ -378,7 +379,7 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
       beat_map: state.beatMap,
       analysis,
     };
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    const history = messages.map((m) => ({ role: m.role, content: m.content, tool_calls: m.tool_calls }));
 
     try {
       const data = await api.chat(projectId, userMsg.content, timeline, history);

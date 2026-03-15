@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import { useParams, useSearchParams } from 'next/navigation';
 import { TransitionLink as Link } from '@/components/PageTransition';
@@ -259,7 +259,8 @@ function formatPreviewTime(ms: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function normalizeEffectType(type: EffectType): EffectType {
+function normalizeEffectType(type: EffectType | undefined): EffectType | undefined {
+  if (!type) return undefined;
   return type === 'flash_black' ? 'flash_white' : type;
 }
 
@@ -358,16 +359,7 @@ export default function TimelinePage() {
     });
   }, [id, isDemoMode, loadTimeline, setProjectId, storeProjectId]);
 
-  // Load compiled video URL from most recent done render job
-  useEffect(() => {
-    if (!id || isDemoMode) return;
-    import('@/lib/api').then(({ api }) => {
-      api.getRenderJobs(id).then((jobs: any) => {
-        const latest = (jobs || []).find((j: any) => j.status === 'done' && (j.preview_url || j.output_url));
-        if (latest) { setCompiledUrl(latest.preview_url || latest.output_url); setCompiledReady(false); }
-      }).catch(() => {});
-    });
-  }, [id, isDemoMode]);
+  // compiledUrl is set only when the user actively renders in this session (see handleRender)
 
   const clips        = useTimelineStore((s) => s.clips);
   const effects      = useTimelineStore((s) => s.effects);
@@ -380,7 +372,7 @@ export default function TimelinePage() {
   const clearEffects = useTimelineStore((s) => s.clearEffects);
   const updateClip   = useTimelineStore((s) => s.updateClip);
 
-  const [selectedType, setSelectedType] = useState<EffectType>('flash_white');
+  const [selectedType, setSelectedType] = useState<EffectType | null>(null);
   const [hoveredType, setHoveredType]   = useState<EffectType | null>(null);
   const [selectedEffectId, setSelectedEffectId] = useState<string | null>(null);
   const [bpm, setBpm]           = useState(() => useTimelineStore.getState().beatMap?.bpm || 128);
@@ -403,6 +395,74 @@ export default function TimelinePage() {
   const compiledVideoRef = useRef<HTMLVideoElement>(null);
   const chatPanelRef = useRef<HTMLDivElement>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
+  const previewAreaRef = useRef<HTMLDivElement>(null);
+
+  // ── Draggable decoratives ────────────────────────────────────────────────
+  const [decorEditMode, setDecorEditMode] = useState(false);
+  const [decorPos, setDecorPos] = useState<Record<string, { x: number; y: number }>>({
+    flower3:    { x: -383, y: 56   },
+    flowers:    { x: -32,  y: -15  },
+    stone2:     { x: 1352, y: 161  },
+    leaf6:      { x: 828,  y: -56  },
+    leaf3:      { x: 1129, y: -225 },
+    flower4a:   { x: 1231, y: 5    },
+    stone1r:    { x: -187, y: 95   },
+    pine:       { x: -321, y: 196  },
+    leaf7:      { x: 796,  y: -203 },
+    stone3:     { x: -610, y: 197  },
+    leaf5:      { x: -96,  y: 0    },
+    leaf78:     { x: -522, y: -223 },
+    stone1c:    { x: -504, y: 156  },
+    leaf2:      { x: -656, y: -183 },
+    flower4b:   { x: -351, y: 116  },
+    leaf4:      { x: 1066, y: -230 },
+    sun:        { x: 1077, y: -148 },
+    flowersc:   { x: 476,  y: 210  },
+    flowersc2:  { x: 541,  y: 182  },
+    leaf2b:     { x: 497,  y: -208 },
+    leaf3b:     { x: 539,  y: -207 },
+    leaf5b:     { x: 537,  y: 236  },
+    stone2b:    { x: 623,  y: 196  },
+    pine2:      { x: 723,  y: -220 },
+    flower3b:   { x: 694,  y: 199  },
+    ud_flower3: { x: 1038, y: -203 },
+    ud_flowers: { x: 770,  y: -238 },
+    ud_pine:    { x: 662,  y: 234  },
+    ud_leaf6:   { x: 676,  y: -219 },
+    ud_leaf7:   { x: 483,  y: 207  },
+    ud_flower4: { x: 792,  y: -169 },
+    ud_leaf2:   { x: 850,  y: 146  },
+    ud_stone1:  { x: 878,  y: -124 },
+    ud_flowersc:{ x: 604,  y: -200 },
+    ud_leaf78:  { x: 1425, y: 206  },
+    ud_stone2:  { x: 1063, y: -250 },
+    ud_stone3:  { x: 480,  y: -230 },
+    ud_stone1b: { x: 1170, y: -199 },
+    ud_stone2b: { x: 1267, y: -154 },
+    ud_stone3b: { x: 984,  y: -226 },
+    extra_l1:   { x: 1264, y: 224  },
+    extra_l2:   { x: 1298, y: 189  },
+    extra_l3:   { x: 1417, y: -195 },
+    extra_r1:   { x: 1369, y: -209 },
+    extra_r2:   { x: 1391, y: 166  },
+  });
+  const draggingDecor = useRef<{ key: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const startDecorDrag = useCallback((key: string, e: React.MouseEvent) => {
+    if (!decorEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    draggingDecor.current = { key, startX: e.clientX, startY: e.clientY, origX: decorPos[key].x, origY: decorPos[key].y };
+    const onMove = (ev: MouseEvent) => {
+      if (!draggingDecor.current) return;
+      const dx = ev.clientX - draggingDecor.current.startX;
+      const dy = ev.clientY - draggingDecor.current.startY;
+      setDecorPos(p => ({ ...p, [key]: { x: Math.round(draggingDecor.current!.origX + dx), y: Math.round(draggingDecor.current!.origY + dy) } }));
+    };
+    const onUp = () => { draggingDecor.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [decorEditMode, decorPos]);
   // Stable ref for playheadMs so callbacks don't go stale
   const playheadMsRef = useRef(0);
 
@@ -473,11 +533,11 @@ export default function TimelinePage() {
   useEffect(() => {
     if (!chatPanelRef.current || !chatContentRef.current) return;
     if (chatOpen) {
-      gsap.to(chatPanelRef.current, { width: 288, duration: 0.3, ease: 'power3.out' });
+      gsap.to(chatPanelRef.current, { x: 0, duration: 0.3, ease: 'power3.out' });
       gsap.fromTo(chatContentRef.current, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.25, delay: 0.1, ease: 'power2.out' });
     } else {
       gsap.to(chatContentRef.current, { opacity: 0, x: 20, duration: 0.15, ease: 'power2.in' });
-      gsap.to(chatPanelRef.current, { width: 0, duration: 0.25, delay: 0.1, ease: 'power3.in' });
+      gsap.to(chatPanelRef.current, { x: '100%', duration: 0.25, delay: 0.1, ease: 'power3.in' });
     }
   }, [chatOpen]);
 
@@ -488,34 +548,129 @@ export default function TimelinePage() {
     setAutoAmvLoading(true);
     clearEffects();
 
-    // Fallback random algorithm
-    const runFallback = () => {
-      const newEffects: Effect[] = [];
-      const beatEffects: EffectType[] = ['flash_white', 'zoom_burst', 'shake', 'chromatic', 'flicker', 'red_flash', 'contrast_punch'];
-      const strongBeatEffects: EffectType[] = ['zoom_burst', 'panel_split', 'heavy_shake', 'neon', 'manga_ink', 'overexpose', 'vignette'];
-      const everyEighthEffects: EffectType[] = ['echo', 'reverse', 'time_echo', 'freeze', 'blur_out', 'zoom_out', 'glitch', 'letterbox'];
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+    // Clamp to timeline, sort, remove events closer than minGapMs
+    const dedupe = (times: number[], minGapMs = 100): number[] => {
+      const sorted = [...times].filter(t => t >= 0 && t <= totalMs).sort((a, b) => a - b);
+      const out: number[] = [];
+      for (const t of sorted) {
+        if (out.length === 0 || t - out[out.length - 1] >= minGapMs) out.push(t);
+      }
+      return out;
+    };
+    const mkFx = (type: EffectType, ts: number, dur: number, intensity: number, params?: Record<string, number>): Effect => ({
+      id: crypto.randomUUID(), type, timestamp_ms: ts, duration_ms: dur, intensity,
+      ...(params && Object.keys(params).length ? { params } : {}),
+    });
 
-      beatMap.beats.forEach((beatMs, idx) => {
-        if (beatMs > totalMs) return;
-        const intensity = 0.3 + Math.random() * 0.7;
-        if (idx % 8 === 0 && idx > 0) {
-          const type = everyEighthEffects[Math.floor(Math.random() * everyEighthEffects.length)];
-          newEffects.push({ id: crypto.randomUUID(), type, timestamp_ms: beatMs, duration_ms: 400, intensity });
-        } else if (idx % 4 === 0 && idx > 0) {
-          const type = strongBeatEffects[Math.floor(Math.random() * strongBeatEffects.length)];
-          newEffects.push({ id: crypto.randomUUID(), type, timestamp_ms: beatMs, duration_ms: 300, intensity: Math.min(1, intensity + 0.2) });
-        } else {
-          const type = beatEffects[Math.floor(Math.random() * beatEffects.length)];
-          newEffects.push({ id: crypto.randomUUID(), type, timestamp_ms: beatMs, duration_ms: 150, intensity });
-          const halfBeat = (60 / bpm) * 500;
-          const halfMs = beatMs + halfBeat;
-          if (halfMs < totalMs && Math.random() > 0.4) {
-            const type2 = beatEffects[Math.floor(Math.random() * beatEffects.length)];
-            newEffects.push({ id: crypto.randomUUID(), type: type2, timestamp_ms: Math.round(halfMs), duration_ms: 100, intensity: intensity * 0.7 });
+    // ── Pull rich music data from beatMap (all in ms, converted on upload) ──
+    const crashes        = dedupe(beatMap.crashes           || [], 200);
+    const energyPeaks    = dedupe(beatMap.energy_peaks      || [], 300);
+    const sectionBounds  = dedupe(beatMap.section_boundaries|| [], 500);
+    const downbeats      = dedupe(beatMap.downbeats         || [], 200);
+    const kicks          = dedupe(beatMap.kicks             || [], 80);
+    const snares         = dedupe(beatMap.snares            || [], 80);
+    const horns          = dedupe(beatMap.horns             || [], 150);
+    const allBeats       = dedupe(beatMap.beats             || [], 80);
+    const beatStrengths  = beatMap.beat_strengths           || [];
+    const energyCurve    = beatMap.energy_curve             || [];
+    const energyAt = (ms: number) => energyCurve[Math.round(ms / 100)] ?? 0.5;
+
+    // ── Event-driven fallback (uses real music events, not random beats) ─────
+    const runFallback = () => {
+      const effects: Effect[] = [];
+      const coveredBuckets = new Set<number>(); // 100ms buckets
+      const cover = (ms: number) => coveredBuckets.add(Math.round(ms / 100));
+      const isCovered = (ms: number) => coveredBuckets.has(Math.round(ms / 100));
+
+      // P1: CRASHES → heaviest impact (non-negotiable sync points)
+      const crashFx: EffectType[] = ['flash_white', 'heavy_shake', 'zoom_burst', 'panel_split', 'overexpose', 'manga_ink'];
+      for (const t of crashes) {
+        effects.push(mkFx(pick(crashFx), t, 250, 0.85 + energyAt(t) * 0.15));
+        cover(t);
+        // Decay shake 150ms after crash
+        if (t + 150 <= totalMs) { effects.push(mkFx('shake', t + 150, 150, 0.5)); cover(t + 150); }
+      }
+
+      // P2: ENERGY PEAKS → intense sustained effects
+      const peakFx: EffectType[] = ['zoom_burst', 'overexpose', 'contrast_punch', 'neon', 'red_flash', 'manga_ink'];
+      for (const t of energyPeaks) {
+        if (isCovered(t)) continue;
+        effects.push(mkFx(pick(peakFx), t, 300, 0.75 + energyAt(t) * 0.2));
+        cover(t);
+      }
+
+      // P3: SECTION BOUNDARIES → major visual resets
+      const sectionFx: EffectType[] = ['glitch', 'reverse', 'echo', 'blur_out', 'time_echo', 'freeze', 'letterbox'];
+      for (const t of sectionBounds) {
+        if (isCovered(t)) continue;
+        effects.push(mkFx(pick(sectionFx), t, 420, 0.8));
+        cover(t);
+      }
+
+      // P4: HORN STABS → bright accents
+      const hornFx: EffectType[] = ['neon', 'chromatic', 'rgb_shift_v', 'contrast_punch', 'flash_white'];
+      if (beatSyncIntensity !== 'chill') {
+        for (const t of horns) {
+          if (isCovered(t)) continue;
+          effects.push(mkFx(pick(hornFx), t, 200, 0.6 + energyAt(t) * 0.25));
+          cover(t);
+        }
+      }
+
+      // P5: DOWNBEATS → moderate accents
+      const downbeatFx: EffectType[] = ['zoom_burst', 'vignette', 'contrast_punch', 'chromatic', 'shake'];
+      if (beatSyncIntensity === 'balanced' || beatSyncIntensity === 'intense' || beatSyncIntensity === 'all-out') {
+        for (let i = 0; i < downbeats.length; i++) {
+          const t = downbeats[i];
+          if (isCovered(t)) continue;
+          const str = beatStrengths[allBeats.findIndex(b => Math.abs(b - t) < 80)] ?? 0.5;
+          effects.push(mkFx(pick(downbeatFx), t, 180, 0.45 + str * 0.4));
+          cover(t);
+        }
+      }
+
+      // P6: SNARES → sharp percussive hits
+      const snareFx: EffectType[] = ['flash_white', 'chromatic', 'red_flash', 'flicker', 'rgb_shift_v'];
+      if (beatSyncIntensity === 'intense' || beatSyncIntensity === 'all-out') {
+        for (const t of snares) {
+          if (isCovered(t)) continue;
+          effects.push(mkFx(pick(snareFx), t, 120, 0.4 + energyAt(t) * 0.35));
+          cover(t);
+        }
+      }
+
+      // P7: KICKS → bass impact
+      const kickFx: EffectType[] = ['shake', 'zoom_burst', 'contrast_punch', 'vignette', 'flicker'];
+      if (beatSyncIntensity === 'intense' || beatSyncIntensity === 'all-out') {
+        for (const t of kicks) {
+          if (isCovered(t)) continue;
+          effects.push(mkFx(pick(kickFx), t, 130, 0.35 + energyAt(t) * 0.35));
+          cover(t);
+        }
+      }
+
+      // P8: ALL-OUT — fill every beat
+      if (beatSyncIntensity === 'all-out') {
+        const fillFx: EffectType[] = ['flash_white', 'shake', 'flicker', 'chromatic', 'contrast_punch'];
+        const beatInterval = beatMap.bpm > 0 ? 60000 / beatMap.bpm : 500;
+        for (let i = 0; i < allBeats.length; i++) {
+          const t = allBeats[i];
+          if (isCovered(t)) continue;
+          const str = beatStrengths[i] ?? 0.4;
+          if (str < 0.3 && Math.random() > 0.5) continue;
+          effects.push(mkFx(pick(fillFx), t, 100, 0.28 + str * 0.38));
+          cover(t);
+          // Ghost half-beat
+          const half = Math.round(t + beatInterval / 2);
+          if (half <= totalMs && !isCovered(half) && Math.random() > 0.6) {
+            effects.push(mkFx(pick(fillFx), half, 80, 0.18 + str * 0.22));
           }
         }
-      });
-      setEffects(newEffects);
+      }
+
+      setEffects(effects.sort((a, b) => a.timestamp_ms - b.timestamp_ms));
     };
 
     try {
@@ -523,103 +678,133 @@ export default function TimelinePage() {
       const timelineState = useTimelineStore.getState();
       const proj = projectState.currentProject as any;
       const audioAnalysis = proj?.audio_analysis;
-      const clips = timelineState.clips;
+      const clips = timelineState.clips.filter((c: any) => c.type !== 'text_overlay');
 
       const availableEffects = EFFECT_TYPES.map(t => {
         const meta = EFFECT_META[t];
         const params = EFFECT_PARAM_DEFS[t];
-        return `${t} (${meta?.label}): ${meta?.desc}${params ? ' | params: ' + params.map(p => p.key).join(', ') : ''}`;
+        return `${t} (${meta?.label}): ${meta?.desc}${params ? ' | params: ' + params.map((p: any) => p.key).join(', ') : ''}`;
       }).join('\n');
 
-      const clipSummary = clips.slice(0, 20).map((c, i) =>
-        `[${i}] type=${c.type} shot=${c.shot_type || 'unknown'} duration=${c.duration_ms}ms prompt="${(c.prompt || '').slice(0, 60)}"`
-      ).join('\n');
+      // Clip summary with start times
+      const clipSummary = clips.slice(0, 20).map((c: any, i: number) => {
+        let startMs = 0;
+        for (let j = 0; j < i; j++) startMs += (clips[j] as any).duration_ms || 3000;
+        return `[${i}] @${startMs}ms type=${c.type} shot=${c.shot_type || 'cut'} dur=${c.duration_ms}ms scene="${(c.prompt || '').slice(0, 55)}"`;
+      }).join('\n');
 
-      const musicSummary = audioAnalysis ? [
-        `BPM: ${audioAnalysis.bpm || bpm}`,
-        `Duration: ${audioAnalysis.duration_s || (totalMs / 1000)}s`,
-        `Key beats (first 20): ${(audioAnalysis.beat_timestamps || []).slice(0, 20).join(', ')}`,
-        `Energy peaks (first 20): ${(audioAnalysis.energy_curve || []).slice(0, 20).map((v: number) => v.toFixed(2)).join(', ')}`,
-        `Mood: ${audioAnalysis.mood || 'unknown'}`,
-        `Genre: ${audioAnalysis.genre || 'unknown'}`,
-      ].join('\n') : `BPM: ${bpm}, Duration: ${totalMs / 1000}s`;
+      // ── Rich structured music data ──────────────────────────────────────────
+      const fmt = (arr: number[], cap = 60) => arr.slice(0, cap).join(', ') || 'none';
+      const fmtStrength = (arr: number[], str: number[], cap = 30) =>
+        arr.slice(0, cap).map((t, i) => `${t}(${(str[i] ?? 0.5).toFixed(2)})`).join(', ') || 'none';
 
-      const prompt = `You are an expert AMV (Anime Music Video) editor. Create a cinematic effect timeline for this trailer.
+      // Energy profile: label each 2s segment HIGH/MID/LOW
+      const energyProfile: string[] = [];
+      for (let ms = 0; ms < totalMs; ms += 2000) {
+        const s = Math.round(ms / 100), e = Math.round(Math.min(ms + 2000, totalMs) / 100);
+        const seg = energyCurve.slice(s, e);
+        if (!seg.length) continue;
+        const avg = seg.reduce((a: number, v: number) => a + v, 0) / seg.length;
+        energyProfile.push(`${ms}-${ms + 2000}ms:${avg > 0.7 ? 'HIGH' : avg > 0.4 ? 'MID' : 'LOW'}(${avg.toFixed(2)})`);
+      }
+
+      const musicData = [
+        `BPM: ${beatMap.bpm} | Duration: ${(totalMs / 1000).toFixed(1)}s`,
+        `Genre: ${audioAnalysis?.genre || proj?.analysis?.genre || 'unknown'} | Mood: ${audioAnalysis?.mood || proj?.analysis?.mood || 'unknown'}`,
+        ``,
+        `=== HIGHEST PRIORITY — MUST SYNC THESE ===`,
+        `CRASHES (${crashes.length}) [flash_white/heavy_shake/zoom_burst/panel_split, intensity 0.9-1.0]:`,
+        `  ${fmt(crashes)}`,
+        ``,
+        `ENERGY PEAKS (${energyPeaks.length}) [zoom_burst/overexpose/neon/manga_ink, intensity 0.75-0.95]:`,
+        `  ${fmt(energyPeaks)}`,
+        ``,
+        `SECTION CHANGES (${sectionBounds.length}) [glitch/reverse/echo/blur_out, intensity 0.7-0.9]:`,
+        `  ${fmt(sectionBounds)}`,
+        ``,
+        `=== SECONDARY — ADD BASED ON INTENSITY ===`,
+        `HORN STABS (${horns.length}) [neon/chromatic/contrast_punch]:`,
+        `  ${fmt(horns, 40)}`,
+        ``,
+        `DOWNBEATS / BAR STARTS (${downbeats.length}) [zoom_burst/vignette/shake]:`,
+        `  ${fmt(downbeats, 30)}`,
+        ``,
+        `SNARES (${snares.length}) [flash_white/chromatic/flicker]:`,
+        `  ${fmt(snares, 40)}`,
+        ``,
+        `KICKS (${kicks.length}) [shake/contrast_punch/zoom_burst]:`,
+        `  ${fmt(kicks, 40)}`,
+        ``,
+        `=== ALL BEATS with strength score ===`,
+        `  ${fmtStrength(allBeats, beatStrengths, 40)}`,
+        ``,
+        `=== ENERGY ENVELOPE (2s windows) ===`,
+        `  ${energyProfile.slice(0, 20).join(' | ')}`,
+      ].join('\n');
+
+      const prompt = `You are an expert AMV (Anime Music Video) editor. Generate a cinematic, music-synced effect timeline.
 
 PROJECT: "${proj?.title || 'Untitled'}"
-GENRE: ${proj?.analysis?.genre || 'unknown'} | MOOD: ${proj?.analysis?.mood || 'unknown'}
+STORY GENRE: ${proj?.analysis?.genre || 'unknown'} | MOOD: ${proj?.analysis?.mood || 'unknown'}
 THEMES: ${(proj?.analysis?.themes || []).join(', ') || 'unknown'}
 
-MUSIC ANALYSIS:
-${musicSummary}
+=== MUSIC DATA (all timestamps in milliseconds) ===
+${musicData}
 
-CLIPS (${clips.length} total):
+=== CLIPS (${clips.length} visual clips with start times in ms) ===
 ${clipSummary}
 
-BEAT SYNC INTENSITY: ${beatSyncIntensity}
+=== SYNC INTENSITY: ${beatSyncIntensity.toUpperCase()} ===
+chill → only crashes+energy peaks+section changes
+balanced → above + horn stabs + downbeats
+intense → above + snares + kicks
+all-out → everything above + fill every remaining beat
 
-AVAILABLE EFFECTS:
+=== EFFECT PALETTE ===
 ${availableEffects}
 
-Generate an AMV effect sequence that:
-1. Syncs flash/zoom/shake effects to high-energy beat timestamps
-2. Uses content-aware effects (manga_ink/panel_split for action, echo/blur_out for emotional moments, neon/glitch for supernatural scenes)
-3. Respects the beat sync intensity level: ${beatSyncIntensity} (chill=sparse effects, balanced=moderate, intense=dense, all-out=every beat)
-4. Clusters effects around energy peaks, sparse at low-energy moments
-5. Uses appropriate params for each effect
+=== DIRECTOR RULES ===
+1. CRASHES are non-negotiable — every crash gets a heavy effect (flash_white, heavy_shake, zoom_burst, panel_split, or overexpose)
+2. Energy peaks get strong effects matched to energy level
+3. Section boundaries get "reset" effects (glitch, reverse, blur_out, echo) — they mark structural music changes
+4. Match effects to scene content: manga_ink/panel_split for battle/action, echo/blur_out for emotional, neon/glitch for supernatural
+5. High-energy regions (>0.7) → higher intensity, shorter duration; low-energy regions → subtle, longer duration
+6. Minimum 50ms between any two effects
+7. Scale effect density to the sync intensity level
 
-Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type": "effect_type", "timestamp_ms": number, "duration_ms": number, "intensity": number (0-1), "params": {} } ] }`;
+Respond ONLY with compact JSON (no markdown, no explanation):
+{"effects":[{"type":"effect_type","timestamp_ms":number,"duration_ms":number,"intensity":number,"params":{}}]}`;
 
       const currentTimeline = { clips: timelineState.clips, music_track: timelineState.musicTrack, settings: timelineState.settings };
       const result = await api.chat(id as string, prompt, currentTimeline, []);
 
-      // Parse AI tool calls
+      // ── Parse AI response ──────────────────────────────────────────────────
+      const parseEffects = (rawEffects: any[]): Effect[] =>
+        rawEffects
+          .filter((e: any) => EFFECT_TYPES.includes(e.type as EffectType) && typeof e.timestamp_ms === 'number')
+          .map((e: any) => ({
+            id: crypto.randomUUID(),
+            type: e.type as EffectType,
+            timestamp_ms: Math.max(0, Math.min(totalMs, e.timestamp_ms)),
+            duration_ms: Math.max(50, e.duration_ms || 200),
+            intensity: Math.max(0, Math.min(1, e.intensity ?? 0.8)),
+            ...(e.params && Object.keys(e.params).length > 0 ? { params: e.params } : {}),
+          }));
+
       let applied = false;
-      const toolCalls = result?.tool_calls || [];
-      for (const call of toolCalls) {
+      for (const call of (result?.tool_calls || [])) {
         const fn = call.function || call;
         const args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : (fn.arguments || fn);
-        const rawEffects: any[] = args.effects || [];
-        if (rawEffects.length > 0) {
-          const newEffects: Effect[] = rawEffects
-            .filter((e: any) => EFFECT_TYPES.includes(e.type as EffectType) && typeof e.timestamp_ms === 'number')
-            .map((e: any) => ({
-              id: crypto.randomUUID(),
-              type: e.type as EffectType,
-              timestamp_ms: Math.max(0, Math.min(totalMs, e.timestamp_ms)),
-              duration_ms: Math.max(50, e.duration_ms || 200),
-              intensity: Math.max(0, Math.min(1, e.intensity ?? 0.8)),
-              params: e.params || {},
-            }));
-          if (newEffects.length > 0) {
-            setEffects(newEffects);
-            applied = true;
-            break;
-          }
-        }
+        const effects = parseEffects(args.effects || []);
+        if (effects.length > 0) { setEffects(effects); applied = true; break; }
       }
 
-      // Also check if AI returned JSON in text content
       if (!applied && result?.message) {
         try {
           const jsonMatch = result.message.match(/\{[\s\S]*"effects"[\s\S]*\}/);
           if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            const rawEffects: any[] = parsed.effects || [];
-            const newEffects: Effect[] = rawEffects
-              .filter((e: any) => EFFECT_TYPES.includes(e.type as EffectType) && typeof e.timestamp_ms === 'number')
-              .map((e: any) => ({
-                id: crypto.randomUUID(),
-                type: e.type as EffectType,
-                timestamp_ms: Math.max(0, Math.min(totalMs, e.timestamp_ms)),
-                duration_ms: Math.max(50, e.duration_ms || 200),
-                intensity: Math.max(0, Math.min(1, e.intensity ?? 0.8)),
-                params: e.params || {},
-              }));
-            if (newEffects.length > 0) {
-              setEffects(newEffects);
-              applied = true;
-            }
+            const effects = parseEffects(JSON.parse(jsonMatch[0]).effects || []);
+            if (effects.length > 0) { setEffects(effects); applied = true; }
           }
         } catch {}
       }
@@ -651,13 +836,15 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
     }
     setPlayheadMs(timestamp_ms);
 
-    addEffect({
-      id: crypto.randomUUID(),
-      type: selectedType,
-      timestamp_ms,
-      duration_ms: 200,
-      intensity: 0.8,
-    });
+    if (selectedType !== null) {
+      addEffect({
+        id: crypto.randomUUID(),
+        type: selectedType,
+        timestamp_ms,
+        duration_ms: 200,
+        intensity: 0.8,
+      });
+    }
   }, [addEffect, pxPerMs, selectedType, totalMs]);
 
   // ── Cycle transition type on a clip ─────────────────────────────────────
@@ -738,11 +925,13 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
   // Beat ruler ticks
   const beatTicks = beatMap?.beats ?? [];
 
-  const activeClip = sortedClips.find((clip) => {
+  // text_overlay clips are overlays only — skip them for the canvas preview
+  const visualSortedClips = sortedClips.filter((c) => c.type !== 'text_overlay');
+  const activeClip = visualSortedClips.find((clip) => {
     const start = clipStartMs[clip.id] || 0;
     const end = start + (clip.duration_ms || 3000);
     return playheadMs >= start && playheadMs < end;
-  }) ?? sortedClips[0] ?? null;
+  }) ?? visualSortedClips[0] ?? null;
   const activeClipStartMs = activeClip ? (clipStartMs[activeClip.id] || 0) : 0;
   const activeClipDurationMs = activeClip?.duration_ms || 3000;
   const activeClipOffsetMs = activeClip ? Math.max(0, playheadMs - activeClipStartMs) : 0;
@@ -752,7 +941,8 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
   const selectedEffect = selectedEffectId
     ? effects.find((effect) => effect.id === selectedEffectId) ?? null
     : null;
-  const previewInfoType = normalizeEffectType(hoveredType ?? selectedEffect?.type ?? selectedType);
+  const _rawInfoType = normalizeEffectType(hoveredType ?? selectedEffect?.type ?? selectedType ?? undefined) ?? 'flash_white';
+  const previewInfoType = (_rawInfoType in EFFECT_META ? _rawInfoType : 'flash_white') as EffectType;
   const previewEffectType = activeEffect ? normalizeEffectType(activeEffect.type) : null;
   const activeClipMediaUrl = activeClip?.generated_media_url || activeClip?.thumbnail_url || null;
   const activeClipIsVideo = activeClip?.type === 'video' || (activeClipMediaUrl?.includes('.mp4') ?? false);
@@ -1011,34 +1201,100 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
       </header>
 
       {/* ── MAIN CONTENT ────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="relative flex-1 min-h-0 flex overflow-hidden">
         {/* Timeline content */}
         <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto overflow-x-hidden">
 
         {/* ── PREVIEW AREA ─────────────────────────────────────────────── */}
-        <div className="relative min-h-[13rem] border-b border-[#333] flex flex-wrap items-center justify-center gap-6 px-6 py-4 shrink-0 lg:min-h-[15rem] lg:flex-nowrap lg:gap-10 overflow-hidden" style={{ backgroundImage: 'url(/stylized_imgs/dark_bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          {/* Decorative stylized elements */}
-          {/* — far left corner cluster — */}
-          <img src="/stylized_imgs/flower3.png"       alt="" aria-hidden className="absolute -top-6 -left-8 w-52 pointer-events-none select-none" style={{ opacity: 0.62, filter: 'brightness(0.6) saturate(0)', transform: 'rotate(-18deg) scaleX(-1)' }} />
-          <img src="/stylized_imgs/flowers.png"       alt="" aria-hidden className="absolute -bottom-6 -left-6 w-48 pointer-events-none select-none" style={{ opacity: 0.58, filter: 'brightness(0.55) saturate(0)', transform: 'rotate(10deg)' }} />
-          <img src="/stylized_imgs/stone2.png"        alt="" aria-hidden className="absolute bottom-0 left-20 w-28 pointer-events-none select-none" style={{ opacity: 0.52, filter: 'brightness(0.5) saturate(0)', transform: 'rotate(-5deg)' }} />
-          <img src="/stylized_imgs/leaf6.png"         alt="" aria-hidden className="absolute -top-2 left-10 w-32 pointer-events-none select-none" style={{ opacity: 0.42, filter: 'brightness(0.55) saturate(0)', transform: 'rotate(-30deg) scaleX(-1)' }} />
-          {/* — mid-left filler — */}
-          <img src="/stylized_imgs/leaf3.png"         alt="" aria-hidden className="absolute bottom-1 left-40 w-20 pointer-events-none select-none" style={{ opacity: 0.36, filter: 'brightness(0.5) saturate(0)', transform: 'rotate(20deg)' }} />
-          <img src="/stylized_imgs/flower4.png"       alt="" aria-hidden className="absolute top-2 left-36 w-24 pointer-events-none select-none" style={{ opacity: 0.4, filter: 'brightness(0.55) saturate(0)', transform: 'rotate(14deg) scaleX(-1)' }} />
-          {/* — far right corner cluster — */}
-          <img src="/stylized_imgs/stone1.png"        alt="" aria-hidden className="absolute -bottom-10 -right-4 w-44 pointer-events-none select-none" style={{ opacity: 0.58, filter: 'brightness(0.5) saturate(0)', transform: 'rotate(5deg)' }} />
-          <img src="/stylized_imgs/pine.png"          alt="" aria-hidden className="absolute right-28 top-1/2 -translate-y-1/2 w-36 pointer-events-none select-none" style={{ opacity: 0.45, filter: 'brightness(0.5) saturate(0)' }} />
-          <img src="/stylized_imgs/leaf7.png"         alt="" aria-hidden className="absolute -top-4 right-8 w-40 pointer-events-none select-none" style={{ opacity: 0.52, filter: 'brightness(0.55) saturate(0)', transform: 'rotate(16deg) scaleX(-1)' }} />
-          <img src="/stylized_imgs/stone3.png"        alt="" aria-hidden className="absolute -bottom-4 right-56 w-24 pointer-events-none select-none" style={{ opacity: 0.46, filter: 'brightness(0.48) saturate(0)', transform: 'rotate(-8deg)' }} />
-          {/* — mid-right filler — */}
-          <img src="/stylized_imgs/leaf5.png"         alt="" aria-hidden className="absolute bottom-0 right-24 w-20 pointer-events-none select-none" style={{ opacity: 0.38, filter: 'brightness(0.5) saturate(0)', transform: 'rotate(28deg) scaleX(-1)' }} />
-          <img src="/stylized_imgs/leaf78.png"        alt="" aria-hidden className="absolute top-1 right-44 w-22 pointer-events-none select-none" style={{ opacity: 0.35, filter: 'brightness(0.5) saturate(0)', transform: 'rotate(-22deg)' }} />
-          {/* — centre cluster — */}
-          <img src="/stylized_imgs/stone1.png"        alt="" aria-hidden className="absolute top-1/2 left-1/2 w-28 pointer-events-none select-none" style={{ opacity: 0.38, filter: 'brightness(0.52) saturate(0)', transform: 'translate(-50%,-10%) rotate(12deg)' }} />
-          <img src="/stylized_imgs/leaf2.png"         alt="" aria-hidden className="absolute top-0 left-1/2 w-24 pointer-events-none select-none" style={{ opacity: 0.42, filter: 'brightness(0.55) saturate(0)', transform: 'translateX(-60%) rotate(-28deg) scaleX(-1)' }} />
-          <img src="/stylized_imgs/flower4.png"       alt="" aria-hidden className="absolute bottom-0 left-1/2 w-28 pointer-events-none select-none" style={{ opacity: 0.4, filter: 'brightness(0.55) saturate(0)', transform: 'translateX(-60%) rotate(18deg)' }} />
-          <img src="/stylized_imgs/leaf4.png"         alt="" aria-hidden className="absolute top-1/2 left-1/2 w-20 pointer-events-none select-none" style={{ opacity: 0.33, filter: 'brightness(0.5) saturate(0)', transform: 'translate(50%,-70%) rotate(-40deg)' }} />
+        <div ref={previewAreaRef} className="relative min-h-[13rem] border-b border-[#333] flex flex-wrap items-center justify-center gap-6 px-6 py-4 shrink-0 lg:min-h-[15rem] lg:flex-nowrap lg:gap-10 overflow-hidden" style={{ backgroundImage: 'url(/stylized_imgs/dark_bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+
+          {/* Decor edit toggle */}
+          <div className="absolute top-2 right-2 z-50 flex gap-1">
+            {decorEditMode && (
+              <button onClick={() => navigator.clipboard.writeText(JSON.stringify(decorPos, null, 2))} className="text-[0.5rem] px-2 py-1 border border-[#fbbf24] bg-[#fbbf24] text-black font-bold tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>
+                COPY JSON
+              </button>
+            )}
+            <button onClick={() => setDecorEditMode(m => !m)} className={`text-[0.5rem] px-2 py-1 border font-bold tracking-widest transition-colors ${decorEditMode ? 'bg-[#a855f7] border-[#a855f7] text-white' : 'bg-black/60 border-[#444] text-[#666] hover:text-white'}`} style={{ fontFamily: 'var(--font-manga)' }}>
+              {decorEditMode ? 'DONE' : 'EDIT POS'}
+            </button>
+          </div>
+
+          {/* Decorative stylized elements — draggable in edit mode */}
+          {([
+            { key: 'flower3',  src: 'flower3.png',  w: 208, rot: 'rotate(-18deg) scaleX(-1)', op: 0.62, br: 0.6  },
+            { key: 'flowers',  src: 'flowers.png',  w: 192, rot: 'rotate(10deg)',              op: 0.58, br: 0.55 },
+            { key: 'stone2',   src: 'stone2.png',   w: 112, rot: 'rotate(-5deg)',              op: 0.52, br: 0.5  },
+            { key: 'leaf6',    src: 'leaf6.png',    w: 128, rot: 'rotate(-30deg) scaleX(-1)',  op: 0.42, br: 0.55 },
+            { key: 'leaf3',    src: 'leaf3.png',    w: 80,  rot: 'rotate(20deg)',              op: 0.36, br: 0.5  },
+            { key: 'flower4a', src: 'flower4.png',  w: 96,  rot: 'rotate(14deg) scaleX(-1)',  op: 0.4,  br: 0.55 },
+            { key: 'stone1r',  src: 'stone1.png',   w: 176, rot: 'rotate(5deg)',              op: 0.58, br: 0.5  },
+            { key: 'pine',     src: 'pine.png',     w: 144, rot: '',                           op: 0.45, br: 0.5  },
+            { key: 'leaf7',    src: 'leaf7.png',    w: 160, rot: 'rotate(16deg) scaleX(-1)',  op: 0.52, br: 0.55 },
+            { key: 'stone3',   src: 'stone3.png',   w: 160, rot: 'rotate(-8deg)',             op: 0.46, br: 0.48 },
+            { key: 'leaf5',    src: 'leaf5.png',    w: 80,  rot: 'rotate(28deg) scaleX(-1)',  op: 0.38, br: 0.5  },
+            { key: 'leaf78',   src: 'leaf78.png',   w: 88,  rot: 'rotate(-22deg)',            op: 0.35, br: 0.5  },
+            { key: 'stone1c',  src: 'stone1.png',   w: 112, rot: 'rotate(12deg)',             op: 0.38, br: 0.52 },
+            { key: 'leaf2',    src: 'leaf2.png',    w: 96,  rot: 'rotate(-28deg) scaleX(-1)', op: 0.42, br: 0.55 },
+            { key: 'flower4b', src: 'flower4.png',  w: 112, rot: 'rotate(18deg)',             op: 0.4,  br: 0.55 },
+            { key: 'leaf4',    src: 'leaf4.png',    w: 80,  rot: 'rotate(-40deg)',            op: 0.33, br: 0.5  },
+            // extras
+            { key: 'sun',       src: 'sun.png',              w: 100, rot: 'rotate(15deg)',                        op: 0.4,  br: 0.55 },
+            { key: 'flowersc',  src: 'flowers copy.png',     w: 120, rot: 'rotate(-12deg)',                       op: 0.45, br: 0.6  },
+            { key: 'flowersc2', src: 'flowers copy 2.png',   w: 130, rot: 'rotate(8deg) scaleX(-1)',              op: 0.45, br: 0.6  },
+            { key: 'leaf2b',    src: 'leaf2.png',   w: 110, rot: 'rotate(35deg)',                                 op: 0.4,  br: 0.55 },
+            { key: 'leaf3b',    src: 'leaf3.png',   w: 100, rot: 'rotate(-18deg) scaleX(-1)',                     op: 0.38, br: 0.55 },
+            { key: 'leaf5b',    src: 'leaf5.png',   w: 95,  rot: 'rotate(22deg)',                                 op: 0.38, br: 0.5  },
+            { key: 'stone2b',   src: 'stone2.png',  w: 130, rot: 'rotate(10deg)',                                 op: 0.45, br: 0.5  },
+            { key: 'pine2',     src: 'pine.png',    w: 120, rot: 'rotate(-5deg) scaleX(-1)',                      op: 0.42, br: 0.5  },
+            { key: 'flower3b',  src: 'flower3.png', w: 140, rot: 'rotate(20deg)',                                 op: 0.45, br: 0.6  },
+            // upside-down variants
+            { key: 'ud_flower3',  src: 'flower3.png',        w: 180, rot: 'rotate(180deg) scaleX(-1)',            op: 0.45, br: 0.6  },
+            { key: 'ud_flowers',  src: 'flowers.png',        w: 170, rot: 'rotate(180deg)',                       op: 0.42, br: 0.55 },
+            { key: 'ud_pine',     src: 'pine.png',           w: 130, rot: 'rotate(180deg)',                       op: 0.4,  br: 0.5  },
+            { key: 'ud_leaf6',    src: 'leaf6.png',          w: 120, rot: 'rotate(180deg) scaleX(-1)',            op: 0.4,  br: 0.55 },
+            { key: 'ud_leaf7',    src: 'leaf7.png',          w: 140, rot: 'rotate(180deg)',                       op: 0.45, br: 0.55 },
+            { key: 'ud_flower4',  src: 'flower4.png',        w: 110, rot: 'rotate(180deg)',                       op: 0.4,  br: 0.55 },
+            { key: 'ud_leaf2',    src: 'leaf2.png',          w: 100, rot: 'rotate(180deg) scaleX(-1)',            op: 0.38, br: 0.55 },
+            { key: 'ud_stone1',   src: 'stone1.png',         w: 140, rot: 'rotate(180deg)',                       op: 0.42, br: 0.5  },
+            { key: 'ud_flowersc', src: 'flowers copy.png',   w: 120, rot: 'rotate(180deg) scaleX(-1)',            op: 0.42, br: 0.6  },
+            { key: 'ud_leaf78',   src: 'leaf78.png',         w: 100, rot: 'rotate(180deg)',                       op: 0.38, br: 0.5  },
+            { key: 'ud_stone2',   src: 'stone2.png',         w: 150, rot: 'rotate(180deg)',                       op: 0.44, br: 0.5  },
+            { key: 'ud_stone3',   src: 'stone3.png',         w: 160, rot: 'rotate(180deg) scaleX(-1)',            op: 0.44, br: 0.48 },
+            { key: 'ud_stone1b',  src: 'stone1.png',         w: 120, rot: 'rotate(180deg) scaleX(-1)',            op: 0.4,  br: 0.5  },
+            { key: 'ud_stone2b',  src: 'stone2.png',         w: 130, rot: 'rotate(175deg)',                       op: 0.42, br: 0.5  },
+            { key: 'ud_stone3b',  src: 'stone3.png',         w: 110, rot: 'rotate(185deg)',                       op: 0.4,  br: 0.48 },
+            // new both sides
+            { key: 'extra_l1',  src: 'leaf4.png',           w: 120, rot: 'rotate(180deg) scaleX(-1)',            op: 0.42, br: 0.55 },
+            { key: 'extra_l2',  src: 'flowers copy 2.png',  w: 150, rot: 'rotate(180deg)',                       op: 0.42, br: 0.6  },
+            { key: 'extra_l3',  src: 'stone2.png',          w: 145, rot: 'rotate(178deg) scaleX(-1)',            op: 0.44, br: 0.5  },
+            { key: 'extra_r1',  src: 'leaf3.png',           w: 130, rot: 'rotate(-15deg)',                       op: 0.42, br: 0.55 },
+            { key: 'extra_r2',  src: 'flower3.png',         w: 155, rot: 'rotate(12deg) scaleX(-1)',             op: 0.44, br: 0.6  },
+          ] as const).map(({ key, src, w, rot, op, br }) => {
+            const pos = decorPos[key];
+            const isRight = pos.x < 0;
+            const posStyle: React.CSSProperties = isRight
+              ? { right: -pos.x, bottom: pos.y < 0 ? -pos.y : undefined, top: pos.y >= 0 ? pos.y : undefined }
+              : { left: pos.x,   bottom: pos.y < 0 ? -pos.y : undefined, top: pos.y >= 0 ? pos.y : undefined };
+            return (
+              <img
+                key={key}
+                src={`/stylized_imgs/${src}`}
+                alt="" aria-hidden
+                className={`absolute select-none ${decorEditMode ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`}
+                style={{
+                  ...posStyle,
+                  width: w,
+                  opacity: decorEditMode ? Math.min(op + 0.2, 1) : op,
+                  filter: `brightness(${br}) saturate(0)`,
+                  transform: rot || undefined,
+                  outline: decorEditMode ? '1px dashed #a855f7' : 'none',
+                  zIndex: decorEditMode ? 40 : 0,
+                }}
+                onMouseDown={(e) => startDecorDrag(key, e)}
+              />
+            );
+          })}
           <div className="relative h-[12.375rem] w-[22rem] border border-[#333] bg-[#1a1a1a] overflow-hidden lg:h-[15.75rem] lg:w-[28rem]">
             {/* Manga halftone bg */}
             <div
@@ -1383,7 +1639,7 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
             return (
               <button
                 key={type}
-                onClick={() => setSelectedType(type)}
+                onClick={() => setSelectedType(prev => prev === type ? null : type)}
                 onMouseEnter={() => setHoveredType(type)}
                 onMouseLeave={() => setHoveredType(null)}
                 className="relative shrink-0 flex min-w-[5.5rem] flex-col items-center gap-1.5 px-3 py-2.5 border transition-all"
@@ -1453,7 +1709,7 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
               <div style={{ width: timelineWidth + 100, minWidth: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
 
                 {/* ── Beat ruler ──────────────────────────────────────── */}
-                <div className="h-6 border-b border-[#222] relative shrink-0 bg-black/60" style={{ width: timelineWidth + 100 }}>
+                <div className="h-6 border-b border-[#222] relative shrink-0 bg-black/60 cursor-pointer" style={{ width: timelineWidth + 100 }} onClick={handleTimelineClick}>
                   {/* Second ticks */}
                   {Array.from({ length: Math.ceil(totalMs / 1000) + 1 }, (_, i) => i).map((sec) => {
                     const x = sec * 1000 * pxPerMs;
@@ -1503,7 +1759,7 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
                   style={{ width: timelineWidth + 100, minWidth: '100%', order: 2 }}
                   onClick={handleTimelineClick}
                 >
-                  {sortedClips.map((clip, idx) => {
+                  {visualSortedClips.map((clip, idx) => {
                     const x    = clipStartMs[clip.id] * pxPerMs;
                     const w    = Math.max((clip.duration_ms || 3000) * pxPerMs, 4);
                     const clr  = CLIP_COLORS[clip.type] || '#374151';
@@ -1570,7 +1826,7 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
                   })}
 
                   {/* Empty state */}
-                  {sortedClips.length === 0 && (
+                  {visualSortedClips.length === 0 && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-xs text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
                         NO CLIPS — ADD FROM EDITOR
@@ -1613,7 +1869,7 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
                   {effects.map((effect) => {
                     const x    = effect.timestamp_ms * pxPerMs;
                     const w    = Math.max(effect.duration_ms * pxPerMs, 3);
-                    const meta = EFFECT_META[normalizeEffectType(effect.type)];
+                    const meta = EFFECT_META[normalizeEffectType(effect.type) ?? effect.type];
                     const isSelected = selectedEffectId === effect.id;
                     return (
                       <div
@@ -1669,7 +1925,7 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
           {/* ── Status bar ──────────────────────────────────────────────── */}
           <div className="min-h-[2.75rem] border-t border-[#222] bg-black/70 backdrop-blur-sm flex flex-wrap items-center px-4 py-2 gap-x-5 gap-y-1 shrink-0">
             <span className="text-[0.68rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
-              SELECTED: <span className="text-[#999]">{EFFECT_META[selectedType].label}</span>
+              SELECTED: <span className="text-[#999]">{selectedType ? EFFECT_META[selectedType].label : '—'}</span>
             </span>
             <span className="text-[0.68rem] text-[#444]" style={{ fontFamily: 'var(--font-manga)' }}>
               TOTAL: <span className="text-[#999]">{(totalMs / 1000).toFixed(1)}s</span>
@@ -1689,11 +1945,11 @@ Respond with a JSON tool call: { "tool": "set_amv_effects", "effects": [ { "type
         </div>
         </div>{/* end timeline content */}
 
-        {/* Chat panel — always mounted, GSAP animated width */}
+        {/* Chat panel — always mounted, GSAP slide overlay (no layout shift) */}
         <div
           ref={chatPanelRef}
-          className="relative shrink-0 border-l border-[#222] overflow-hidden"
-          style={{ width: 0, backgroundImage: 'url(/stylized_imgs/dark_bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}
+          className="absolute top-0 right-0 bottom-0 z-30 border-l border-[#222] overflow-hidden"
+          style={{ width: 288, transform: 'translateX(100%)', backgroundImage: 'url(/stylized_imgs/dark_bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}
         >
           {/* Decorative overlays */}
           <img src="/stylized_imgs/flower3.png" alt="" aria-hidden className="absolute pointer-events-none select-none" style={{ top: '-2%', right: '-10%', width: '65%', opacity: 0.4, filter: 'brightness(0.65) saturate(0)', transform: 'rotate(15deg)' }} />

@@ -959,6 +959,42 @@ def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
     return ",".join(parts) if parts else ""
 
 
+def _prioritise_effects(effects: list, max_effects: int = 120) -> list:
+    """Keep the most impactful effects when there are too many.
+
+    Priority order: crash-level impacts > energy peaks > section changes > other.
+    Within each tier, keep the most intense ones and spread them across the timeline.
+    """
+    if len(effects) <= max_effects:
+        return effects
+
+    HIGH   = {"flash_white", "heavy_shake", "zoom_burst", "red_flash", "overexpose", "manga_ink", "panel_split"}
+    MEDIUM = {"zoom_out", "neon", "chromatic", "contrast_punch", "shake", "glitch", "reverse", "echo", "blur_out"}
+
+    def tier(e):
+        t = e.get("type", "")
+        if t in HIGH:   return 0
+        if t in MEDIUM: return 1
+        return 2
+
+    scored = sorted(effects, key=lambda e: (tier(e), -e.get("intensity", 0.5)))
+
+    # Deduplicate: skip effects within 50ms of an already-kept one (avoid filter explosion)
+    kept: list = []
+    kept_times: list = []
+    for e in scored:
+        ts = e.get("timestamp_ms", 0)
+        if any(abs(ts - t) < 50 for t in kept_times):
+            continue
+        kept.append(e)
+        kept_times.append(ts)
+        if len(kept) >= max_effects:
+            break
+
+    logger.info("Effect limiter: %d → %d effects for render", len(effects), len(kept))
+    return kept
+
+
 async def apply_amv_effects(
     input_path: str,
     output_path: str,
@@ -967,6 +1003,7 @@ async def apply_amv_effects(
     height: int,
 ) -> bool:
     """Apply AMV beat effects to a video using FFmpeg filter chain."""
+    effects = _prioritise_effects(effects)
     vf = _build_amv_effects_filter(effects, width, height)
     if not vf:
         shutil.copy2(input_path, output_path)

@@ -1300,7 +1300,7 @@ export default function TimelinePage() {
     try {
       // Always re-fetch timeline from DB so render uses the authoritative clip URLs,
       // not potentially stale in-memory store state.
-      const dbTimeline = await api.getTimeline(id);
+      const dbTimeline: any = await api.getTimeline(id);
       const { musicTrack, settings } = useTimelineStore.getState();
       const dbClips: any[] = dbTimeline?.clips || [];
 

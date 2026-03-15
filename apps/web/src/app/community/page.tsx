@@ -70,12 +70,15 @@ function ReelCard({
   onLike: (id: string) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [muted, setMuted] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [showBorrow, setShowBorrow] = useState(false);
   const heartRef = useRef<HTMLDivElement>(null);
   const borrowRef = useRef<HTMLDivElement>(null);
+
+  const musicUrl = project.music_track?.url || null;
 
   // Animate borrow panel in/out
   useEffect(() => {
@@ -92,23 +95,41 @@ function ReelCard({
     || project.clips.find(c => c.generated_media_url)?.generated_media_url
     || project.cover_image_url;
 
+  // Sync video + separate music track with active/playing state
   useEffect(() => {
     const v = videoRef.current;
+    const a = audioRef.current;
     if (!v) return;
     if (active) {
       v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      if (a && !muted) a.play().catch(() => {});
     } else {
       v.pause();
       v.currentTime = 0;
+      if (a) { a.pause(); a.currentTime = 0; }
       setPlaying(false);
     }
-  }, [active]);
+  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync mute/unmute to separate audio track
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (muted) { a.pause(); }
+    else if (playing) { a.play().catch(() => {}); }
+  }, [muted, playing]);
 
   const togglePlay = () => {
     const v = videoRef.current;
+    const a = audioRef.current;
     if (!v) return;
-    if (v.paused) { v.play(); setPlaying(true); }
-    else { v.pause(); setPlaying(false); }
+    if (v.paused) {
+      v.play(); setPlaying(true);
+      if (a && !muted) a.play().catch(() => {});
+    } else {
+      v.pause(); setPlaying(false);
+      if (a) a.pause();
+    }
   };
 
   const doubleTap = () => {
@@ -124,18 +145,38 @@ function ReelCard({
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
-      {videoSrc ? (
-        <video
-          ref={videoRef}
-          src={videoSrc}
+      {/* Separate music track (for projects with external audio, e.g. demo) */}
+      {musicUrl && (
+        <audio
+          ref={audioRef}
+          src={musicUrl}
           loop
           muted={muted}
-          playsInline
-          poster={thumbSrc || undefined}
-          className="absolute inset-0 w-full h-full object-cover"
-          onClick={togglePlay}
-          onDoubleClick={doubleTap}
+          style={{ display: 'none' }}
         />
+      )}
+
+      {videoSrc ? (
+        <>
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            loop
+            muted={muted}
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+            onClick={togglePlay}
+            onDoubleClick={doubleTap}
+          />
+          {/* Thumbnail overlay — shown when not playing so we never see a black first frame */}
+          {!playing && thumbSrc && (
+            <img
+              src={thumbSrc}
+              alt={project.title}
+              className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            />
+          )}
+        </>
       ) : thumbSrc ? (
         <img src={thumbSrc} alt={project.title} className="absolute inset-0 w-full h-full object-cover" onDoubleClick={doubleTap} />
       ) : (
@@ -205,7 +246,21 @@ function ReelCard({
           <Library size={22} className={`transition-colors ${showBorrow ? 'text-[#a855f7]' : 'text-white group-hover:text-[#a855f7]'}`} />
           <span className="text-white text-xs">Borrow</span>
         </button>
-        <button onClick={() => setMuted(m => !m)} className="flex flex-col items-center gap-1">
+        <button
+          onClick={() => {
+            setMuted(m => {
+              const next = !m;
+              const a = audioRef.current;
+              if (a) {
+                a.muted = next;
+                if (!next && playing) a.play().catch(() => {});
+                else a.pause();
+              }
+              return next;
+            });
+          }}
+          className="flex flex-col items-center gap-1"
+        >
           {muted ? <VolumeX size={22} className="text-white" /> : <Volume2 size={22} className="text-white" />}
         </button>
       </div>
@@ -326,6 +381,24 @@ function BrowseCard({ project, onLike }: { project: TrailerProject; onLike: (id:
   );
 }
 
+// ─── Pinned demo entry (always first in reels) ────────────────────────────────
+
+const DEMO_PROJECT: TrailerProject = {
+  id: 'demo-jjk',
+  title: 'Jujutsu Kaisen',
+  author: 'Gege Akutami',
+  description: 'The battle of the century — Gojo Satoru vs Ryomen Sukuna. Two of the most powerful jujutsu sorcerers collide in a clash that shakes the very foundations of the world.',
+  cover_image_url: null,
+  status: 'done',
+  created_at: new Date().toISOString(),
+  clips: [],
+  music_track: { url: '/judas.mp3', name: 'Judas — Lady Gaga', volume: 0.85 },
+  compiled_url: '/demo-jjk.mp4',
+  likeCount: 4821,
+  viewCount: 31400,
+  liked: false,
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 type Tab = 'reels' | 'browse';
@@ -347,16 +420,19 @@ export default function CommunityPage() {
     fetch('/api/community')
       .then(r => r.json())
       .then((rows: any[]) => {
-        if (cancelled || !Array.isArray(rows)) return;
-        const enriched: TrailerProject[] = rows.map(p => ({
-          ...p,
-          likeCount: (p.id.charCodeAt(0) * 17 + p.id.charCodeAt(1) * 7) % 900 + 12,
-          viewCount: (p.id.charCodeAt(0) * 43 + p.id.charCodeAt(2) * 13) % 4800 + 100,
-          liked: false,
-        }));
-        setProjects(enriched);
+        if (cancelled) return;
+        const userProjects: TrailerProject[] = Array.isArray(rows)
+          ? rows.map(p => ({
+              ...p,
+              likeCount: (p.id.charCodeAt(0) * 17 + p.id.charCodeAt(1) * 7) % 900 + 12,
+              viewCount: (p.id.charCodeAt(0) * 43 + p.id.charCodeAt(2) * 13) % 4800 + 100,
+              liked: false,
+            }))
+          : [];
+        // Demo project always pinned first
+        setProjects([DEMO_PROJECT, ...userProjects]);
       })
-      .catch(() => setProjects([]))
+      .catch(() => setProjects([DEMO_PROJECT]))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);

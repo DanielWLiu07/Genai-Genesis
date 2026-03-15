@@ -278,7 +278,9 @@ async def _compose_background(data: ComposeRequest, job_id: str):
 @router.post("/compose", response_model=ComposeResponse)
 async def compose(data: ComposeRequest, background_tasks: BackgroundTasks):
     """Start composing a trailer from timeline clips."""
-    job_id = str(uuid.uuid4())
+    # Use the API's callback_job_id as our job_id so get_render_status can find us
+    # directly by the DB key — no _render_id_map needed, survives API restarts.
+    job_id = data.callback_job_id or str(uuid.uuid4())
 
     _render_jobs[job_id] = {
         "job_id": job_id,

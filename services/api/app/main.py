@@ -1,13 +1,47 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 from app.routers import projects, timeline, upload, ai, render, ws, internal
 from app.db import get_supabase
+import asyncio
 import logging
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="FrameFlow API", version="0.1.0")
+
+async def _recover_stale_render_jobs():
+    """On startup: restart poll tasks for jobs left composing/queued after a crash."""
+    await asyncio.sleep(3)  # let DB connection settle
+    db = get_supabase()
+    if not db:
+        return
+    from app.config import get_settings
+    settings = get_settings()
+    try:
+        result = db.table("render_jobs").select("id, project_id").in_(
+            "status", ["queued", "composing", "generating_media"]
+        ).execute()
+        stale = result.data or []
+        if stale:
+            logger.info("Recovering %d stale render jobs after restart", len(stale))
+        for job in stale[:10]:
+            asyncio.create_task(
+                render._poll_render_progress(
+                    job["project_id"], job["id"], job["id"], settings
+                )
+            )
+    except Exception as e:
+        logger.warning("Stale render recovery failed: %s", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(_recover_stale_render_jobs())
+    yield
+
+app = FastAPI(title="FrameFlow API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

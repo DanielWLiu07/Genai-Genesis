@@ -346,6 +346,8 @@ async def list_render_jobs(project_id: str):
 @router.get("/render/{job_id}")
 async def get_render_status(project_id: str, job_id: str):
     settings = get_settings()
+    # Since compose now uses callback_job_id == job_id, we can look up directly.
+    # Fall back to _render_id_map for any jobs started before this fix.
     render_job_id = _render_id_map.get(job_id, job_id)
     render_data = None
 

@@ -668,12 +668,48 @@ def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
             parts.append(f"negate:enable='{en}'")
 
         elif etype == "red_flash":
-            r_boost = float(p(eff, "glow", min(2.2, 1.0 + intensity * 1.2)))
-            parts.append(
-                f"colorchannelmixer=rr={r_boost:.2f}:rg=0:rb=0:"
-                f"gr=0:gg=0.08:gb=0:"
-                f"br=0:bg=0:bb=0.08:enable='{en}'"
-            )
+            color_hex = p(eff, "color", None)
+            if color_hex and isinstance(color_hex, str):
+                # Parse hex color string like '#dc2626'
+                h = color_hex.lstrip('#')
+                cr = int(h[0:2], 16) / 255.0 if len(h) >= 6 else 1.0
+                cg = int(h[2:4], 16) / 255.0 if len(h) >= 6 else 0.0
+                cb = int(h[4:6], 16) / 255.0 if len(h) >= 6 else 0.0
+                boost = min(2.2, 1.0 + intensity * 1.2)
+                if cr > 0.8 and cg < 0.3 and cb < 0.3:
+                    # Red — boost red channel
+                    parts.append(
+                        f"colorchannelmixer=rr={boost:.2f}:rg=0:rb=0:"
+                        f"gr=0:gg=0.08:gb=0:"
+                        f"br=0:bg=0:bb=0.08:enable='{en}'"
+                    )
+                elif cr < 0.3 and cg < 0.3 and cb < 0.3:
+                    # Black — darken
+                    dark = max(-0.9, -0.5 - intensity * 0.4)
+                    parts.append(f"eq=brightness={dark:.3f}:enable='{en}'")
+                elif cr > 0.5 and cb > 0.5 and cg < 0.4:
+                    # Violet/purple — boost red+blue
+                    parts.append(
+                        f"colorchannelmixer=rr={boost:.2f}:rg=0:rb=0:"
+                        f"gr=0:gg=0.05:gb=0:"
+                        f"br=0:bg=0:bb={boost:.2f}:enable='{en}'"
+                    )
+                else:
+                    # Generic: scale each channel by its color component
+                    rr = max(0.05, cr * boost)
+                    gg = max(0.05, cg * boost)
+                    bb = max(0.05, cb * boost)
+                    parts.append(
+                        f"colorchannelmixer=rr={rr:.2f}:gg={gg:.2f}:bb={bb:.2f}:enable='{en}'"
+                    )
+            else:
+                # Default red flash (no color param)
+                r_boost = float(p(eff, "glow", min(2.2, 1.0 + intensity * 1.2)))
+                parts.append(
+                    f"colorchannelmixer=rr={r_boost:.2f}:rg=0:rb=0:"
+                    f"gr=0:gg=0.08:gb=0:"
+                    f"br=0:bg=0:bb=0.08:enable='{en}'"
+                )
 
         elif etype == "blur_out":
             sigma = float(p(eff, "sigma", max(5.0, intensity * 22.0)))
@@ -721,6 +757,168 @@ def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
             c = float(p(eff, "contrast", min(7.0, 2.0 + intensity * 5.0)))
             b = float(p(eff, "brightness", max(-0.55, -intensity * 0.45)))
             parts.append(f"eq=saturation=0:contrast={c:.2f}:brightness={b:.3f}:enable='{en}'")
+
+        elif etype == "flash":
+            color_int = int(p(eff, "color", 16777215))
+            r = ((color_int >> 16) & 0xFF) / 255.0
+            g = ((color_int >> 8) & 0xFF) / 255.0
+            b = (color_int & 0xFF) / 255.0
+            brightness = float(p(eff, "brightness", min(1.5, 0.5 + intensity)))
+            sat = float(p(eff, "saturation", 0.1))
+            if r > 0.8 and g < 0.3 and b < 0.3:  # red flash
+                r_boost = float(p(eff, "glow", min(2.2, 1.0 + intensity * 1.2)))
+                parts.append(
+                    f"colorchannelmixer=rr={r_boost:.2f}:rg=0:rb=0:"
+                    f"gr=0:gg=0.08:gb=0:"
+                    f"br=0:bg=0:bb=0.08:enable='{en}'"
+                )
+            elif r < 0.3 and g < 0.3 and b < 0.3:  # black flash
+                dark = float(p(eff, "brightness", max(-0.9, -0.5 - intensity * 0.4)))
+                parts.append(f"eq=brightness={dark:.3f}:enable='{en}'")
+            else:
+                # Generic color flash via colorchannelmixer boost + eq brightness
+                parts.append(
+                    f"colorchannelmixer=rr={r:.2f}:gg={g:.2f}:bb={b:.2f}:enable='{en}'"
+                )
+                parts.append(f"eq=brightness={brightness:.3f}:saturation={sat:.2f}:enable='{en}'")
+
+        elif etype == "shake_h":
+            radius = float(p(eff, "radius", max(2.0, intensity * 8.0)))
+            parts.append(f"gblur=sigma={radius*0.5:.1f}:sigmaV=0.1:enable='{en}'")
+
+        elif etype == "shake_v":
+            radius = float(p(eff, "radius", max(2.0, intensity * 8.0)))
+            parts.append(f"gblur=sigma=0.1:sigmaV={radius*0.5:.1f}:enable='{en}'")
+
+        elif etype == "zoom_pulse":
+            z = float(p(eff, "scale", 1.0 + intensity * 0.2))
+            sw = int(width * z)
+            sh = int(height * z)
+            cx = int((sw - width) * 0.5)
+            cy = int((sh - height) * 0.5)
+            parts.append(f"scale={sw}:{sh}:enable='{en}'")
+            parts.append(f"crop={width}:{height}:{cx}:{cy}:enable='{en}'")
+
+        elif etype == "whip_pan":
+            sigma = float(p(eff, "sigma", max(4.0, intensity * 15.0)))
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=3:enable='{en}'")
+
+        elif etype == "stutter":
+            frames = int(p(eff, "frames", max(2, min(6, int(intensity * 4) + 2))))
+            w_vals = " ".join(["1.00" if i % 2 == 0 else "0.10" for i in range(frames)])
+            parts.append(f"tmix=frames={frames}:weights='{w_vals}':enable='{en}'")
+
+        elif etype == "duotone":
+            h_shift = int(p(eff, "hue_shift", int(intensity * 180 + 160)))
+            s_boost = float(p(eff, "glow", min(5.0, 1.5 + intensity * 3.5)))
+            parts.append(f"hue=h={h_shift}:s={s_boost:.1f}:enable='{en}'")
+            parts.append(f"eq=contrast=1.3:enable='{en}'")
+
+        elif etype == "lut_warm":
+            strength = float(p(eff, "brightness", 0.3 + intensity * 0.3))
+            parts.append(
+                f"colorbalance=rs={strength*0.4:.3f}:gs={-strength*0.1:.3f}:bs={-strength*0.3:.3f}:"
+                f"rm={strength*0.2:.3f}:gm=0:bm={-strength*0.15:.3f}:"
+                f"rh={strength*0.1:.3f}:gh={strength*0.05:.3f}:bh={-strength*0.1:.3f}:enable='{en}'"
+            )
+
+        elif etype == "lut_cold":
+            strength = float(p(eff, "brightness", 0.3 + intensity * 0.3))
+            parts.append(
+                f"colorbalance=rs={-strength*0.3:.3f}:gs={-strength*0.1:.3f}:bs={strength*0.4:.3f}:"
+                f"rm={-strength*0.15:.3f}:gm=0:bm={strength*0.2:.3f}:"
+                f"rh={-strength*0.1:.3f}:gh={strength*0.05:.3f}:bh={strength*0.1:.3f}:enable='{en}'"
+            )
+
+        elif etype == "cyberpunk":
+            cyan = float(p(eff, "shift", 2.5))
+            magenta = float(p(eff, "glow", 2.5))
+            parts.append(
+                f"colorchannelmixer=rr=1:rg={0.2*magenta:.2f}:rb={0.15*magenta:.2f}:"
+                f"gr={0.1*cyan:.2f}:gg=1:gb={0.3*cyan:.2f}:"
+                f"br={0.15*magenta:.2f}:bg={0.3*cyan:.2f}:bb=1:enable='{en}'"
+            )
+            parts.append(f"eq=saturation={min(3.0, 1.0 + intensity*2.0):.1f}:contrast=1.2:enable='{en}'")
+
+        elif etype == "horror":
+            r_tint = float(p(eff, "glow", min(2.5, 1.2 + intensity * 1.3)))
+            noise_level = int(p(eff, "amount", max(15, int(intensity * 40))))
+            parts.append(
+                f"colorchannelmixer=rr={r_tint:.2f}:rg=0:rb=0:"
+                f"gr=0:gg=0.3:gb=0:"
+                f"br=0:bg=0:bb=0.3:enable='{en}'"
+            )
+            parts.append(f"eq=saturation=0.25:enable='{en}'")
+            parts.append(f"vignette=PI/3:enable='{en}'")
+            parts.append(f"noise=alls={noise_level}:allf=t+u:enable='{en}'")
+
+        elif etype == "bleach_bypass":
+            c = float(p(eff, "contrast", min(3.5, 1.5 + intensity * 2.0)))
+            s = float(p(eff, "saturation", max(0.05, 0.4 - intensity * 0.3)))
+            parts.append(f"eq=saturation={s:.2f}:contrast={c:.2f}:brightness={-0.1*intensity:.3f}:enable='{en}'")
+
+        elif etype == "color_shift":
+            h = int(p(eff, "hue_shift", int(intensity * 180)))
+            s = float(p(eff, "glow", min(3.0, 1.0 + intensity * 2.0)))
+            parts.append(f"hue=h={h}:s={s:.1f}:enable='{en}'")
+
+        elif etype == "posterize":
+            levels = int(p(eff, "size", max(2, int(8 - intensity * 6))))
+            parts.append(f"posterize={levels}:enable='{en}'")
+
+        elif etype == "split_tone":
+            shadow_h = int(p(eff, "hue_shift", 200))
+            parts.append(f"colorbalance=rs=-0.2:bs=0.3:enable='{en}'")
+            parts.append(f"hue=h={shadow_h // 10}:enable='{en}'")
+
+        elif etype == "scanlines":
+            noise_level = int(p(eff, "amount", max(10, int(intensity * 35))))
+            parts.append(f"noise=alls={noise_level}:allf=u:enable='{en}'")
+            parts.append(f"eq=contrast=1.15:brightness=-0.05:enable='{en}'")
+
+        elif etype == "vhs":
+            tracking = int(p(eff, "shift", max(2, int(intensity * 10))))
+            noise_level = int(p(eff, "amount", max(10, int(intensity * 35))))
+            parts.append(f"rgbashift=rh={tracking}:bh=-{tracking}:rv=0:bv=0:enable='{en}'")
+            parts.append(f"noise=alls={noise_level}:allf=t+u:enable='{en}'")
+
+        elif etype == "halftone":
+            size = int(p(eff, "size", max(4, int(intensity * 10 + 3))))
+            parts.append(f"avgblur=sizeX={size}:sizeY={size}:enable='{en}'")
+            parts.append(f"eq=contrast=2.5:brightness=-0.1:enable='{en}'")
+
+        elif etype == "impact_lines":
+            # Speed lines: vignette inversion + contrast
+            sigma = max(2.0, intensity * 8.0)
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=1:enable='{en}'")
+            parts.append(f"eq=contrast=3.0:brightness=0.3:saturation=0:enable='{en}'")
+
+        elif etype == "glow_bloom":
+            sigma = float(p(eff, "sigma", max(3.0, intensity * 12.0)))
+            strength = float(p(eff, "brightness", 0.5 + intensity * 0.5))
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=2:enable='{en}'")
+            parts.append(f"eq=brightness={strength*0.3:.3f}:saturation={1.0+strength*0.3:.2f}:enable='{en}'")
+
+        elif etype == "tv_noise":
+            noise_level = int(p(eff, "amount", max(15, int(intensity * 50))))
+            parts.append(f"noise=alls={noise_level}:allf=t+u:enable='{en}'")
+
+        elif etype == "radial_blur":
+            sigma = float(p(eff, "sigma", max(4.0, intensity * 15.0)))
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=3:enable='{en}'")
+
+        elif etype == "tilt_shift":
+            sigma = float(p(eff, "sigma", max(2.0, intensity * 10.0)))
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=2:enable='{en}'")
+
+        elif etype == "mirror_h":
+            parts.append(f"hflip:enable='{en}'")
+
+        elif etype == "rain":
+            noise_level = int(p(eff, "count", max(8, int(intensity * 20))))
+            parts.append(f"noise=alls={noise_level}:allf=u:enable='{en}'")
+            sigma = max(0.5, intensity * 1.5)
+            parts.append(f"gblur=sigma={sigma:.1f}:sigmaV=0.1:enable='{en}'")
 
     return ",".join(parts) if parts else ""
 

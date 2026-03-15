@@ -122,8 +122,11 @@ async def _compose_background(data: ComposeRequest, job_id: str):
         # and any AI-generated title/outro card images (type=image but purely a title screen)
         _TITLE_CARD_TERMS = {
             'title card', 'title screen', 'title slide', 'title page', 'title treatment',
+            'title reveal', 'title sequence', 'opening title', 'title shot',
             'book title', 'movie title', 'film title', 'outro card', 'intro card',
             'end card', 'coming soon', 'the end', 'credits',
+            'glowing text', 'floating text', 'text appears', 'text reads',
+            'logo reveal', 'brand reveal',
         }
         def _is_title_card(clip: dict) -> bool:
             prompt = (clip.get('prompt') or '').lower()

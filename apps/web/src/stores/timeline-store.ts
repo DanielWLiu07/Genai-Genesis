@@ -42,7 +42,51 @@ export type EffectType =
   | 'overexpose'                      // blinding overexposure
   | 'pixelate'                        // digital pixelation
   | 'contrast_punch'                  // extreme contrast
-  | 'manga_ink';                      // high-contrast manga ink
+  | 'manga_ink'                       // high-contrast manga ink
+  | 'flash'          // configurable color flash
+  | 'shake_h'        // horizontal shake
+  | 'shake_v'        // vertical shake
+  | 'zoom_pulse'     // pulsing zoom
+  | 'whip_pan'       // motion blur pan
+  | 'stutter'        // frame stutter
+  | 'duotone'        // dual-tone grade
+  | 'lut_warm'       // warm cinematic grade
+  | 'lut_cold'       // cold/teal grade
+  | 'cyberpunk'      // teal/magenta split
+  | 'horror'         // horror look
+  | 'bleach_bypass'  // bleach bypass film
+  | 'color_shift'    // hue rotation
+  | 'posterize'      // posterize
+  | 'split_tone'     // split tone
+  | 'scanlines'      // CRT scanlines
+  | 'vhs'            // VHS effect
+  | 'halftone'       // halftone dots
+  | 'impact_lines'   // speed lines
+  | 'glow_bloom'     // bloom glow
+  | 'tv_noise'       // TV static
+  | 'radial_blur'    // radial blur
+  | 'tilt_shift'     // tilt shift
+  | 'mirror_h'       // horizontal mirror
+  | 'rain'           // rain overlay
+  | 'mirror_v'       // vertical mirror
+  | 'double_vision'  // ghost duplicate frame offset
+  | 'shake_rotate'   // rotational camera shake
+  | 'heartbeat'      // rhythmic pulse zoom
+  | 'rgb_wobble'     // wobbling chromatic shift
+  | 'screen_tear'    // horizontal screen tear / VHS tracking
+  | 'negative'       // color negative invert
+  | 'solarize'       // partial solarize
+  | 'lens_distort'   // barrel/fisheye distortion
+  | 'dream_glow'     // ethereal dream glow
+  | 'color_burn'     // intense color burn/dodge
+  | 'white_out'      // gradual white-out fade
+  | 'dither'         // dithering / banding
+  | 'aura'           // glowing edge aura
+  | 'zoom_snap'      // instant hard zoom snap
+  | 'panel_v'        // vertical manga panel split
+  | 'rgb_split_d'    // diagonal RGB split
+  | 'ink_drip'       // ink drip/splash overlay
+  | 'speed_cut';     // rapid cut-to-black + return
 
 export interface Effect {
   id: string;

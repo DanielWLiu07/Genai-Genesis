@@ -211,8 +211,8 @@ export default function Dashboard() {
               <Image src="/logo.png" alt="" width={40} height={40} className="drop-shadow-[0_0_8px_rgba(0,0,0,0.15)]" />
               <h1
                 className="manga-title text-2xl"
-                style={{ color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000' }}
-              >MangaMate</h1>
+                style={{ color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #ff3fa4, 5px 5px 0px #c0005e' }}
+              >Sakuga</h1>
             </Link>
             <div className="h-4 w-px bg-[#ccc]" />
             <p className="text-[0.7rem] text-[#888]">Upload stories. AI builds cinematic trailers. You edit with a visual copilot.</p>

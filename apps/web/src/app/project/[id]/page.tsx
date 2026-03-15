@@ -335,7 +335,9 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
   const [showControls, setShowControls] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const proxied = url; // render service has CORS: * so use directly for proper range/streaming support
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const proxied = url;
 
   // Clear src on unmount so any pending autoplay promise resolves cleanly
   useEffect(() => {
@@ -347,6 +349,23 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
       v.load();
     };
   }, []);
+
+  // Entry animation
+  useEffect(() => {
+    const backdrop = backdropRef.current;
+    const modal = modalRef.current;
+    if (!backdrop || !modal) return;
+    gsap.fromTo(backdrop, { opacity: 0 }, { opacity: 1, duration: 0.25, ease: 'power2.out' });
+    gsap.fromTo(modal, { scale: 0.88, y: 32, opacity: 0 }, { scale: 1, y: 0, opacity: 1, duration: 0.38, ease: 'back.out(1.6)', delay: 0.05 });
+  }, []);
+
+  const handleClose = useCallback(() => {
+    const backdrop = backdropRef.current;
+    const modal = modalRef.current;
+    if (!backdrop || !modal) { onClose(); return; }
+    gsap.to(modal, { scale: 0.92, y: 16, opacity: 0, duration: 0.22, ease: 'power2.in' });
+    gsap.to(backdrop, { opacity: 0, duration: 0.28, ease: 'power2.in', onComplete: onClose });
+  }, [onClose]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -375,41 +394,59 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
 
   if (videoError) {
     return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm">
-        <div className="manga-panel p-8 max-w-sm mx-4 text-center" style={{ border: '3px solid #111', boxShadow: '4px 4px 0 #111' }}>
+      <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(6px)' }}>
+        <div className="p-8 max-w-sm mx-4 text-center bg-white" style={{ border: '3px solid #111', boxShadow: '6px 6px 0 #111' }}>
           <p className="text-[#111] font-bold mb-2" style={{ fontFamily: 'var(--font-manga)' }}>VIDEO UNAVAILABLE</p>
           <p className="text-[#888] text-xs mb-4">The compiled file couldn't be loaded. Try the canvas preview or re-export.</p>
           <div className="flex gap-2">
-            <button onClick={onFallback} className="manga-btn bg-[#a855f7] text-white px-3 py-2 text-xs flex-1">Canvas Preview</button>
-            <a href={url} target="_blank" rel="noreferrer" className="manga-btn bg-white text-[#111] px-3 py-2 text-xs flex-1 text-center border-[#111]">Open Direct</a>
+            <button onClick={onFallback} className="bg-[#a855f7] text-white px-3 py-2 text-xs flex-1" style={{ border: '2px solid #111', boxShadow: '3px 3px 0 #111' }}>Canvas Preview</button>
+            <a href={url} target="_blank" rel="noreferrer" className="bg-white text-[#111] px-3 py-2 text-xs flex-1 text-center" style={{ border: '2px solid #111', boxShadow: '3px 3px 0 #111' }}>Open Direct</a>
           </div>
-          <button onClick={onClose} className="text-[#aaa] text-xs mt-3 hover:text-[#111] transition-colors block mx-auto">Close</button>
+          <button onClick={handleClose} className="text-[#aaa] text-xs mt-3 hover:text-[#111] transition-colors block mx-auto">Close</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-md" onClick={onClose}>
-      <div className="relative w-full max-w-4xl px-4 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+    <div
+      ref={backdropRef}
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+      style={{ background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(6px)' }}
+      onClick={handleClose}
+    >
+      {/* Manga halftone dot overlay */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.05 }}>
+        <defs>
+          <pattern id="dots-compiled" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse">
+            <circle cx="7" cy="7" r="2.8" fill="#111" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dots-compiled)" />
+      </svg>
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
+      <div
+        ref={modalRef}
+        className="relative w-full max-w-4xl mx-4 bg-white"
+        style={{ border: '3px solid #111', boxShadow: '10px 10px 0px #111' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Violet corner accent */}
+        <div className="absolute top-0 right-0 w-0 h-0 pointer-events-none z-10" style={{ borderStyle: 'solid', borderWidth: '0 36px 36px 0', borderColor: 'transparent #a855f7 transparent transparent' }} />
+
+        {/* Header bar */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#111]">
           <div className="flex items-center gap-2">
             <Film size={14} className="text-[#a855f7]" />
-            <span className="text-white/60 text-xs tracking-widest uppercase" style={{ fontFamily: 'var(--font-manga)' }}>
+            <span className="text-white text-xs tracking-widest uppercase" style={{ fontFamily: 'var(--font-manga)' }}>
               Compiled Trailer
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <a
-              href={proxied}
-              download
-              className="flex items-center gap-1.5 text-white/40 hover:text-white text-xs transition-colors"
-            >
+            <a href={proxied} download className="flex items-center gap-1.5 text-white/50 hover:text-white text-xs transition-colors">
               <Download size={13} /> Download
             </a>
-            <button className="text-white/40 hover:text-white transition-colors" onClick={onClose}>
+            <button className="text-white/50 hover:text-[#a855f7] transition-colors" onClick={handleClose}>
               <X size={18} />
             </button>
           </div>
@@ -417,12 +454,11 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
 
         {/* Video container */}
         <div
-          className="relative bg-black overflow-hidden group"
-          style={{ aspectRatio: '16/9', border: '2px solid #222' }}
+          className="relative bg-black overflow-hidden"
+          style={{ aspectRatio: '16/9' }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => playing && setShowControls(false)}
         >
-          {/* Loading spinner */}
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center z-20 bg-black">
               <Loader2 size={36} className="text-[#a855f7] animate-spin" />
@@ -449,35 +485,28 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
             style={{ cursor: 'pointer' }}
           />
 
-          {/* Big play button overlay when paused */}
           {!playing && !loading && (
-            <div
-              className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer"
-              onClick={togglePlay}
-            >
-              <div className="w-16 h-16 rounded-full bg-[#a855f7]/90 flex items-center justify-center shadow-2xl border-2 border-white/20 hover:bg-[#9333ea] transition-colors">
+            <div className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer" onClick={togglePlay}>
+              <div
+                className="w-16 h-16 bg-[#a855f7] flex items-center justify-center transition-transform active:scale-95"
+                style={{ border: '3px solid #fff', boxShadow: '4px 4px 0 rgba(0,0,0,0.5)' }}
+              >
                 <Play size={28} className="text-white ml-1" />
               </div>
             </div>
           )}
 
-          {/* Custom controls bar */}
+          {/* Controls bar */}
           <div
             className={`absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-300 ${showControls || !playing ? 'opacity-100' : 'opacity-0'}`}
-            style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.85))' }}
+            style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.9))' }}
           >
-            {/* Progress bar */}
             <div
-              className="mx-3 mb-1 h-1 bg-white/20 cursor-pointer rounded-full overflow-hidden hover:h-1.5 transition-all"
+              className="mx-3 mb-1 h-1.5 bg-white/20 cursor-pointer overflow-hidden hover:h-2 transition-all"
               onClick={handleScrub}
             >
-              <div
-                className="h-full bg-[#a855f7] rounded-full transition-none"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="h-full bg-[#a855f7] transition-none" style={{ width: `${progress}%` }} />
             </div>
-
-            {/* Controls row */}
             <div className="flex items-center gap-2 px-3 pb-2.5">
               <button onClick={togglePlay} className="text-white hover:text-[#a855f7] transition-colors">
                 {playing ? <Pause size={16} /> : <Play size={16} />}
@@ -485,15 +514,28 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
               <button onClick={() => { setMuted(m => !m); if (videoRef.current) videoRef.current.muted = !muted; }} className="text-white/60 hover:text-white transition-colors">
                 {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
-              <span className="text-white/50 text-xs font-mono tabular-nums">
-                {fmt(currentTime)} / {fmt(duration)}
-              </span>
+              <span className="text-white/60 text-xs font-mono tabular-nums">{fmt(currentTime)} / {fmt(duration)}</span>
               <div className="flex-1" />
               <button onClick={fullscreen} className="text-white/50 hover:text-white transition-colors">
                 <Maximize size={14} />
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2 flex items-center gap-3" style={{ borderTop: '2px solid #111' }}>
+          <span className="text-[0.6rem] text-[#999] tracking-widest" style={{ fontFamily: 'var(--font-manga)' }}>
+            {fmt(duration)} TOTAL
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={onFallback}
+            className="text-[0.6rem] text-[#bbb] hover:text-[#a855f7] transition-colors tracking-widest"
+            style={{ fontFamily: 'var(--font-manga)' }}
+          >
+            CANVAS PREVIEW →
+          </button>
         </div>
       </div>
     </div>
@@ -1244,12 +1286,12 @@ export default function EditorPage() {
           <div className="flex items-center gap-4">
             {/* Logo */}
             <div className="relative shrink-0">
-              <img src="/logo.png" alt="MangaMate" width={88} height={88} className="drop-shadow-[0_0_24px_rgba(168,85,247,0.5)]" />
+              <img src="/logo.png" alt="Sakuga" width={88} height={88} className="drop-shadow-[0_0_24px_rgba(168,85,247,0.5)]" />
               <div className="absolute inset-[-16px] rounded-full border-[3px] border-[#a855f7]/20 animate-ping" style={{ animationDuration: '1.6s' }} />
             </div>
-            {/* MANGAMATE letters */}
+            {/* SAKUGA letters */}
             <div className="flex items-center gap-[0.02em]" style={{ fontFamily: 'var(--font-manga)' }}>
-              {'MANGAMATE'.split('').map((char, i) => (
+              {'SAKUGA'.split('').map((char, i) => (
                 <span
                   key={i}
                   className="inline-block select-none"
@@ -1258,7 +1300,7 @@ export default function EditorPage() {
                     color: '#fff',
                     WebkitTextStroke: '3px #111',
                     paintOrder: 'stroke fill',
-                    textShadow: '4px 4px 0px #000, -1px -1px 0px #000',
+                    textShadow: '4px 4px 0px #ff3fa4, 6px 6px 0px #c0005e',
                     lineHeight: 1,
                   }}
                 >
@@ -1301,7 +1343,7 @@ export default function EditorPage() {
             className="font-bold text-2xl"
             style={{ fontFamily: 'var(--font-manga)', color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #000', whiteSpace: 'nowrap' }}
           >
-            {currentProject?.title || 'MangaMate Editor'}
+            {currentProject?.title || 'Sakuga Editor'}
           </span>
         </div>
         <div className="ml-auto flex items-stretch gap-2">

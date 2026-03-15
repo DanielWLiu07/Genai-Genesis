@@ -47,7 +47,7 @@ function computeBeatSync(audioAnalysis: any, clipCount: number, intensityKey: st
 // ─── Effect metadata ────────────────────────────────────────────────────────
 
 const EFFECT_META: Record<EffectType, { label: string; color: string; desc: string }> = {
-  flash_white:    { label: 'FLASH W',   color: '#ffffff', desc: 'Sudden white frame flash — high impact hit' },
+  flash_white:    { label: 'FLASH',     color: '#ffffff', desc: 'Sudden frame flash — high impact hit (color choosable)' },
   flash_black:    { label: 'FLASH B',   color: '#333333', desc: 'Sudden black frame cut — dramatic pause' },
   zoom_burst:     { label: 'ZOOM IN',   color: '#fbbf24', desc: 'Rapid zoom-in burst for emphasis' },
   zoom_out:       { label: 'ZOOM OUT',  color: '#fcd34d', desc: 'Dramatic zoom out reveal — aftermath moment' },
@@ -68,7 +68,7 @@ const EFFECT_META: Record<EffectType, { label: string; color: string; desc: stri
   vignette:       { label: 'VIGNETTE',  color: '#6b21a8', desc: 'Dark corner pulse — cinematic dread' },
   black_white:    { label: 'B&W',       color: '#94a3b8', desc: 'Instant desaturate — memory / flashback' },
   invert:         { label: 'INVERT',    color: '#67e8f9', desc: 'Color inversion — surreal psychedelic hit' },
-  red_flash:      { label: 'FLASH R',   color: '#dc2626', desc: 'Red flash — violence, danger, or impact (color param: any hex)' },
+  red_flash:      { label: 'FLASH',     color: '#dc2626', desc: 'Colored frame flash — violence, danger, or impact' },
   blur_out:       { label: 'BLUR',      color: '#7dd3fc', desc: 'Dreamy soft blur — memory or transition' },
   film_grain:     { label: 'GRAIN',     color: '#92400e', desc: 'Film grain texture — cinematic grit' },
   letterbox:      { label: 'CINEMA',    color: '#0f172a', desc: 'Cinematic black bars slam in — epic reveal' },
@@ -78,24 +78,86 @@ const EFFECT_META: Record<EffectType, { label: string; color: string; desc: stri
   pixelate:       { label: 'PIXEL',     color: '#34d399', desc: 'Digital pixelation — data / digital world' },
   contrast_punch: { label: 'CONTRAST',  color: '#fb923c', desc: 'Extreme contrast punch — manga ink style' },
   manga_ink:      { label: 'MANGA INK', color: '#e2e8f0', desc: 'Hyper-contrast B&W — pure manga look' },
+  flash:         { label: 'FLASH',      color: '#ffffff', desc: 'Configurable color flash — set any hue via params' },
+  shake_h:       { label: 'SHAKE H',    color: '#f97316', desc: 'Horizontal camera shake — side impact hit' },
+  shake_v:       { label: 'SHAKE V',    color: '#fb923c', desc: 'Vertical camera shake — ground impact' },
+  zoom_pulse:    { label: 'PULSE',      color: '#fbbf24', desc: 'Rhythmic zoom pulse — beat-sync emphasis' },
+  whip_pan:      { label: 'WHIP',       color: '#fcd34d', desc: 'Motion blur whip pan — fast action sweep' },
+  stutter:       { label: 'STUTTER',    color: '#a5f3fc', desc: 'Frame stutter — erratic digital hiccup' },
+  duotone:       { label: 'DUOTONE',    color: '#c084fc', desc: 'Dual-color tonal grade — stylized film look' },
+  lut_warm:      { label: 'WARM',       color: '#f59e0b', desc: 'Warm cinematic grade — golden orange tones' },
+  lut_cold:      { label: 'COLD',       color: '#60a5fa', desc: 'Cold/teal grade — icy blue tones' },
+  cyberpunk:     { label: 'CYBERPUNK',  color: '#00ffcc', desc: 'Teal/magenta cyberpunk split grade' },
+  horror:        { label: 'HORROR',     color: '#991b1b', desc: 'Red vignette + grain — dread and fear' },
+  bleach_bypass: { label: 'BLEACH',     color: '#e5e7eb', desc: 'Bleach bypass film — gritty desaturated' },
+  color_shift:   { label: 'HUE SHIFT',  color: '#a78bfa', desc: 'Full hue rotation — dreamlike color warp' },
+  posterize:     { label: 'POSTER',     color: '#34d399', desc: 'Posterize — limited palette pop art' },
+  split_tone:    { label: 'SPLIT TONE', color: '#fb7185', desc: 'Shadow/highlight color split grading' },
+  scanlines:     { label: 'SCANLINES',  color: '#4b5563', desc: 'CRT scanlines — retro monitor look' },
+  vhs:           { label: 'VHS',        color: '#6b7280', desc: 'VHS tape noise + tracking — retro degraded' },
+  halftone:      { label: 'HALFTONE',   color: '#d1d5db', desc: 'Manga halftone dots — printed ink pattern' },
+  impact_lines:  { label: 'SPD LINES',  color: '#f9fafb', desc: 'Manga speed lines radiating from center' },
+  glow_bloom:    { label: 'BLOOM',      color: '#fde68a', desc: 'Soft bloom glow — overlit ethereal warmth' },
+  tv_noise:      { label: 'STATIC',     color: '#9ca3af', desc: 'TV static noise — signal loss distortion' },
+  radial_blur:   { label: 'RADIAL',     color: '#7dd3fc', desc: 'Radial zoom blur from center — explosive' },
+  tilt_shift:    { label: 'TILT-SHIFT', color: '#86efac', desc: 'Tilt-shift miniature — selective focus blur' },
+  mirror_h:      { label: 'MIRROR H',   color: '#a3e635', desc: 'Horizontal mirror — symmetrical illusion' },
+  rain:          { label: 'RAIN',       color: '#93c5fd', desc: 'Rain streaks overlay — melancholic mood' },
+  mirror_v:      { label: 'MIRROR V',   color: '#86efac', desc: 'Vertical mirror — top/bottom symmetry' },
+  double_vision: { label: 'DBL VISION', color: '#a78bfa', desc: 'Ghost duplicate frame offset — dazed blur' },
+  shake_rotate:  { label: 'ROT SHAKE',  color: '#fb923c', desc: 'Rotational camera shake — disorientation' },
+  heartbeat:     { label: 'HEARTBEAT',  color: '#f43f5e', desc: 'Rhythmic pulse zoom — tense heartbeat sync' },
+  rgb_wobble:    { label: 'RGB WOBBLE', color: '#e879f9', desc: 'Wobbling chromatic oscillation — psychedelic' },
+  screen_tear:   { label: 'TEAR',       color: '#64748b', desc: 'Horizontal screen tear — VHS tracking loss' },
+  negative:      { label: 'NEGATIVE',   color: '#e2e8f0', desc: 'Film negative — inverted color tones' },
+  solarize:      { label: 'SOLARIZE',   color: '#fbbf24', desc: 'Partial solarize — dark-room overexposure' },
+  lens_distort:  { label: 'FISHEYE',    color: '#34d399', desc: 'Barrel/fisheye lens distortion' },
+  dream_glow:    { label: 'DREAM',      color: '#f9a8d4', desc: 'Ethereal dream glow — soft romantic haze' },
+  color_burn:    { label: 'BURN',       color: '#b45309', desc: 'Intense color burn/dodge — punchy contrast' },
+  white_out:     { label: 'WHITE OUT',  color: '#f8fafc', desc: 'Gradual white-out fade — climax / death' },
+  dither:        { label: 'DITHER',     color: '#78716c', desc: 'Dithering / banding — retro limited palette' },
+  aura:          { label: 'AURA',       color: '#d946ef', desc: 'Glowing edge aura — supernatural power surge' },
+  zoom_snap:     { label: 'SNAP ZOOM',  color: '#facc15', desc: 'Instant hard zoom snap — sudden reveal' },
+  panel_v:       { label: 'PANELS V',   color: '#c084fc', desc: 'Vertical manga panel split — multi-scene' },
+  rgb_split_d:   { label: 'CHROMA D',   color: '#c7d2fe', desc: 'Diagonal RGB split — warped dimension' },
+  ink_drip:      { label: 'INK DRIP',   color: '#1e1b4b', desc: 'Ink drip/splash overlay — manga impact' },
+  speed_cut:     { label: 'SPEED CUT',  color: '#dc2626', desc: 'Rapid cut-to-black + return — staccato edit' },
 };
 
 // flash_black shares the flash_white display label when used as palette alias
 EFFECT_META.flash_black = EFFECT_META.flash_white;
 
 const EFFECT_TYPES: EffectType[] = [
-  // ─ Flash / Light ────────────────
-  'flash_white', 'red_flash', 'overexpose', 'strobe', 'flicker',
-  // ─ Zoom / Move ──────────────────
-  'zoom_burst', 'zoom_out', 'shake', 'heavy_shake', 'speed_ramp', 'reverse',
-  // ─ Color / Grade ────────────────
-  'chromatic', 'rgb_shift_v', 'neon', 'invert', 'black_white', 'manga_ink',
-  'sepia', 'contrast_punch', 'glitch',
-  // ─ Temporal ─────────────────────
-  'echo', 'time_echo', 'freeze',
-  // ─ Texture / Overlay ────────────
-  'panel_split', 'cross_cut', 'letterbox', 'vignette', 'film_grain',
-  'blur_out', 'pixelate',
+  // ─ Flash / Light ─────────────────────
+  'flash', 'overexpose', 'strobe', 'flicker', 'glow_bloom',
+  // ─ Zoom / Move ───────────────────────
+  'zoom_burst', 'zoom_out', 'zoom_pulse', 'whip_pan',
+  // ─ Shake / Camera ────────────────────
+  'shake', 'heavy_shake', 'shake_h', 'shake_v', 'speed_ramp', 'reverse',
+  // ─ Temporal / Stutter ────────────────
+  'echo', 'time_echo', 'freeze', 'stutter',
+  // ─ Chromatic / Glitch ────────────────
+  'chromatic', 'rgb_shift_v', 'glitch', 'vhs', 'tv_noise',
+  // ─ Color Grade ───────────────────────
+  'lut_warm', 'lut_cold', 'cyberpunk', 'duotone', 'split_tone',
+  'color_shift', 'neon', 'sepia', 'black_white', 'invert',
+  // ─ Film / Texture ────────────────────
+  'bleach_bypass', 'horror', 'film_grain', 'scanlines', 'halftone',
+  'contrast_punch', 'manga_ink', 'posterize',
+  // ─ Distortion ────────────────────────
+  'blur_out', 'radial_blur', 'tilt_shift', 'pixelate',
+  // ─ Manga / Overlay ───────────────────
+  'panel_split', 'panel_v', 'cross_cut', 'letterbox', 'vignette', 'impact_lines', 'ink_drip', 'rain',
+  // ─ Mirror / Distortion ───────────────
+  'mirror_h', 'mirror_v', 'lens_distort', 'rgb_split_d',
+  // ─ Pulse / Rhythm ────────────────────
+  'heartbeat', 'zoom_snap', 'speed_cut', 'double_vision',
+  // ─ Atmospheric ───────────────────────
+  'dream_glow', 'aura', 'white_out', 'screen_tear',
+  // ─ Retro / Degraded ──────────────────
+  'negative', 'solarize', 'dither', 'color_burn',
+  // ─ Motion ────────────────────────────
+  'shake_rotate', 'rgb_wobble',
 ];
 
 // ─── Per-effect parameter schemas ─────────────────────────────────────────
@@ -109,6 +171,7 @@ interface ParamDef {
   default: number;
   unit?: string;
   desc?: string;
+  type?: 'slider' | 'color_hex';
 }
 
 const EFFECT_PARAM_DEFS: Partial<Record<EffectType, ParamDef[]>> = {
@@ -214,12 +277,190 @@ const EFFECT_PARAM_DEFS: Partial<Record<EffectType, ParamDef[]>> = {
     { key: 'contrast',   label: 'Contrast',   min: 1,    max: 4,    step: 0.1,  default: 2 },
     { key: 'glow',       label: 'Saturation', min: 1,    max: 4,    step: 0.1,  default: 2 },
   ],
+  flash: [
+    { key: 'color', label: 'Color', min: 0, max: 16777215, step: 1, default: 16777215, type: 'color_hex', desc: 'Flash color (white=16777215, black=0, red=16711680)' },
+    { key: 'brightness', label: 'Brightness', min: -1.0, max: 3.0, step: 0.1, default: 1.5 },
+    { key: 'saturation', label: 'Saturation', min: 0, max: 2.0, step: 0.05, default: 0.1 },
+  ],
+  shake_h: [
+    { key: 'radius', label: 'Amplitude', min: 1, max: 40, step: 1, default: 8, unit: 'px', desc: 'Horizontal shake amplitude' },
+  ],
+  shake_v: [
+    { key: 'radius', label: 'Amplitude', min: 1, max: 40, step: 1, default: 8, unit: 'px', desc: 'Vertical shake amplitude' },
+  ],
+  zoom_pulse: [
+    { key: 'scale', label: 'Scale', min: 1.02, max: 2.0, step: 0.02, default: 1.15, desc: 'Pulse zoom factor' },
+  ],
+  whip_pan: [
+    { key: 'sigma', label: 'Blur', min: 1, max: 40, step: 1, default: 14, desc: 'Motion blur intensity' },
+    { key: 'angle', label: 'Direction', min: 0, max: 360, step: 15, default: 0, unit: '°', desc: '0=horizontal, 90=vertical' },
+  ],
+  stutter: [
+    { key: 'frames', label: 'Steps', min: 2, max: 8, step: 1, default: 3, desc: 'Stutter frame count' },
+  ],
+  duotone: [
+    { key: 'hue_shift', label: 'Hue', min: 0, max: 360, step: 10, default: 200, unit: '°' },
+    { key: 'glow', label: 'Saturation', min: 1, max: 6, step: 0.5, default: 3 },
+  ],
+  lut_warm: [
+    { key: 'brightness', label: 'Temperature', min: 0.01, max: 1.0, step: 0.05, default: 0.4, desc: 'Warm orange/amber tint strength' },
+  ],
+  lut_cold: [
+    { key: 'brightness', label: 'Temperature', min: 0.01, max: 1.0, step: 0.05, default: 0.4, desc: 'Cool blue/teal tint strength' },
+  ],
+  cyberpunk: [
+    { key: 'shift', label: 'Cyan Boost', min: 1, max: 5, step: 0.25, default: 2.5 },
+    { key: 'glow', label: 'Magenta Boost', min: 1, max: 5, step: 0.25, default: 2.5 },
+  ],
+  horror: [
+    { key: 'glow', label: 'Red Tint', min: 1, max: 4, step: 0.1, default: 1.8 },
+    { key: 'amount', label: 'Grain', min: 5, max: 80, step: 5, default: 30 },
+  ],
+  bleach_bypass: [
+    { key: 'contrast', label: 'Contrast', min: 1, max: 5, step: 0.1, default: 2.5 },
+    { key: 'saturation', label: 'Saturation', min: 0, max: 0.8, step: 0.05, default: 0.25 },
+  ],
+  color_shift: [
+    { key: 'hue_shift', label: 'Hue', min: 0, max: 360, step: 5, default: 120, unit: '°', desc: 'Hue rotation amount' },
+    { key: 'glow', label: 'Saturation', min: 0.5, max: 4, step: 0.1, default: 1.5 },
+  ],
+  posterize: [
+    { key: 'size', label: 'Levels', min: 2, max: 16, step: 1, default: 4, desc: 'Color depth (lower = more poster)' },
+  ],
+  split_tone: [
+    { key: 'hue_shift', label: 'Shadow Hue', min: 0, max: 360, step: 10, default: 200, unit: '°' },
+    { key: 'glow', label: 'Highlight Hue', min: 0, max: 360, step: 10, default: 40, unit: '°' },
+  ],
+  scanlines: [
+    { key: 'count', label: 'Line Count', min: 20, max: 200, step: 10, default: 80, desc: 'Number of scanlines' },
+    { key: 'amount', label: 'Opacity', min: 5, max: 70, step: 5, default: 30, unit: '%' },
+  ],
+  vhs: [
+    { key: 'shift', label: 'Tracking', min: 1, max: 20, step: 1, default: 6, desc: 'VHS tracking error offset' },
+    { key: 'amount', label: 'Noise', min: 5, max: 60, step: 5, default: 20 },
+  ],
+  halftone: [
+    { key: 'size', label: 'Dot Size', min: 2, max: 20, step: 1, default: 6, unit: 'px' },
+  ],
+  impact_lines: [
+    { key: 'count', label: 'Density', min: 8, max: 40, step: 2, default: 16, desc: 'Number of speed lines' },
+    { key: 'amount', label: 'Length', min: 10, max: 80, step: 5, default: 40, unit: '%' },
+  ],
+  glow_bloom: [
+    { key: 'sigma', label: 'Blur', min: 1, max: 30, step: 1, default: 8, desc: 'Bloom spread radius' },
+    { key: 'brightness', label: 'Strength', min: 0.1, max: 2.0, step: 0.1, default: 0.8 },
+  ],
+  tv_noise: [
+    { key: 'amount', label: 'Static', min: 5, max: 80, step: 5, default: 25 },
+  ],
+  radial_blur: [
+    { key: 'sigma', label: 'Blur', min: 2, max: 30, step: 1, default: 10, desc: 'Radial blur intensity' },
+  ],
+  tilt_shift: [
+    { key: 'brightness', label: 'Focus Y', min: 10, max: 90, step: 5, default: 50, unit: '%', desc: 'Vertical focus center' },
+    { key: 'sigma', label: 'Blur', min: 2, max: 20, step: 1, default: 8, desc: 'Out-of-focus blur strength' },
+  ],
+  mirror_h: [
+    { key: 'amount', label: 'Power', min: 0.1, max: 1.0, step: 0.05, default: 1.0, desc: 'Effect strength' },
+  ],
+  rain: [
+    { key: 'count',  label: 'Density', min: 1,  max: 10,  step: 1,  default: 4 },
+    { key: 'angle',  label: 'Angle',   min: 0,  max: 60,  step: 5,  default: 15, unit: '°', desc: 'Rain streak angle' },
+    { key: 'amount', label: 'Power',   min: 0.1,max: 1.0, step: 0.05, default: 0.8 },
+  ],
+  // ── new effects ────────────────────────────────────────────────────────
+  mirror_v: [
+    { key: 'amount', label: 'Power', min: 0.1, max: 1.0, step: 0.05, default: 1.0 },
+  ],
+  double_vision: [
+    { key: 'shift',  label: 'Offset',  min: 2,  max: 40,  step: 1,  default: 12,  unit: 'px', desc: 'Ghost frame offset distance' },
+    { key: 'decay',  label: 'Opacity', min: 0.1,max: 0.8, step: 0.05, default: 0.4 },
+    { key: 'angle',  label: 'Direction', min: 0, max: 360, step: 15, default: 0,  unit: '°', desc: 'Offset direction' },
+  ],
+  shake_rotate: [
+    { key: 'angle',  label: 'Max Angle', min: 1, max: 30,  step: 1,  default: 8,  unit: '°', desc: 'Max rotation per frame' },
+    { key: 'amount', label: 'Power',     min: 0.1,max: 1.0,step: 0.05,default: 0.8 },
+  ],
+  heartbeat: [
+    { key: 'scale',  label: 'Pulse Scale', min: 1.02, max: 1.5, step: 0.02, default: 1.12 },
+    { key: 'frames', label: 'Beat Count',  min: 1,    max: 6,   step: 1,    default: 2,   desc: 'Pulses per trigger' },
+    { key: 'amount', label: 'Power',       min: 0.1,  max: 1.0, step: 0.05, default: 0.9 },
+  ],
+  rgb_wobble: [
+    { key: 'shift',  label: 'Amplitude', min: 1,  max: 30,  step: 1,  default: 10, unit: 'px' },
+    { key: 'frames', label: 'Speed',     min: 1,  max: 8,   step: 1,  default: 3,  desc: 'Wobble oscillation speed' },
+    { key: 'amount', label: 'Power',     min: 0.1,max: 1.0, step: 0.05, default: 0.9 },
+  ],
+  screen_tear: [
+    { key: 'count',  label: 'Tears',   min: 1,   max: 8,   step: 1,  default: 3,  desc: 'Number of horizontal tears' },
+    { key: 'shift',  label: 'Offset',  min: 2,   max: 40,  step: 1,  default: 12, unit: 'px' },
+    { key: 'amount', label: 'Power',   min: 0.1, max: 1.0, step: 0.05, default: 0.85 },
+  ],
+  negative: [
+    { key: 'amount', label: 'Power',   min: 0.1, max: 1.0, step: 0.05, default: 1.0 },
+  ],
+  solarize: [
+    { key: 'brightness', label: 'Threshold', min: 0.1, max: 1.0, step: 0.05, default: 0.5, desc: 'Solarize threshold level' },
+    { key: 'amount',     label: 'Power',     min: 0.1, max: 1.0, step: 0.05, default: 0.9 },
+  ],
+  lens_distort: [
+    { key: 'sigma',  label: 'Distortion', min: 0.05, max: 1.0, step: 0.05, default: 0.3, desc: 'Barrel distortion strength' },
+    { key: 'amount', label: 'Power',      min: 0.1,  max: 1.0, step: 0.05, default: 0.8 },
+  ],
+  dream_glow: [
+    { key: 'sigma',      label: 'Spread',     min: 2,  max: 40, step: 1,   default: 14, desc: 'Glow blur radius' },
+    { key: 'brightness', label: 'Brightness', min: 0.1,max: 2.0,step: 0.1, default: 0.7 },
+    { key: 'hue_shift',  label: 'Hue Tint',   min: 0,  max: 360,step: 10,  default: 300, unit: '°' },
+    { key: 'amount',     label: 'Power',      min: 0.1,max: 1.0, step: 0.05,default: 0.8 },
+  ],
+  color_burn: [
+    { key: 'contrast',   label: 'Burn',    min: 1,  max: 6,   step: 0.1, default: 3 },
+    { key: 'brightness', label: 'Dodge',   min: -1, max: 0.5, step: 0.05,default: -0.2 },
+    { key: 'amount',     label: 'Power',   min: 0.1,max: 1.0, step: 0.05,default: 0.85 },
+  ],
+  white_out: [
+    { key: 'brightness', label: 'Brightness', min: 0.5, max: 3.0, step: 0.1, default: 1.8 },
+    { key: 'amount',     label: 'Power',      min: 0.1, max: 1.0, step: 0.05, default: 0.9 },
+  ],
+  dither: [
+    { key: 'size',   label: 'Grid Size', min: 1, max: 16, step: 1, default: 4,   unit: 'px', desc: 'Dither matrix size' },
+    { key: 'amount', label: 'Power',     min: 0.1, max: 1.0, step: 0.05, default: 0.85 },
+  ],
+  aura: [
+    { key: 'sigma',     label: 'Spread',     min: 2,  max: 40,  step: 1,   default: 12 },
+    { key: 'hue_shift', label: 'Aura Color', min: 0,  max: 360, step: 10,  default: 280, unit: '°' },
+    { key: 'glow',      label: 'Intensity',  min: 0.5,max: 5.0, step: 0.25,default: 2.0 },
+    { key: 'amount',    label: 'Power',      min: 0.1,max: 1.0, step: 0.05,default: 0.85 },
+  ],
+  zoom_snap: [
+    { key: 'scale',  label: 'Zoom',     min: 1.1,  max: 3.0,  step: 0.1,  default: 1.6 },
+    { key: 'amount', label: 'Power',    min: 0.1,  max: 1.0,  step: 0.05, default: 1.0 },
+  ],
+  panel_v: [
+    { key: 'count',     label: 'Panels', min: 2, max: 6,  step: 1, default: 2,  desc: 'Number of vertical panels' },
+    { key: 'thickness', label: 'Border', min: 1, max: 20, step: 1, default: 4,  unit: 'px' },
+    { key: 'amount',    label: 'Power',  min: 0.1, max: 1.0, step: 0.05, default: 0.9 },
+  ],
+  rgb_split_d: [
+    { key: 'shift',  label: 'Offset', min: 1,   max: 40,  step: 1,   default: 8,  unit: 'px' },
+    { key: 'angle',  label: 'Angle',  min: 0,   max: 360, step: 15,  default: 45, unit: '°' },
+    { key: 'amount', label: 'Power',  min: 0.1, max: 1.0, step: 0.05,default: 0.9 },
+  ],
+  ink_drip: [
+    { key: 'count',  label: 'Drops',   min: 1,   max: 12,  step: 1,   default: 5 },
+    { key: 'amount', label: 'Opacity', min: 0.1, max: 1.0, step: 0.05,default: 0.85 },
+  ],
+  speed_cut: [
+    { key: 'frames', label: 'Cut Frames', min: 1,   max: 6,   step: 1,   default: 2,  desc: 'Black frame duration' },
+    { key: 'amount', label: 'Power',      min: 0.1, max: 1.0, step: 0.05,default: 1.0 },
+  ],
 };
 
 function getParamValue(effect: Effect, key: string): number {
   const defs = EFFECT_PARAM_DEFS[effect.type];
   const def = defs?.find((d) => d.key === key);
-  return effect.params?.[key] ?? def?.default ?? 0;
+  const val = effect.params?.[key];
+  return (typeof val === 'number' ? val : undefined) ?? def?.default ?? 0;
 }
 
 const DEMO_PROJECT_ID = 'local-test-video';
@@ -261,7 +502,8 @@ function formatPreviewTime(ms: number) {
 
 function normalizeEffectType(type: EffectType | undefined): EffectType | undefined {
   if (!type) return undefined;
-  return type === 'flash_black' ? 'flash_white' : type;
+  if (type === 'flash_black' || type === 'red_flash') return 'flash';
+  return type === 'flash_white' ? 'flash' : type;
 }
 
 // ─── Transition metadata ──────────────────────────────────────────────────────
@@ -281,7 +523,8 @@ const CLIP_COLORS: Record<string, string> = {
 
 // Effects that render via background/overlay div (not container filter/transform)
 const OVERLAY_EFFECT_TYPES = new Set<EffectType>([
-  'flash_white', 'flash_black', 'strobe', 'red_flash', 'overexpose', 'cross_cut',
+  'flash', 'flash_white', 'flash_black', 'strobe', 'red_flash', 'overexpose', 'cross_cut',
+  'scanlines', 'vhs', 'tv_noise', 'impact_lines', 'horror', 'rain',
 ]);
 
 function getPreviewStyle(type: EffectType, active: boolean): React.CSSProperties {
@@ -323,6 +566,31 @@ function getPreviewStyle(type: EffectType, active: boolean): React.CSSProperties
     case 'film_grain':     return { animation: 'amv-grain 0.12s steps(3) infinite' };
     case 'blur_out':       return { animation: 'amv-blur 0.5s ease-in-out infinite' };
     case 'pixelate':       return { animation: 'amv-pixelate 0.2s steps(4) infinite' };
+    case 'flash':          return { animation: 'amv-flash-white 0.3s ease-out infinite' };
+    case 'shake_h':        return { animation: 'amv-shake-h 0.18s linear infinite' };
+    case 'shake_v':        return { animation: 'amv-shake-v 0.18s linear infinite' };
+    case 'zoom_pulse':     return { animation: 'amv-pulse 0.4s ease-in-out infinite' };
+    case 'whip_pan':       return { animation: 'amv-whip 0.3s ease-in-out infinite' };
+    case 'stutter':        return { animation: 'amv-stutter 0.2s steps(3) infinite' };
+    case 'duotone':        return { animation: 'amv-duotone 0.5s ease-in-out infinite' };
+    case 'lut_warm':       return { animation: 'amv-warm 0.5s ease-in-out infinite' };
+    case 'lut_cold':       return { animation: 'amv-cold 0.5s ease-in-out infinite' };
+    case 'cyberpunk':      return { animation: 'amv-cyberpunk 0.5s ease-in-out infinite' };
+    case 'horror':         return { animation: 'amv-horror 0.5s ease-in-out infinite' };
+    case 'bleach_bypass':  return { animation: 'amv-bleach 0.4s ease-in-out infinite' };
+    case 'color_shift':    return { animation: 'amv-colorshift 0.6s ease-in-out infinite' };
+    case 'posterize':      return { animation: 'amv-posterize 0.4s ease-in-out infinite' };
+    case 'split_tone':     return { animation: 'amv-splittone 0.5s ease-in-out infinite' };
+    case 'scanlines':      return { animation: 'amv-scanlines 0.15s steps(2) infinite' };
+    case 'vhs':            return { animation: 'amv-vhs 0.2s steps(4) infinite' };
+    case 'halftone':       return { animation: 'amv-halftone 0.4s ease-in-out infinite' };
+    case 'impact_lines':   return { animation: 'amv-impact 0.3s ease-in-out infinite' };
+    case 'glow_bloom':     return { animation: 'amv-bloom 0.5s ease-in-out infinite' };
+    case 'tv_noise':       return { animation: 'amv-tvnoise 0.1s steps(5) infinite' };
+    case 'radial_blur':    return { animation: 'amv-radial 0.4s ease-in-out infinite' };
+    case 'tilt_shift':     return { animation: 'amv-tiltshift 0.5s ease-in-out infinite' };
+    case 'mirror_h':       return { animation: 'amv-mirror 0.4s ease-in-out infinite' };
+    case 'rain':           return { animation: 'amv-rain 0.5s linear infinite' };
     default: return {};
   }
 }
@@ -381,6 +649,7 @@ export default function TimelinePage() {
   const [rendering, setRendering] = useState(false);
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const [flashColor, setFlashColor] = useState('#ffffff');
   const [beatSyncIntensity, setBeatSyncIntensity] = useState<string>('balanced');
   const [autoAmvLoading, setAutoAmvLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -794,16 +1063,18 @@ all-out → everything above + fill every remaining beat
 ${availableEffects}
 
 === DIRECTOR RULES ===
-1. CRASHES are non-negotiable — every crash gets a heavy effect (flash_white, heavy_shake, zoom_burst, panel_split, or overexpose)
+1. CRASHES are non-negotiable — every crash gets a heavy effect (flash_white, heavy_shake, zoom_burst, panel_split, overexpose, white_out, or speed_cut)
 2. Energy peaks get strong effects matched to energy level
-3. Section boundaries get "reset" effects (glitch, reverse, blur_out, echo) — they mark structural music changes
-4. Match effects to scene content: manga_ink/panel_split for battle/action, echo/blur_out for emotional, neon/glitch for supernatural
-5. High-energy regions (>0.7) → higher intensity, shorter duration; low-energy regions → subtle, longer duration
+3. Section boundaries get "reset" effects (glitch, reverse, blur_out, echo, screen_tear, dream_glow) — structural music changes
+4. Match effects to scene content: manga_ink/panel_split/panel_v/cross_cut for battle; echo/dream_glow/blur_out for emotional; neon/aura/cyberpunk for supernatural; horror/vignette/negative for dark scenes
+5. High-energy regions (>0.7) → higher intensity (0.7-1.0), shorter duration; low-energy → subtle, longer duration
 6. Minimum 50ms between any two effects
 7. Scale effect density to the sync intensity level
+8. USE PARAMS: every effect has a "power" (0.1-1.0) param — tune it. Use "color" param on flash for non-white hits. Use "angle"/"direction" on whip_pan/rgb_split_d/double_vision. Use "hue_shift" on dream_glow/aura/color_shift/duotone to match scene mood.
+9. Use NEW effects freely: heartbeat (tense scenes), screen_tear (glitch moments), aura (power-up), zoom_snap (reveals), speed_cut (staccato edits), rgb_wobble (psychedelic), ink_drip (impact), mirror_v/mirror_h (surreal)
 
 Respond ONLY with compact JSON (no markdown, no explanation):
-{"effects":[{"type":"effect_type","timestamp_ms":number,"duration_ms":number,"intensity":number,"params":{}}]}`;
+{"effects":[{"type":"effect_type","timestamp_ms":number,"duration_ms":number,"intensity":number,"params":{"power":0.9}}]}`;
 
       // Skip AI call if there's no real audio analysis — fallback is better in that case
       const hasRichData = crashes.length > 0 || energyPeaks.length > 0 || sectionBounds.length > 0;
@@ -875,15 +1146,21 @@ Respond ONLY with compact JSON (no markdown, no explanation):
     setPlayheadMs(timestamp_ms);
 
     if (selectedType !== null) {
+      // FLASH button: white stays as flash_white; any other color uses red_flash + color param
+      const flashType: EffectType = selectedType === 'flash_white' && flashColor !== '#ffffff'
+        ? 'red_flash' : selectedType;
+      const flashParams = selectedType === 'flash_white' && flashColor !== '#ffffff'
+        ? { color: flashColor } : undefined;
       addEffect({
         id: crypto.randomUUID(),
-        type: selectedType,
+        type: flashType,
         timestamp_ms,
         duration_ms: 200,
         intensity: 0.8,
+        ...(flashParams ? { params: flashParams as unknown as Record<string, number> } : {}),
       });
     }
-  }, [addEffect, pxPerMs, selectedType, totalMs]);
+  }, [addEffect, flashColor, pxPerMs, selectedType, totalMs]);
 
   // ── Cycle transition type on a clip ─────────────────────────────────────
 
@@ -963,8 +1240,8 @@ Respond ONLY with compact JSON (no markdown, no explanation):
   // Beat ruler ticks
   const beatTicks = beatMap?.beats ?? [];
 
-  // text_overlay clips are overlays only — skip them for the canvas preview
-  const visualSortedClips = sortedClips.filter((c) => c.type !== 'text_overlay');
+  // text_overlay, title_card, end_card are not real scene clips — skip for canvas preview
+  const visualSortedClips = sortedClips.filter((c) => c.type !== 'text_overlay' && c.id !== 'title_card' && c.id !== 'end_card');
   const activeClip = visualSortedClips.find((clip) => {
     const start = clipStartMs[clip.id] || 0;
     const end = start + (clip.duration_ms || 3000);
@@ -1121,6 +1398,31 @@ Respond ONLY with compact JSON (no markdown, no explanation):
         @keyframes amv-grain        { 0%{filter:contrast(1.2) brightness(0.88) saturate(0.7)} 33%{filter:contrast(1.45) brightness(1.06) saturate(0.55)} 66%{filter:contrast(0.9) brightness(0.93)} 100%{filter:contrast(1.2) brightness(0.88) saturate(0.7)} }
         @keyframes amv-blur         { 0%,100%{filter:none} 50%{filter:blur(14px) brightness(1.1)} }
         @keyframes amv-pixelate     { 0%,100%{filter:none} 50%{filter:blur(3px) contrast(8) saturate(0)} }
+        /* ── New effects ── */
+        @keyframes amv-shake-h    { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+        @keyframes amv-shake-v    { 0%,100%{transform:translateY(0)} 25%{transform:translateY(-8px)} 75%{transform:translateY(8px)} }
+        @keyframes amv-pulse      { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+        @keyframes amv-whip       { 0%,100%{filter:none} 50%{filter:blur(12px) brightness(1.3)} }
+        @keyframes amv-stutter    { 0%{opacity:1;transform:translate(0,0)} 33%{opacity:0.4;transform:translate(2px,0)} 66%{opacity:1;transform:translate(-2px,1px)} 100%{opacity:1;transform:translate(0,0)} }
+        @keyframes amv-duotone    { 0%,100%{filter:none} 50%{filter:hue-rotate(200deg) saturate(4) contrast(1.3)} }
+        @keyframes amv-warm       { 0%,100%{filter:none} 50%{filter:sepia(0.6) saturate(1.8) brightness(1.1)} }
+        @keyframes amv-cold       { 0%,100%{filter:none} 50%{filter:hue-rotate(195deg) saturate(1.8) brightness(1.05)} }
+        @keyframes amv-cyberpunk  { 0%,100%{filter:none} 50%{filter:hue-rotate(150deg) saturate(3) contrast(1.4)} }
+        @keyframes amv-horror     { 0%,100%{filter:none;box-shadow:none} 50%{filter:saturate(0.3) brightness(0.7);box-shadow:inset 0 0 80px rgba(180,0,0,0.7)} }
+        @keyframes amv-bleach     { 0%,100%{filter:none} 50%{filter:saturate(0.15) contrast(2.5) brightness(1.1)} }
+        @keyframes amv-colorshift { 0%{filter:hue-rotate(0deg)} 100%{filter:hue-rotate(360deg)} }
+        @keyframes amv-posterize  { 0%,100%{filter:none} 50%{filter:contrast(8) brightness(1.1) saturate(1.5)} }
+        @keyframes amv-splittone  { 0%,100%{filter:none} 50%{filter:hue-rotate(30deg) saturate(2) contrast(1.2)} }
+        @keyframes amv-scanlines  { 0%{filter:contrast(1.1)} 50%{filter:contrast(1.3) brightness(0.85)} }
+        @keyframes amv-vhs        { 0%{filter:none;transform:translate(0,0)} 25%{filter:hue-rotate(180deg) saturate(0.5);transform:translate(3px,0)} 50%{filter:none;transform:translate(-2px,1px)} 75%{filter:saturate(2);transform:translate(0,-1px)} 100%{filter:none;transform:translate(0,0)} }
+        @keyframes amv-halftone   { 0%,100%{filter:none} 50%{filter:contrast(6) grayscale(0.5) brightness(1.1)} }
+        @keyframes amv-impact     { 0%,100%{filter:none} 50%{filter:brightness(1.6) contrast(2) saturate(0)} }
+        @keyframes amv-bloom      { 0%,100%{filter:none} 50%{filter:blur(4px) brightness(1.5) saturate(1.3)} }
+        @keyframes amv-tvnoise    { 0%{filter:contrast(1.2) brightness(0.9)} 20%{filter:invert(0.1) brightness(1.2)} 40%{filter:contrast(0.7) brightness(0.8) saturate(0)} 60%{filter:brightness(1.1)} 80%{filter:contrast(1.5) brightness(0.95) saturate(0.5)} 100%{filter:contrast(1.2) brightness(0.9)} }
+        @keyframes amv-radial     { 0%,100%{filter:none;transform:scale(1)} 50%{filter:blur(6px);transform:scale(1.06)} }
+        @keyframes amv-tiltshift  { 0%,100%{filter:none} 50%{filter:blur(5px) saturate(1.5)} }
+        @keyframes amv-mirror     { 0%,100%{transform:scaleX(1)} 50%{transform:scaleX(-1)} }
+        @keyframes amv-rain       { 0%{filter:none;opacity:0.9} 50%{filter:blur(0.5px) brightness(0.9) saturate(0.8);opacity:1} 100%{filter:none;opacity:0.9} }
         @keyframes playhead-pulse   { 0%,100%{opacity:1} 50%{opacity:0.5} }
         @keyframes frame-glow       { 0%,100%{opacity:0.55;box-shadow:none} 50%{opacity:1;box-shadow:0 0 18px var(--frame-color,#a855f7),inset 0 0 12px var(--frame-color,#a855f7)} }
         @keyframes corner-pulse     { 0%,100%{opacity:0.6;transform:scale(1)} 50%{opacity:1;transform:scale(1.04)} }
@@ -1589,6 +1891,26 @@ Respond ONLY with compact JSON (no markdown, no explanation):
                     </span>
                     {EFFECT_PARAM_DEFS[selectedEffect.type]!.map((def) => {
                       const val = getParamValue(selectedEffect, def.key);
+                      if (def.type === 'color_hex') {
+                        const hexStr = '#' + Math.max(0, Math.min(16777215, Math.round(val))).toString(16).padStart(6, '0');
+                        return (
+                          <div key={def.key}>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[0.68rem] text-[#777]" style={{ fontFamily: 'var(--font-manga)' }}>{def.label}</span>
+                              <input
+                                type="color"
+                                value={hexStr}
+                                onChange={(e) => {
+                                  const intVal = parseInt(e.target.value.slice(1), 16);
+                                  updateEffect(selectedEffect.id, { params: { ...(selectedEffect.params || {}), [def.key]: intVal } });
+                                }}
+                                className="w-10 h-6 cursor-pointer border border-[#444] bg-transparent rounded-none"
+                              />
+                            </div>
+                            {def.desc && <p className="text-[0.58rem] text-[#444] mt-0.5">{def.desc}</p>}
+                          </div>
+                        );
+                      }
                       return (
                         <div key={def.key}>
                           <div className="flex items-center justify-between mb-0.5">
@@ -1673,41 +1995,89 @@ Respond ONLY with compact JSON (no markdown, no explanation):
             const meta = EFFECT_META[type];
             const isSelected = selectedType === type;
             const isHovered = hoveredType === type;
-            const count = effects.filter((e) => normalizeEffectType(e.type) === type).length;
+            const isFlash = type === 'flash_white';
+            const FLASH_PRESETS = ['#ffffff', '#dc2626', '#111111', '#a855f7'] as const;
+            type FlashPreset = typeof FLASH_PRESETS[number];
+            const count = isFlash
+              ? effects.filter((e) => e.type === 'flash_white' || e.type === 'red_flash').length
+              : effects.filter((e) => normalizeEffectType(e.type) === type).length;
+            const swatchColor = isFlash ? flashColor : meta.color;
+
             return (
               <button
                 key={type}
                 onClick={() => setSelectedType(prev => prev === type ? null : type)}
                 onMouseEnter={() => setHoveredType(type)}
                 onMouseLeave={() => setHoveredType(null)}
-                className="relative shrink-0 flex min-w-[5.5rem] flex-col items-center gap-1.5 px-3 py-2.5 border transition-all"
+                className="relative shrink-0 flex flex-col items-center gap-1 border transition-all"
                 style={{
-                  borderColor: isSelected ? meta.color : '#333',
-                  backgroundColor: isSelected ? `${meta.color}22` : isHovered ? '#1a1a1a' : '#0f0f0f',
-                  boxShadow: isSelected ? `0 0 12px ${meta.color}44` : 'none',
+                  minWidth: isFlash ? '7.5rem' : '5.5rem',
+                  padding: isFlash ? '6px 10px 8px' : '10px 12px',
+                  borderColor: isSelected ? swatchColor : '#333',
+                  backgroundColor: isSelected ? `${swatchColor}22` : isHovered ? '#1a1a1a' : '#0f0f0f',
+                  boxShadow: isSelected ? `0 0 12px ${swatchColor}44` : 'none',
                 }}
               >
                 <div
                   className="w-5 h-5 rounded-sm"
                   style={{
-                    backgroundColor: meta.color,
-                    boxShadow: isSelected || isHovered ? `0 0 8px ${meta.color}88` : 'none',
-                    border: type === 'flash_white' ? '1px solid #555' : 'none',
+                    backgroundColor: swatchColor,
+                    boxShadow: isSelected || isHovered ? `0 0 8px ${swatchColor}88` : 'none',
+                    border: swatchColor === '#ffffff' ? '1px solid #555' : 'none',
                   }}
                 />
                 <span
                   className="text-[0.74rem] tracking-[0.16em]"
-                  style={{
-                    fontFamily: 'var(--font-manga)',
-                    color: isSelected ? meta.color : '#666',
-                  }}
+                  style={{ fontFamily: 'var(--font-manga)', color: isSelected ? swatchColor : '#666' }}
                 >
                   {meta.label}
                 </span>
+
+                {/* ── Flash: inline color picker row ── */}
+                {isFlash && (
+                  <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                    {FLASH_PRESETS.map((c) => (
+                      <button
+                        key={c}
+                        title={c}
+                        onClick={(e) => { e.stopPropagation(); setFlashColor(c); setSelectedType('flash_white'); }}
+                        className="w-3.5 h-3.5 rounded-sm transition-transform"
+                        style={{
+                          backgroundColor: c,
+                          border: flashColor === c ? '1.5px solid #a855f7' : c === '#ffffff' ? '1px solid #555' : '1px solid #333',
+                          transform: flashColor === c ? 'scale(1.2)' : 'scale(1)',
+                        }}
+                      />
+                    ))}
+                    {/* Custom hex color */}
+                    <label
+                      title="Custom color"
+                      className="relative block w-3.5 h-3.5 rounded-sm cursor-pointer overflow-hidden"
+                      style={{ border: !FLASH_PRESETS.includes(flashColor as FlashPreset) ? '1.5px solid #a855f7' : '1px solid #444' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="color"
+                        value={flashColor}
+                        onChange={(e) => { setFlashColor(e.target.value); setSelectedType('flash_white'); }}
+                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                      />
+                      <div
+                        className="w-full h-full"
+                        style={{
+                          background: FLASH_PRESETS.includes(flashColor as FlashPreset)
+                            ? 'conic-gradient(#f0f,#ff0,#0ff,#f0f)'
+                            : flashColor,
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+
                 {count > 0 && (
                   <span
                     className="absolute -top-1.5 -right-1.5 text-[0.58rem] px-1.5 py-0.5 rounded-full font-bold"
-                    style={{ backgroundColor: meta.color, color: type === 'flash_white' || type === 'strobe' ? '#000' : '#fff' }}
+                    style={{ backgroundColor: swatchColor, color: swatchColor === '#ffffff' || type === 'strobe' ? '#000' : '#fff' }}
                   >
                     {count}
                   </span>

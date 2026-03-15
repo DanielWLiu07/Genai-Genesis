@@ -840,6 +840,11 @@ export default function TimelinePage() {
   }, [totalMs]);
 
   useEffect(() => {
+    const current = useTimelineStore.getState().beatMap;
+    // Don't overwrite a rich beatMap (from DB audio analysis) that already matches the BPM.
+    // Rich = has crash/peak/section data. Basic = just evenly-spaced beats from BPM slider.
+    const isRich = (current?.crashes?.length ?? 0) > 0 || (current?.energy_peaks?.length ?? 0) > 0 || (current?.section_boundaries?.length ?? 0) > 0;
+    if (isRich && current?.bpm === bpm) return;
     setBeatMap(generateBeatMap(bpm));
   }, [bpm, generateBeatMap, setBeatMap]);
 
@@ -1147,12 +1152,24 @@ Respond ONLY with compact JSON (no markdown, no explanation):
           }));
 
       let applied = false;
+      const collectedEffects: Effect[] = [];
+
       for (const call of (result?.tool_calls || [])) {
-        const fn = call.function || call;
-        const args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : (fn.arguments || fn);
-        const effects = parseEffects(args.effects || []);
-        if (effects.length > 0) { setEffects(effects); applied = true; break; }
+        // Chat API returns { tool_name, arguments } format
+        const toolName = call.tool_name || call.function?.name || call.name;
+        const args = call.arguments ?? call.function?.arguments ?? call;
+        const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
+
+        if (toolName === 'add_amv_effect') {
+          // Gemini calls add_amv_effect once per effect — collect them all
+          collectedEffects.push(...parseEffects([parsedArgs]));
+        } else if (parsedArgs?.effects) {
+          // Legacy: single call with effects array
+          collectedEffects.push(...parseEffects(parsedArgs.effects));
+        }
       }
+
+      if (collectedEffects.length > 0) { setEffects(collectedEffects); applied = true; }
 
       if (!applied && result?.content) {
         try {

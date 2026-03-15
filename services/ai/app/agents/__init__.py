@@ -1,2 +1,2 @@
-# Railtracks agent modules for MangaMate AI pipeline.
+# Railtracks agent modules for Lotus AI pipeline.
 # Built with Railtracks — https://github.com/RailtownAI/railtracks

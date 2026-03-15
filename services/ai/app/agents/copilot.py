@@ -1,5 +1,5 @@
 """
-Railtracks-powered AI Copilot agent for MangaMate.
+Railtracks-powered AI Copilot agent for Lotus.
 
 The CopilotAgent is an rt.agent_node whose LLM autonomously decides which
 tools to call in response to a natural-language editing request. Each tool
@@ -138,10 +138,16 @@ try:
                              amount: Optional[float] = None,
                              angle: Optional[float] = None) -> str:
         """Add a beat-synced AMV visual effect at a specific timestamp with fine-grained params.
-        type: flash_white|flash_black|zoom_burst|zoom_out|shake|heavy_shake|echo|time_echo|freeze|
-              speed_ramp|chromatic|rgb_shift_v|panel_split|cross_cut|reverse|glitch|strobe|flicker|
-              vignette|black_white|invert|red_flash|blur_out|film_grain|letterbox|neon|sepia|
-              overexpose|pixelate|contrast_punch|manga_ink
+        type: flash|shake_h|shake_v|zoom_burst|zoom_out|zoom_pulse|whip_pan|
+              shake|heavy_shake|echo|time_echo|freeze|stutter|speed_ramp|
+              chromatic|rgb_shift_v|glitch|vhs|tv_noise|
+              lut_warm|lut_cold|cyberpunk|duotone|split_tone|color_shift|
+              neon|sepia|black_white|invert|bleach_bypass|horror|film_grain|
+              scanlines|halftone|contrast_punch|manga_ink|posterize|
+              blur_out|radial_blur|tilt_shift|pixelate|mirror_h|
+              panel_split|cross_cut|letterbox|vignette|impact_lines|rain|
+              strobe|flicker|overexpose|glow_bloom|reverse|speed_ramp
+        color param (for flash): integer encoding 0xRRGGBB (white=16777215, black=0, red=16711680, blue=255)
         params: scale(zoom factor), center_x/y(pivot 0-100%), radius(shake px), sigma(blur),
                 shift(chromatic px), brightness/contrast/saturation, hue_shift(0-360), glow(saturation boost),
                 frames(echo/freeze count), decay(echo weight fade), thickness(cross_cut/panel px),
@@ -250,7 +256,7 @@ try:
         return f"Bulk-updated {len(updates)} clips"
 
     # ── System prompt ────────────────────────────────────────────────────────
-    _SYSTEM = """You are MangaMate's AI copilot — a cinematic trailer editor and AMV specialist.
+    _SYSTEM = """You are Lotus's AI copilot — a cinematic trailer editor and AMV specialist.
 You help users edit their manga/book trailer through natural language. Think like a professional
 AMV editor who understands both cinematic storytelling AND fast-paced anime music video editing.
 
@@ -260,8 +266,9 @@ Call multiple tools per response for complex edits.
 If the context says EDITOR MODE is effects, prefer AMV effect tools and avoid scene-editing tools unless the user explicitly asks for clip/story changes.
 
 SCENE PACING: Hook 2-3s cut | Establishing 3-4s dissolve | Action 1.5-2.5s cut | Emotional 4-5s dissolve
-AMV: flash_white on strong beats 100-200ms intensity 0.8-1.0 | zoom_burst every 4th beat 200-300ms
-     chromatic for tension 200-400ms | glitch digital/sci-fi 150-300ms | strobe climax 50-100ms
+AMV: flash on strong beats 100-200ms (color=16777215 for white, 16711680 for red, 0 for black) |
+     zoom_burst/zoom_pulse every 4th beat | chromatic/vhs for tension | cyberpunk/horror for atmosphere |
+     scanlines/halftone/impact_lines for manga style | rain/glow_bloom for mood | stutter/tv_noise for glitch
 AMV EDITING: use update_amv_effect to tweak placed effects, clear_amv_effects to remove groups of effects,
              add_amv_effect_range for repeated effects over a section, add_amv_effects_on_beats for beat-matched sequences
 SHOT TYPE: continuous = same scene flowing | cut = new scene
@@ -270,7 +277,7 @@ GENERATION: trigger_generate_clip with media_type='image' for still frames (Imag
 
     # ── CopilotAgent definition ──────────────────────────────────────────────
     CopilotAgent = rt.agent_node(
-        name="MangaMate Copilot",
+        name="Lotus Copilot",
         tool_nodes={
             add_clip, remove_clip, update_clip, reorder_clips, set_transition,
             regenerate_clip, set_music, update_settings, update_scene_duration,

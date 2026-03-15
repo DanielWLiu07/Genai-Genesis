@@ -1,5 +1,5 @@
 """
-Railtracks multi-agent pipeline for MangaMate trailer generation.
+Railtracks multi-agent pipeline for Lotus trailer generation.
 
 Architecture:
   TrailerPipelineAgent (rt.agent_node, LLM orchestrator)
@@ -291,7 +291,7 @@ try:
 
     # ── Orchestrator agent ───────────────────────────────────────────────────
 
-    _PIPELINE_SYSTEM = """You are the MangaMate Trailer Pipeline Orchestrator.
+    _PIPELINE_SYSTEM = """You are the Lotus Trailer Pipeline Orchestrator.
 Your job is to create a complete cinematic trailer plan from a book/story in four steps:
 
 1. Call analyze_node with the full book_text (and optional characters_json / image_urls_json).

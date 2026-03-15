@@ -1,5 +1,5 @@
 """
-Comprehensive audit tests for the Railtracks integration in MangaMate AI service.
+Comprehensive audit tests for the Railtracks integration in Lotus AI service.
 
 Tests cover:
 - Module imports
@@ -751,7 +751,7 @@ class TestLlmModelBug:
 
         # Using the CORRECT kwarg (llm=) should succeed
         agent = rt.agent_node(
-            name="MangaMate Copilot Fixed",
+            name="Lotus Copilot Fixed",
             tool_nodes={test_add_clip},
             llm=GeminiLLM("gemini-2.5-flash"),  # CORRECT
             system_message=SystemMessage("You are an editor."),

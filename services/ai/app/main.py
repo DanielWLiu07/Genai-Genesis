@@ -6,8 +6,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(
-    title="MangaMate AI Service",
-    description="Story analysis, trailer planning, and AI copilot for MangaMate",
+    title="Lotus AI Service",
+    description="Story analysis, trailer planning, and AI copilot for Lotus",
     version="0.1.0",
 )
 
@@ -29,7 +29,7 @@ app.include_router(manga.router)
 @app.get("/")
 async def root():
     return {
-        "service": "MangaMate AI",
+        "service": "Lotus AI",
         "status": "running",
         "version": "0.1.0",
         "endpoints": [

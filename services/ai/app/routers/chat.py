@@ -29,7 +29,7 @@ class ChatRequest(BaseModel):
     history: List[dict] = []
 
 
-COPILOT_SYSTEM = """You are MangaMate's AI copilot — a cinematic trailer editor and AMV specialist.
+COPILOT_SYSTEM = """You are Lotus's AI copilot — a cinematic trailer editor and AMV specialist.
 
 You help users edit their manga/book trailer through natural language. You think like a professional AMV editor who understands both cinematic storytelling AND fast-paced anime music video editing.
 
@@ -80,7 +80,7 @@ Write detailed cinematic prompts:
 - Lighting (golden hour, dramatic sidelight, neon, moonlit, chiaroscuro)
 - Color palette (warm amber, cool blue, desaturated, high contrast)
 - Atmosphere (fog, rain, dust particles, lens flare, bokeh)
-- Style (manga illustration, anime sakuga, cel-shading, ink wash)"""
+- Style (manga illustration, anime lotus, cel-shading, ink wash)"""
 
 
 @router.post("/chat")

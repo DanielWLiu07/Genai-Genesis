@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from app.models.render import GenerateClipRequest, RenderRequest, RenderJobResponse
 from app.config import get_settings
 from app.db import get_supabase
@@ -12,6 +12,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["render"])
+
+# In-memory mapping: our job_id → render service job_id (for status fallback)
+_render_id_map: dict[str, str] = {}
 
 
 def _render_unavailable(msg: str = "Render service not running. Start it on port 8002."):
@@ -40,8 +43,12 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         generate_payload["clip_order"] = data.clip_order
     if data.clip_total is not None:
         generate_payload["clip_total"] = data.clip_total
-    if data.scene_image_url:
-        generate_payload["scene_image_url"] = data.scene_image_url
+    # scene_image_url / start_frame_url are aliases — use whichever is set
+    scene_url = data.scene_image_url or data.start_frame_url
+    if scene_url:
+        generate_payload["scene_image_url"] = scene_url
+    if data.reference_image_url:
+        generate_payload["reference_image_url"] = data.reference_image_url
     if data.characters:
         generate_payload["characters"] = data.characters
     if data.mood:
@@ -64,6 +71,10 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         generate_payload["next_scene_prompt"] = data.next_scene_prompt
     if data.feedback:
         generate_payload["feedback"] = data.feedback
+    if data.music_timestamp_ms is not None:
+        generate_payload["music_timestamp_ms"] = data.music_timestamp_ms
+    if data.music_energy is not None:
+        generate_payload["music_energy"] = data.music_energy
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
@@ -126,52 +137,56 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         "thumbnail_url": thumbnail_url,
     })
 
-    return result
+    # Return normalized fields so all frontends (project page + ChatPanel) work consistently
+    return {
+        **result,
+        "media_url": generated_url,
+        "generated_media_url": generated_url,
+        "thumbnail_url": thumbnail_url,
+        "gen_status": "done",
+    }
 
 
 @router.post("/render")
-async def render_trailer(project_id: str, data: RenderRequest = None):
+async def render_trailer(project_id: str, background_tasks: BackgroundTasks, data: RenderRequest = None):
+    """Kick off a render job and return job_id immediately. Frontend polls for status."""
     settings = get_settings()
+    db = get_supabase()
 
-    # Fetch current timeline and project info
-    timeline = None
+    # Use timeline passed from frontend (most up-to-date) or fall back to DB
+    timeline = data.timeline if data and data.timeline else None
     title = ""
     author = ""
-    db = get_supabase()
-    if db is not None:
-        try:
-            tl_row = db.table("timelines").select("*").eq("project_id", project_id).execute()
-            if tl_row.data:
-                timeline = tl_row.data[0]
-        except Exception:
-            pass
-        try:
+    try:
+        if db is not None:
+            if timeline is None:
+                tl_row = db.table("timelines").select("*").eq("project_id", project_id).execute()
+                if tl_row.data:
+                    timeline = tl_row.data[0]
             proj_row = db.table("projects").select("title,author").eq("id", project_id).execute()
             if proj_row.data:
                 title = proj_row.data[0].get("title", "")
                 author = proj_row.data[0].get("author", "")
-        except Exception:
-            pass
+    except Exception as e:
+        logger.warning("DB fetch error: %s", e)
 
-    # Create a render_job record
+    clips_count = len((timeline or {}).get("clips", []))
+    clips_with_media = sum(1 for c in (timeline or {}).get("clips", []) if c.get("generated_media_url") or c.get("thumbnail_url"))
+    logger.info("Render %s: timeline has %d clips, %d with media", project_id, clips_count, clips_with_media)
+
     job_id = str(uuid.uuid4())
-    if db is not None:
-        try:
+
+    # Store job in DB
+    try:
+        if db is not None:
             db.table("render_jobs").insert({
                 "id": job_id,
                 "project_id": project_id,
                 "status": "queued",
                 "progress": 0,
             }).execute()
-        except Exception:
-            job_id = str(uuid.uuid4())
-
-    await manager.broadcast(project_id, {
-        "type": "render_progress",
-        "job_id": job_id,
-        "status": "queued",
-        "progress": 0,
-    })
+    except Exception as e:
+        logger.warning("Could not insert render_job: %s", e)
 
     compose_payload = {
         "project_id": project_id,
@@ -184,70 +199,87 @@ async def render_trailer(project_id: str, data: RenderRequest = None):
     if data and data.beat_map:
         compose_payload["beat_map"] = data.beat_map
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
+    # Call render service synchronously (it queues the job and returns fast)
+    render_job_id = job_id
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{settings.render_service_url}/render/compose",
                 json=compose_payload,
             )
-            result = resp.json()
-        except httpx.ConnectError:
-            if db is not None:
-                try:
-                    db.table("render_jobs").update({"status": "error", "error": "Render service unavailable"}).eq("id", job_id).execute()
-                except Exception:
-                    pass
-            return _render_unavailable()
+            resp.raise_for_status()
+            render_result = resp.json()
+            render_job_id = render_result.get("job_id", job_id)
+            _render_id_map[job_id] = render_job_id
+    except httpx.ConnectError:
+        return _render_unavailable()
+    except Exception as e:
+        logger.error("Failed to start render: %s", e)
+        return {"status": "error", "message": f"Failed to start render: {e}", "job_id": job_id}
 
-    render_job_id = result.get("job_id", job_id)
+    # Background task polls render service and broadcasts progress via WS
+    background_tasks.add_task(_poll_render_progress, project_id, job_id, render_job_id, settings)
 
-    # Compose runs in background on render service — poll until done
-    status = result.get("status", "queued")
-    output_url = result.get("output_url")
-    max_polls = 120  # 10 minutes
+    await manager.broadcast(project_id, {
+        "type": "render_progress",
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 0,
+    })
+
+    return {"job_id": job_id, "render_job_id": render_job_id, "status": "queued"}
+
+
+async def _poll_render_progress(project_id: str, job_id: str, render_job_id: str, settings):
+    """Background task: poll render service and broadcast progress + update DB."""
+    db = get_supabase()
+    status = "queued"
+    output_url = None
+    preview_url = None
+
     async with httpx.AsyncClient(timeout=15.0) as client:
-        for _ in range(max_polls):
-            if status in ("done", "error"):
-                break
+        for _ in range(150):  # up to 12.5 minutes
             await asyncio.sleep(5)
             try:
                 r = await client.get(f"{settings.render_service_url}/render/jobs/{render_job_id}")
                 job = r.json()
                 status = job.get("status", status)
                 output_url = job.get("output_url") or output_url
+                preview_url = job.get("preview_url") or preview_url
                 progress = job.get("progress", 0)
+
                 await manager.broadcast(project_id, {
                     "type": "render_progress",
                     "job_id": job_id,
                     "status": status,
                     "progress": progress,
                     "output_url": output_url,
+                    "preview_url": preview_url,
                 })
-            except Exception:
-                pass
 
-    # Update render_job record
-    if db is not None:
-        try:
-            db.table("render_jobs").update({
-                "status": status,
-                "progress": 100,
-                "output_url": output_url,
-            }).eq("id", job_id).execute()
-            if status == "done":
-                db.table("projects").update({"status": "done"}).eq("id", project_id).execute()
-        except Exception:
-            pass
+                # Update DB with current progress
+                try:
+                    if db is not None:
+                        db.table("render_jobs").update({
+                            "status": status,
+                            "progress": progress,
+                            "output_url": output_url,
+                            "preview_url": preview_url,
+                        }).eq("id", job_id).execute()
+                except Exception:
+                    pass
 
-    await manager.broadcast(project_id, {
-        "type": "render_progress",
-        "job_id": job_id,
-        "status": status,
-        "progress": 100,
-        "output_url": output_url,
-    })
+                if status in ("done", "error"):
+                    break
+            except Exception as e:
+                logger.warning("Poll error: %s", e)
 
-    return {**result, "job_id": job_id}
+    # Final DB updates
+    try:
+        if db is not None and status == "done":
+            db.table("projects").update({"status": "done"}).eq("id", project_id).execute()
+    except Exception as e:
+        logger.warning("DB final update error: %s", e)
 
 
 @router.get("/render-jobs")
@@ -264,6 +296,22 @@ async def list_render_jobs(project_id: str):
 
 @router.get("/render/{job_id}")
 async def get_render_status(project_id: str, job_id: str):
+    settings = get_settings()
+    render_job_id = _render_id_map.get(job_id, job_id)
+
+    # Always try render service first for live status
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{settings.render_service_url}/render/jobs/{render_job_id}")
+            if resp.status_code == 200:
+                data = resp.json()
+                # Normalize: use our job_id in the response
+                data["job_id"] = job_id
+                return data
+    except Exception:
+        pass
+
+    # Fall back to DB (has final status after job completes)
     db = get_supabase()
     if db:
         try:
@@ -272,15 +320,5 @@ async def get_render_status(project_id: str, job_id: str):
                 return result.data[0]
         except Exception:
             pass
-
-    # Fall back to polling render service directly
-    settings = get_settings()
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{settings.render_service_url}/render/jobs/{job_id}")
-            if resp.status_code == 200:
-                return resp.json()
-    except Exception:
-        pass
 
     raise HTTPException(status_code=404, detail="Render job not found")

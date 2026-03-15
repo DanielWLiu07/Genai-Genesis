@@ -1,4 +1,4 @@
-"""Image generation using Imagen 4 Fast (text-only) or Gemini 2.0 Flash (with reference frame)."""
+"""Image generation using Gemini 2.5 Flash Image (text-only) or multimodal (with reference frame)."""
 import logging
 import os
 import hashlib
@@ -81,10 +81,12 @@ async def generate_image_gemini(
         ar_map = {"16:9": "16:9", "9:16": "9:16", "1:1": "1:1", "4:3": "4:3", "3:4": "3:4"}
         ar = ar_map.get(aspect_ratio, "16:9")
 
-        # ── With reference frame: Gemini 2.0 Flash multimodal ──────────────────
+        _IMAGE_MODEL = "gemini-2.5-flash-image"
+
+        # ── With reference frame: multimodal image-to-image ────────────────────
         # Grounds the new panel in the previous one — identical style, palette, characters.
         if reference_image_url and not reference_image_url.startswith("data:"):
-            logger.info("Gemini 2.0 Flash image-to-image (reference panel)")
+            logger.info("Gemini image-to-image (reference panel)")
             try:
                 async with httpx.AsyncClient(timeout=15) as http:
                     ref_resp = await http.get(reference_image_url)
@@ -97,13 +99,21 @@ async def generate_image_gemini(
                         f"Use the provided image as a strict visual reference — maintain IDENTICAL "
                         f"art style, ink line weight, color palette, character appearances, and lighting. "
                         f"This must look like the next panel in the same manga sequence.\n\n"
+                        f"CRITICAL: Generate an ACTION-FOCUSED panel. Describe the PEAK MOMENT of motion — "
+                        f"body at full extension, limbs committed at moment of impact or apex of leap. "
+                        f"Show movement through: speed lines radiating from impact, motion blur on limbs, "
+                        f"shockwave rings, airborne debris, cloth/hair fully mid-whip. "
+                        f"The image must convey WHERE the subject came from and WHERE they are going, "
+                        f"so a video AI can animate the motion naturally.\n\n"
                         f"Generate the next scene: {prompt}"
                     )
                     resp = client.models.generate_content(
-                        model="gemini-2.0-flash-preview-image-generation",
+                        model=_IMAGE_MODEL,
                         contents=[types.Content(parts=[ref_part, text_part])],
                         config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
                     )
+                    if not resp.candidates or not resp.candidates[0].content:
+                        return None
                     for part in resp.candidates[0].content.parts:
                         if hasattr(part, "inline_data") and part.inline_data:
                             return part.inline_data.data
@@ -112,15 +122,37 @@ async def generate_image_gemini(
                 raw = await asyncio.to_thread(_gen_with_ref)
                 if raw:
                     return await _save_and_return(raw, cache_key, settings)
-                logger.warning("Gemini 2.0 Flash returned no image, falling back to Imagen")
+                logger.warning("Gemini image-to-image returned no image, falling back")
             except Exception as e:
-                logger.warning("Gemini 2.0 Flash reference gen failed (%s), falling back to Imagen", e)
+                logger.warning("Gemini reference gen failed (%s), falling back", e)
 
-        # ── Text-only: Imagen 4 Fast ────────────────────────────────────────────
-        logger.info("Imagen 4 Fast text-to-image")
+        # ── Primary: Gemini 2.5 Flash Image ────────────────────────────────────
+        logger.info("Gemini text-to-image (%s)", _IMAGE_MODEL)
+
+        def _gen_text_only() -> bytes | None:
+            resp = client.models.generate_content(
+                model=_IMAGE_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
+            )
+            if not resp.candidates or not resp.candidates[0].content:
+                logger.warning("Gemini returned no candidates (content filtered?): %s", getattr(resp, 'prompt_feedback', ''))
+                return None
+            for part in resp.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data:
+                    return part.inline_data.data
+            return None
+
+        raw = await asyncio.to_thread(_gen_text_only)
+        if raw:
+            return await _save_and_return(raw, cache_key, settings)
+
+        # ── Fallback: Imagen 4 Fast ─────────────────────────────────────────────
+        logger.warning("Gemini text-to-image returned no image, falling back to Imagen 4 Fast")
         enhanced = (
-            f"{prompt}. Cinematic, high quality, detailed, manga illustration style, "
-            "bold ink lines, dramatic shading, professional quality."
+            f"{prompt}. Peak-action freeze frame — body at maximum extension, mid-motion at moment of impact or apex. "
+            "Speed lines radiating from impact, motion blur on limbs, shockwave rings, debris mid-air. "
+            "Manga illustration style, bold ink lines, dramatic chiaroscuro shading, high contrast, professional quality."
         )
         response = await asyncio.to_thread(
             client.models.generate_images,
@@ -128,11 +160,9 @@ async def generate_image_gemini(
             prompt=enhanced,
             config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio=ar),
         )
-
         raw = response.generated_images[0].image.image_bytes
         if not raw:
             return {"status": "error", "message": "No image bytes returned"}
-
         return await _save_and_return(raw, cache_key, settings)
 
     except Exception as e:

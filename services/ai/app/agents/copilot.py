@@ -117,20 +117,75 @@ try:
 
     @rt.function_node
     async def add_amv_effect(type: str, timestamp_ms: int,
-                             duration_ms: int = 200, intensity: float = 0.8) -> str:
-        """Add a beat-synced AMV visual effect at a specific timestamp."""
+                             duration_ms: int = 200, intensity: float = 0.8,
+                             scale: Optional[float] = None,
+                             center_x: Optional[float] = None,
+                             center_y: Optional[float] = None,
+                             radius: Optional[float] = None,
+                             sigma: Optional[float] = None,
+                             shift: Optional[float] = None,
+                             brightness: Optional[float] = None,
+                             saturation: Optional[float] = None,
+                             contrast: Optional[float] = None,
+                             hue_shift: Optional[float] = None,
+                             glow: Optional[float] = None,
+                             frames: Optional[int] = None,
+                             decay: Optional[float] = None,
+                             thickness: Optional[int] = None,
+                             panel_count: Optional[int] = None,
+                             bar_size: Optional[float] = None,
+                             pixel_size: Optional[int] = None,
+                             amount: Optional[float] = None,
+                             angle: Optional[float] = None) -> str:
+        """Add a beat-synced AMV visual effect at a specific timestamp with fine-grained params.
+        type: flash_white|flash_black|zoom_burst|zoom_out|shake|heavy_shake|echo|time_echo|freeze|
+              speed_ramp|chromatic|rgb_shift_v|panel_split|cross_cut|reverse|glitch|strobe|flicker|
+              vignette|black_white|invert|red_flash|blur_out|film_grain|letterbox|neon|sepia|
+              overexpose|pixelate|contrast_punch|manga_ink
+        params: scale(zoom factor), center_x/y(pivot 0-100%), radius(shake px), sigma(blur),
+                shift(chromatic px), brightness/contrast/saturation, hue_shift(0-360), glow(saturation boost),
+                frames(echo/freeze count), decay(echo weight fade), thickness(cross_cut/panel px),
+                panel_count(2-8 panels), bar_size(letterbox % height), pixel_size, amount(grain/flicker), angle(vignette)
+        """
+        params = {k: v for k, v in {
+            "scale": scale, "center_x": center_x, "center_y": center_y,
+            "radius": radius, "sigma": sigma, "shift": shift,
+            "brightness": brightness, "saturation": saturation, "contrast": contrast,
+            "hue_shift": hue_shift, "glow": glow, "frames": frames, "decay": decay,
+            "thickness": thickness, "count": panel_count, "bar_size": bar_size,
+            "size": pixel_size, "amount": amount, "angle": angle,
+        }.items() if v is not None}
         _record("add_amv_effect", type=type, timestamp_ms=timestamp_ms,
-                duration_ms=duration_ms, intensity=intensity)
-        return f"Added {type} effect @ {timestamp_ms}ms"
+                duration_ms=duration_ms, intensity=intensity,
+                **({"params": params} if params else {}))
+        return f"Added {type} effect @ {timestamp_ms}ms" + (f" with params {list(params.keys())}" if params else "")
 
     @rt.function_node
     async def update_amv_effect(effect_id: str, type: Optional[str] = None,
                                 timestamp_ms: Optional[int] = None,
                                 duration_ms: Optional[int] = None,
-                                intensity: Optional[float] = None) -> str:
-        """Update an existing AMV effect's timing, duration, intensity, or type."""
+                                intensity: Optional[float] = None,
+                                scale: Optional[float] = None,
+                                center_x: Optional[float] = None,
+                                center_y: Optional[float] = None,
+                                radius: Optional[float] = None,
+                                sigma: Optional[float] = None,
+                                shift: Optional[float] = None,
+                                brightness: Optional[float] = None,
+                                contrast: Optional[float] = None,
+                                hue_shift: Optional[float] = None,
+                                glow: Optional[float] = None,
+                                frames: Optional[int] = None) -> str:
+        """Update an existing AMV effect's timing, duration, intensity, type, or fine-grained params."""
+        params = {k: v for k, v in {
+            "scale": scale, "center_x": center_x, "center_y": center_y,
+            "radius": radius, "sigma": sigma, "shift": shift,
+            "brightness": brightness, "contrast": contrast,
+            "hue_shift": hue_shift, "glow": glow, "frames": frames,
+        }.items() if v is not None}
         _record("update_amv_effect", effect_id=effect_id, type=type,
-                timestamp_ms=timestamp_ms, duration_ms=duration_ms, intensity=intensity)
+                timestamp_ms=timestamp_ms, duration_ms=duration_ms, intensity=intensity,
+                **({"params": params} if params else {}))
         return f"Updated effect {effect_id}"
 
     @rt.function_node

@@ -11,7 +11,9 @@
       "Bash(cmd.exe /c \"taskkill /F /PID 16968\" 2>&1 && sleep 2 && netstat -ano | grep :8000)",
       "Bash(wmic process:*)",
       "Bash(PROJECT_ID=\"a099f84b-99fa-41da-9955-766487dfe12b\"\ncurl -sv -X PUT http://localhost:8000/api/v1/projects/$PROJECT_ID/timeline \\\\\n  -H \"Content-Type: application/json\" \\\\\n  -d '{\"clips\":[{\"id\":\"clip-1\",\"order\":0,\"type\":\"image\",\"duration_ms\":3000,\"prompt\":\"Dark shot\",\"gen_status\":\"pending\",\"position\":{\"x\":0,\"y\":100}}],\"total_duration_ms\":3000,\"settings\":{\"resolution\":\"1080p\",\"aspect_ratio\":\"16:9\",\"fps\":24}}' 2>&1 | tail -20)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(python3:*)",
+      "Bash(git add:*)"
     ]
   }
 }

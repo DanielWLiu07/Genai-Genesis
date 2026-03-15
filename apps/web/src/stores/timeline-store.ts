@@ -21,15 +21,28 @@ export interface Clip {
 
 export type EffectType =
   | 'flash_white' | 'flash_black'    // frame flash
-  | 'zoom_burst'                      // sudden zoom in/out
-  | 'shake'                           // camera shake
-  | 'echo'                            // ghost repeat of frame
+  | 'zoom_burst' | 'zoom_out'        // zoom in / zoom out
+  | 'shake' | 'heavy_shake'          // camera shake (light / heavy)
+  | 'echo' | 'time_echo' | 'freeze'  // temporal effects
   | 'speed_ramp'                      // slow → fast ramp
-  | 'chromatic'                       // chromatic aberration RGB split
-  | 'panel_split'                     // manga multi-panel split
+  | 'chromatic' | 'rgb_shift_v'      // RGB aberration (H / V)
+  | 'panel_split' | 'cross_cut'      // manga panel / X-slash
   | 'reverse'                         // brief reverse playback
   | 'glitch'                          // digital glitch artifact
-  | 'strobe';                         // rapid strobe flash
+  | 'strobe' | 'flicker'             // strobe / flicker
+  | 'vignette'                        // dark corner vignette
+  | 'black_white'                     // instant B&W desaturate
+  | 'invert'                          // color inversion
+  | 'red_flash'                       // blood-red flash
+  | 'blur_out'                        // dreamy soft blur
+  | 'film_grain'                      // cinematic grain
+  | 'letterbox'                       // cinematic black bars
+  | 'neon'                            // neon violet glow
+  | 'sepia'                           // warm sepia wash
+  | 'overexpose'                      // blinding overexposure
+  | 'pixelate'                        // digital pixelation
+  | 'contrast_punch'                  // extreme contrast
+  | 'manga_ink';                      // high-contrast manga ink
 
 export interface Effect {
   id: string;
@@ -37,6 +50,7 @@ export interface Effect {
   timestamp_ms: number;    // when this effect fires (global timeline time)
   duration_ms: number;     // how long it lasts
   intensity: number;       // 0-1
+  params?: Record<string, number>;  // effect-specific fine-grained params
 }
 
 export interface BeatMap {
@@ -125,8 +139,9 @@ export const useTimelineStore = create<TimelineState>((set) => ({
   })),
 
   loadTimeline: (timeline) => {
-    // Ensure all clips have valid positions and orders
-    const rawClips = timeline.clips || [];
+    // Ensure all clips have valid positions and orders; strip title/end cards permanently
+    const STRIP_IDS = new Set(['title_card', 'end_card']);
+    const rawClips = (timeline.clips || []).filter((c: any) => !STRIP_IDS.has(c.id));
     const clips = rawClips.map((c: any, i: number) => ({
       ...c,
       prompt: c.prompt ?? '',

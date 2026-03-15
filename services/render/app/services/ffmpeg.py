@@ -41,7 +41,9 @@ def _run_ffmpeg(cmd: list[str], desc: str = "") -> bool:
             timeout=300,
         )
         if result.returncode != 0:
-            logger.error("FFmpeg error [%s]: %s", desc, result.stderr[-500:] if result.stderr else "unknown")
+            # Log first 800 chars (actual error) — skip last part which is just FFmpeg build config
+            err_lines = [l for l in (result.stderr or "").splitlines() if not l.startswith(" ") or "Error" in l or "Invalid" in l or "error" in l.lower()]
+            logger.error("FFmpeg error [%s]: %s", desc, "\n".join(err_lines[:20]) or result.stderr[:800])
             return False
         return True
     except subprocess.TimeoutExpired:
@@ -61,7 +63,13 @@ def _create_clip_video(
     """Convert a single image/video to a standardized clip with exact duration."""
     duration_sec = duration_ms / 1000.0
 
-    scale_filter = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,fps={fps}"
+    # format=rgb24 first to handle RGBA/palette PNGs and WebP from Gemini
+    scale_filter = (
+        f"format=rgb24,"
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+        f"fps={fps}"
+    )
     if is_video:
         cmd = [
             "ffmpeg", "-y",
@@ -74,12 +82,14 @@ def _create_clip_video(
             output_path,
         ]
     else:
+        # FFmpeg 8.0 removed -loop as an input option for images.
+        # Use the loop video filter instead: loop=-1 loops forever, size=1 reads 1 frame.
+        loop_scale_filter = f"loop=loop=-1:size=1:start=0,{scale_filter}"
         cmd = [
             "ffmpeg", "-y",
-            "-loop", "1",
             "-i", media_path,
             "-t", str(duration_sec),
-            "-vf", scale_filter,
+            "-vf", loop_scale_filter,
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-pix_fmt", "yuv420p",
             output_path,
@@ -313,10 +323,18 @@ async def compose_trailer(
     fps = settings.get("fps", 24)
     _ensure_dir(output_path)
 
-    playable_clips = [
-        c for c in clips
-        if c.get("generated_media_url") or c.get("local_media_path")
-    ]
+    def _best_url(clip: dict) -> str:
+        return (clip.get("local_media_path") or
+                clip.get("generated_media_url") or
+                clip.get("thumbnail_url") or "")
+
+    sorted_clips = sorted(clips, key=lambda c: c.get("order", 0))
+    playable_clips = [c for c in sorted_clips if _best_url(c)]
+    logger.info("compose_trailer: %d total clips, %d playable", len(clips), len(playable_clips))
+    for i, c in enumerate(clips):
+        logger.info("  clip[%d] id=%s type=%s gen_status=%s gen_url=%s thumb=%s local=%s",
+                    i, c.get("id","?"), c.get("type","?"), c.get("gen_status","?"),
+                    bool(c.get("generated_media_url")), bool(c.get("thumbnail_url")), bool(c.get("local_media_path")))
 
     if not playable_clips:
         return {
@@ -333,10 +351,28 @@ async def compose_trailer(
             await progress_callback(5, "Downloading clips...")
 
         async def _download(clip: dict, idx: int) -> str:
-            url = clip.get("local_media_path") or clip.get("generated_media_url", "")
-            if not url or not url.startswith("http"):
+            url = _best_url(clip)
+            if not url:
+                return ""
+            # Handle base64 data URLs — decode to temp file so FFmpeg can read them
+            if url.startswith("data:"):
+                import base64 as _b64
+                try:
+                    header, b64data = url.split(",", 1)
+                    mime = header.split(";")[0].split(":")[1] if ":" in header else "image/png"
+                    ext = ".jpg" if ("jpeg" in mime or "jpg" in mime) else ".png"
+                    dest = os.path.join(tmpdir, f"dl_{idx:03d}{ext}")
+                    with open(dest, "wb") as f:
+                        f.write(_b64.b64decode(b64data))
+                    return dest
+                except Exception as e:
+                    logger.warning("Failed to decode data URL for clip %d: %s", idx, e)
+                    return ""
+            if not url.startswith("http"):
                 return url
-            ext = ".mp4" if clip.get("type") == "video" else ".jpg"
+            # Detect video URL by extension OR clip type
+            url_lower = url.split("?")[0].lower()
+            ext = ".mp4" if (clip.get("type") == "video" or url_lower.endswith(".mp4") or "fal_" in url_lower) else ".jpg"
             dest = os.path.join(tmpdir, f"dl_{idx:03d}{ext}")
             try:
                 async with httpx.AsyncClient(timeout=120) as client:
@@ -359,7 +395,8 @@ async def compose_trailer(
         for i, clip in enumerate(playable_clips):
             media_path = local_paths[i]
             clip_output = os.path.join(tmpdir, f"clip_{i:03d}.mp4")
-            is_video = clip.get("type") == "video"
+            # Detect video by type field OR by file extension (fal clips have type="image" but .mp4 URLs)
+            is_video = clip.get("type") == "video" or (media_path or "").endswith(".mp4")
 
             success = _create_clip_video(
                 media_path, clip_output,
@@ -460,11 +497,19 @@ async def compose_trailer(
         else:
             final_input = music_output
 
-        # Step 6: Copy to final output
+        # Step 6: Copy to final output with faststart for browser streaming
         if progress_callback:
             await progress_callback(97, "Final encoding...")
 
-        shutil.copy2(final_input, output_path)
+        faststart_cmd = [
+            "ffmpeg", "-y",
+            "-i", final_input,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            output_path,
+        ]
+        if not _run_ffmpeg(faststart_cmd, "faststart remux"):
+            shutil.copy2(final_input, output_path)
 
         total_duration_ms = sum(c.get("duration_ms", 3000) for c in playable_clips)
 
@@ -489,10 +534,19 @@ async def compose_trailer(
 
 
 def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
-    """Build an FFmpeg -vf filter chain that applies AMV beat effects at given timestamps."""
+    """Build an FFmpeg -vf filter chain that applies AMV beat effects at given timestamps.
+    Each effect can have optional `params` dict with fine-grained controls per effect type.
+    Falls back to intensity-based defaults when params are absent.
+    """
     if not effects:
         return ""
     parts = []
+
+    def p(eff: dict, key: str, default):
+        """Get param value with fallback to default."""
+        val = (eff.get("params") or {}).get(key)
+        return val if val is not None else default
+
     for eff in sorted(effects, key=lambda e: e.get("timestamp_ms", 0)):
         t_s = eff["timestamp_ms"] / 1000.0
         t_e = (eff["timestamp_ms"] + eff.get("duration_ms", 200)) / 1000.0
@@ -501,54 +555,172 @@ def _build_amv_effects_filter(effects: list, width: int, height: int) -> str:
         etype = eff.get("type", "")
 
         if etype == "flash_white":
-            b = min(1.5, 0.5 + intensity)
-            parts.append(f"eq=brightness={b:.3f}:saturation=0.1:enable='{en}'")
+            b = p(eff, "brightness", min(1.5, 0.5 + intensity))
+            s = p(eff, "saturation", 0.1)
+            parts.append(f"eq=brightness={float(b):.3f}:saturation={float(s):.2f}:enable='{en}'")
 
         elif etype == "flash_black":
-            b = max(-0.9, -0.5 - intensity * 0.4)
-            parts.append(f"eq=brightness={b:.3f}:enable='{en}'")
+            b = p(eff, "brightness", max(-0.9, -0.5 - intensity * 0.4))
+            parts.append(f"eq=brightness={float(b):.3f}:enable='{en}'")
 
         elif etype == "zoom_burst":
-            c = min(2.5, 1.0 + intensity * 0.8)
-            b = min(0.3, intensity * 0.25)
-            parts.append(f"eq=contrast={c:.2f}:brightness={b:.3f}:saturation=1.5:enable='{en}'")
+            z = float(p(eff, "scale", 1.0 + intensity * 0.8))
+            cx = float(p(eff, "center_x", 50)) / 100.0
+            cy = float(p(eff, "center_y", 50)) / 100.0
+            sw = int(width * z)
+            sh = int(height * z)
+            crop_x = max(0, int((sw - width) * cx))
+            crop_y = max(0, int((sh - height) * cy))
+            parts.append(f"scale={sw}:{sh}:enable='{en}'")
+            parts.append(f"crop={width}:{height}:{crop_x}:{crop_y}:enable='{en}'")
+
+        elif etype == "zoom_out":
+            z = float(p(eff, "scale", max(0.5, 1.0 - intensity * 0.4)))
+            cx = float(p(eff, "center_x", 50)) / 100.0
+            cy = float(p(eff, "center_y", 50)) / 100.0
+            sw = max(1, int(width * z))
+            sh = max(1, int(height * z))
+            pad_x = int((width - sw) * cx)
+            pad_y = int((height - sh) * cy)
+            parts.append(f"scale={sw}:{sh}:enable='{en}'")
+            parts.append(f"pad={width}:{height}:{pad_x}:{pad_y}:black:enable='{en}'")
 
         elif etype == "shake":
-            sigma = max(1.0, intensity * 5.0)
+            radius = float(p(eff, "radius", max(1.0, intensity * 5.0)))
+            sigma = max(0.5, radius * 0.6)
             parts.append(f"gblur=sigma={sigma:.1f}:enable='{en}'")
 
+        elif etype == "heavy_shake":
+            radius = float(p(eff, "radius", max(4.0, intensity * 12.0)))
+            sigma = max(1.0, radius * 0.7)
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=4:enable='{en}'")
+
         elif etype == "echo":
-            frames = max(2, min(6, int(intensity * 4) + 2))
-            w_vals = " ".join([f"{max(0.05, 1.0 - i * 0.25):.2f}" for i in range(frames)])
+            frames = int(p(eff, "frames", max(2, min(6, int(intensity * 4) + 2))))
+            decay = float(p(eff, "decay", max(0.1, 0.5 - intensity * 0.15)))
+            w_vals = " ".join([f"{max(0.03, 1.5 - i * decay):.2f}" for i in range(frames)])
             parts.append(f"tmix=frames={frames}:weights='{w_vals}':enable='{en}'")
 
         elif etype == "speed_ramp":
-            sigma = max(0.5, intensity * 3.0)
+            sigma = float(p(eff, "sigma", max(0.5, intensity * 3.0)))
             parts.append(f"gblur=sigma={sigma:.1f}:steps=2:enable='{en}'")
 
         elif etype == "chromatic":
-            shift = max(2, int(intensity * 14))
+            shift = int(p(eff, "shift", max(2, int(intensity * 14))))
             parts.append(f"rgbashift=rh={shift}:bh=-{shift}:rv=0:bv=0:enable='{en}'")
 
         elif etype == "panel_split":
-            lw = max(3, int(intensity * 8))
-            cx = width // 2 - lw // 2
-            parts.append(
-                f"drawbox=x={cx}:y=0:w={lw}:h=ih:color=white@0.85:t=fill:enable='{en}'"
-            )
+            count = int(p(eff, "count", 2))
+            thickness = int(p(eff, "thickness", max(3, int(intensity * 8))))
+            for i in range(1, count):
+                cx = int(width * i / count) - thickness // 2
+                parts.append(f"drawbox=x={cx}:y=0:w={thickness}:h=ih:color=white@0.85:t=fill:enable='{en}'")
 
         elif etype == "reverse":
-            c = min(3.0, 1.5 + intensity * 1.5)
-            s = min(3.0, 1.0 + intensity * 2.0)
+            c = float(p(eff, "contrast", min(3.0, 1.5 + intensity * 1.5)))
+            s = float(p(eff, "glow", min(3.0, 1.0 + intensity * 2.0)))
             parts.append(f"eq=contrast={c:.2f}:saturation={s:.2f}:enable='{en}'")
 
         elif etype == "glitch":
-            h_shift = int(intensity * 120)
-            s_boost = min(5.0, 1.0 + intensity * 4.0)
+            h_shift = int(p(eff, "hue_shift", int(intensity * 120)))
+            s_boost = float(p(eff, "glow", min(5.0, 1.0 + intensity * 4.0)))
             parts.append(f"hue=h={h_shift}:s={s_boost:.1f}:enable='{en}'")
 
         elif etype == "strobe":
-            parts.append(f"eq=brightness=1.3:saturation=0:enable='{en}'")
+            b = float(p(eff, "brightness", 1.3))
+            parts.append(f"eq=brightness={b:.2f}:saturation=0:enable='{en}'")
+
+        elif etype == "time_echo":
+            frames = int(p(eff, "frames", max(4, min(8, int(intensity * 5) + 3))))
+            decay = float(p(eff, "decay", 0.35))
+            w_vals = " ".join([f"{max(0.03, 1.5 - i * decay):.2f}" for i in range(frames)])
+            parts.append(f"tmix=frames={frames}:weights='{w_vals}':enable='{en}'")
+
+        elif etype == "freeze":
+            frames = int(p(eff, "frames", max(6, min(12, int(intensity * 8) + 4))))
+            w_vals = " ".join(["1.00" for _ in range(frames)])
+            parts.append(f"tmix=frames={frames}:weights='{w_vals}':enable='{en}'")
+
+        elif etype == "rgb_shift_v":
+            shift = int(p(eff, "shift", max(2, int(intensity * 14))))
+            parts.append(f"rgbashift=rv={shift}:bv=-{shift}:rh=0:bh=0:enable='{en}'")
+
+        elif etype == "cross_cut":
+            thickness = int(p(eff, "thickness", max(3, int(intensity * 8))))
+            cx = width // 2 - thickness // 2
+            cy = height // 2 - thickness // 2
+            parts.append(f"drawbox=x={cx}:y=0:w={thickness}:h=ih:color=white@0.9:t=fill:enable='{en}'")
+            parts.append(f"drawbox=x=0:y={cy}:w=iw:h={thickness}:color=white@0.9:t=fill:enable='{en}'")
+
+        elif etype == "flicker":
+            noise_level = int(p(eff, "amount", max(20, int(intensity * 65))))
+            parts.append(f"noise=alls={noise_level}:allf=u:enable='{en}'")
+
+        elif etype == "vignette":
+            angle_denom = int(p(eff, "angle", max(2, int(6 - intensity * 4))))
+            parts.append(f"vignette=PI/{angle_denom}:enable='{en}'")
+
+        elif etype == "black_white":
+            c = float(p(eff, "contrast", min(1.6, 1.0 + intensity * 0.5)))
+            parts.append(f"eq=saturation=0:contrast={c:.2f}:enable='{en}'")
+
+        elif etype == "invert":
+            parts.append(f"negate:enable='{en}'")
+
+        elif etype == "red_flash":
+            r_boost = float(p(eff, "glow", min(2.2, 1.0 + intensity * 1.2)))
+            parts.append(
+                f"colorchannelmixer=rr={r_boost:.2f}:rg=0:rb=0:"
+                f"gr=0:gg=0.08:gb=0:"
+                f"br=0:bg=0:bb=0.08:enable='{en}'"
+            )
+
+        elif etype == "blur_out":
+            sigma = float(p(eff, "sigma", max(5.0, intensity * 22.0)))
+            parts.append(f"gblur=sigma={sigma:.1f}:steps=2:enable='{en}'")
+
+        elif etype == "film_grain":
+            noise_level = int(p(eff, "amount", max(8, int(intensity * 32))))
+            parts.append(f"noise=alls={noise_level}:allf=t+u:enable='{en}'")
+
+        elif etype == "letterbox":
+            bar_pct = float(p(eff, "bar_size", None) or (6 + intensity * 12))
+            bar_h = max(20, int(height * bar_pct / 100))
+            parts.append(f"drawbox=x=0:y=0:w=iw:h={bar_h}:color=black:t=fill:enable='{en}'")
+            parts.append(f"drawbox=x=0:y=ih-{bar_h}:w=iw:h={bar_h}:color=black:t=fill:enable='{en}'")
+
+        elif etype == "neon":
+            h_shift = int(p(eff, "hue_shift", int(intensity * 100 + 200)))
+            s_boost = float(p(eff, "glow", min(5.5, 1.0 + intensity * 4.5)))
+            parts.append(f"hue=h={h_shift}:s={s_boost:.1f}:enable='{en}'")
+
+        elif etype == "sepia":
+            parts.append(
+                f"colorchannelmixer="
+                f"rr=0.393:rg=0.769:rb=0.189:"
+                f"gr=0.349:gg=0.686:gb=0.168:"
+                f"br=0.272:bg=0.534:bb=0.131:enable='{en}'"
+            )
+
+        elif etype == "overexpose":
+            b = float(p(eff, "brightness", min(1.0, 0.3 + intensity * 0.7)))
+            c = float(p(eff, "contrast", 0.55))
+            parts.append(f"eq=brightness={b:.3f}:contrast={c:.2f}:saturation=0.1:enable='{en}'")
+
+        elif etype == "pixelate":
+            size = int(p(eff, "size", max(4, int(intensity * 20))))
+            parts.append(f"avgblur=sizeX={size}:sizeY={size}:enable='{en}'")
+
+        elif etype == "contrast_punch":
+            c = float(p(eff, "contrast", min(4.5, 1.5 + intensity * 3.0)))
+            b = float(p(eff, "brightness", max(-0.4, -intensity * 0.35)))
+            s = float(p(eff, "saturation", max(0.0, 1.0 - intensity * 0.6)))
+            parts.append(f"eq=contrast={c:.2f}:brightness={b:.3f}:saturation={s:.2f}:enable='{en}'")
+
+        elif etype == "manga_ink":
+            c = float(p(eff, "contrast", min(7.0, 2.0 + intensity * 5.0)))
+            b = float(p(eff, "brightness", max(-0.55, -intensity * 0.45)))
+            parts.append(f"eq=saturation=0:contrast={c:.2f}:brightness={b:.3f}:enable='{en}'")
 
     return ",".join(parts) if parts else ""
 
@@ -588,6 +760,7 @@ async def generate_preview(input_path: str, output_path: str, max_width: int = 6
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
         "-c:a", "aac", "-b:a", "96k",
         "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
         output_path,
     ]
     return _run_ffmpeg(cmd, "generate preview")

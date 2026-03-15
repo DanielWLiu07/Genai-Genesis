@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { FlowEditor } from '@/components/editor/FlowEditor';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import {
-  Film, ArrowLeft, Play, Download, Loader2, Sparkles, BookOpen, Clapperboard,
+  Film, ArrowLeft, Play, Pause, Download, Loader2, Sparkles, BookOpen, Clapperboard,
   Lightbulb, Palette, Settings, Users, BarChart2, Plus, Trash2, Check,
   RotateCcw, RefreshCw, X, Edit2, Upload, ChevronLeft, ChevronRight, Zap, Music,
+  Volume2, VolumeX, Maximize,
 } from 'lucide-react';
 import { TransitionLink as Link } from '@/components/PageTransition';
 import { api } from '@/lib/api';
@@ -25,11 +26,352 @@ type WorkflowPhase = 'plan' | 'images' | 'videos' | 'effects';
 
 const STYLES = ['cinematic', 'manga', 'noir', 'horror', 'romance', 'fantasy', 'sci-fi', 'comic'];
 
+/** Pick N beat cut-points from the analysis, aligned to medium-energy beats. */
+function computeBeatSync(audioAnalysis: any, clipCount: number): number[] {
+  const beats: number[] = audioAnalysis.beat_timestamps || [];
+  const energyCurve: number[] = audioAnalysis.energy_curve || [];
+  const duration: number = audioAnalysis.duration_s || 30;
+
+  if (beats.length < 2) {
+    const dur = Math.round((duration * 1000) / clipCount);
+    return Array(clipCount).fill(dur);
+  }
+
+  const scoredBeats = beats.map((t) => ({
+    t,
+    energy: energyCurve[Math.min(Math.floor(t), energyCurve.length - 1)] ?? 0,
+  }));
+
+  let filtered = scoredBeats.filter(b => b.energy >= 0.45).filter((_, i) => i % 2 === 0);
+  if (filtered.length < clipCount) {
+    filtered = [...scoredBeats].sort((a, b) => b.energy - a.energy).slice(0, Math.max(clipCount + 1, scoredBeats.length)).sort((a, b) => a.t - b.t);
+  }
+
+  const cutPoints: number[] = [0];
+  for (let i = 0; i < clipCount - 1; i++) {
+    const idx = Math.min(Math.round(i * filtered.length / (clipCount - 1)), filtered.length - 1);
+    cutPoints.push(Math.round((filtered[idx]?.t ?? (duration * (i + 1) / clipCount)) * 1000));
+  }
+  cutPoints.push(Math.round(duration * 1000));
+
+  return Array.from({ length: clipCount }, (_, i) => Math.max(400, cutPoints[i + 1] - cutPoints[i]));
+}
+
+function AudioTab({
+  projectId,
+  audioAnalysis,
+  musicTrack,
+  clips,
+  onAudioUploaded,
+  onSyncApplied,
+}: {
+  projectId: string;
+  audioAnalysis: any;
+  musicTrack: any;
+  clips: any[];
+  onAudioUploaded: (result: any) => void;
+  onSyncApplied: (durations: { id: string; duration_ms: number }[]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [syncApplied, setSyncApplied] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('audio/')) { setUploadError('Please upload an audio file (MP3, WAV, etc.)'); return; }
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const result = await api.uploadAudio(projectId, file);
+      onAudioUploaded(result);
+    } catch (e: any) {
+      setUploadError(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const handleApplySync = () => {
+    const visualClips = clips.filter(c => c.type !== 'text_overlay').sort((a: any, b: any) => a.order - b.order);
+    const durations = computeBeatSync(audioAnalysis, visualClips.length);
+    const updates = visualClips.map((c: any, i: number) => ({ id: c.id, duration_ms: durations[i] }));
+    onSyncApplied(updates);
+    setSyncApplied(true);
+    setTimeout(() => setSyncApplied(false), 2500);
+  };
+
+  if (audioAnalysis) {
+    const a = audioAnalysis;
+    const energyCurve: number[] = a.energy_curve || [];
+    const beats: number[] = a.beat_timestamps || [];
+    const downbeats: number[] = a.downbeat_timestamps || [];
+    const sections: number[] = a.section_boundaries || [];
+    const onsets: number[] = a.onset_times || [];
+    const energyPeaks: number[] = a.energy_peaks || [];
+    const kickTimes: number[] = a.kick_times || [];
+    const snareTimes: number[] = a.snare_times || [];
+    const hihatTimes: number[] = a.hihat_times || [];
+    const crashTimes: number[] = a.crash_times || [];
+    const hornTimes: number[] = a.horn_times || [];
+    const melodicTimes: number[] = a.melodic_times || [];
+    // Instrument legend: colour + row position for the multi-row marker strip
+    const INSTRUMENTS = [
+      { key: 'kick',    label: 'KICK',    times: kickTimes,    color: '#111',    row: 0 },
+      { key: 'snare',   label: 'SNARE',   times: snareTimes,   color: '#555',    row: 1 },
+      { key: 'hihat',   label: 'HI-HAT',  times: hihatTimes,   color: '#888',    row: 2 },
+      { key: 'crash',   label: 'CRASH',   times: crashTimes,   color: '#ef4444', row: 3 },
+      { key: 'horn',    label: 'HORN',    times: hornTimes,    color: '#f97316', row: 4 },
+      { key: 'melodic', label: 'MELODIC', times: melodicTimes, color: '#a855f7', row: 5 },
+    ];
+    const hasInstruments = INSTRUMENTS.some(i => i.times.length > 0);
+
+    return (
+      <div className="space-y-4">
+        {/* Track info */}
+        <div>
+          <span className="manga-accent-bar text-[0.6rem]">AUDIO TRACK</span>
+          {musicTrack && (
+            <p className="text-[0.65rem] text-[#a855f7] mt-1 truncate font-medium" title={musicTrack.name}>♪ {musicTrack.name}</p>
+          )}
+          <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[0.65rem] text-[#666]">
+            <span className="text-[#111] font-medium">BPM</span><span>{a.bpm?.toFixed(1)}</span>
+            <span className="text-[#111] font-medium">Duration</span><span>{a.duration_s?.toFixed(1)}s</span>
+            <span className="text-[#111] font-medium">Beats</span><span>{beats.length} ({downbeats.length} bars)</span>
+            <span className="text-[#111] font-medium">Sections</span><span>{sections.length}</span>
+          </div>
+        </div>
+
+        {/* Energy curve */}
+        {energyCurve.length > 0 && (
+          <div>
+            <span className="manga-accent-bar text-[0.6rem]">ENERGY MAP</span>
+            <div className="mt-2 relative h-12 w-full bg-[#f8f8f8] border border-[#eee] overflow-hidden">
+              <div className="absolute inset-0 flex items-end gap-px px-px">
+                {energyCurve.map((v, i) => (
+                  <div key={i} className="flex-1 min-w-0" style={{
+                    height: `${Math.max(3, v * 100)}%`,
+                    background: v > 0.7 ? '#a855f7' : v > 0.4 ? '#7c3aed' : '#ccc',
+                    opacity: 0.5 + v * 0.5,
+                  }} />
+                ))}
+              </div>
+              {downbeats.map((t, i) => (
+                <div key={`db-${i}`} className="absolute top-0 bottom-0 w-px opacity-50"
+                  style={{ left: `${(t / (a.duration_s || 1)) * 100}%`, background: '#facc15' }} />
+              ))}
+              {sections.map((t, i) => (
+                <div key={`sec-${i}`} className="absolute top-0 bottom-0 w-px bg-[#111] opacity-30"
+                  style={{ left: `${(t / (a.duration_s || 1)) * 100}%` }} />
+              ))}
+            </div>
+            <p className="text-[0.5rem] text-[#bbb] mt-0.5">Purple = high energy · Yellow = bar starts · Black = sections</p>
+          </div>
+        )}
+
+        {/* Per-instrument hit strip — one row per instrument, markers at hit times */}
+        {hasInstruments && (
+          <div>
+            <span className="manga-accent-bar text-[0.6rem]">INSTRUMENT HITS</span>
+            <div className="mt-2 space-y-px">
+              {INSTRUMENTS.map(({ key, label, times, color }) => (
+                <div key={key} className="flex items-center gap-1.5">
+                  {/* Label */}
+                  <span className="text-[0.5rem] font-bold w-10 shrink-0 text-right" style={{ color }}>
+                    {label}
+                  </span>
+                  {/* Hit strip */}
+                  <div className="flex-1 relative h-3 bg-[#f8f8f8] border border-[#eee] overflow-hidden">
+                    {times.map((t, i) => {
+                      const pct = (t / (a.duration_s || 1)) * 100;
+                      return (
+                        <div
+                          key={i}
+                          className="absolute top-0 bottom-0 w-px"
+                          style={{ left: `${pct}%`, background: color, opacity: 0.85 }}
+                        />
+                      );
+                    })}
+                  </div>
+                  {/* Count */}
+                  <span className="text-[0.5rem] text-[#aaa] w-6 shrink-0">{times.length}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[0.5rem] text-[#bbb] mt-1">Each line = one hit event detected in the audio</p>
+          </div>
+        )}
+
+        {/* Beat Sync */}
+        <div>
+          <span className="manga-accent-bar text-[0.6rem]">BEAT SYNC</span>
+          <p className="text-[0.6rem] text-[#888] mt-1 mb-2 leading-relaxed">
+            Redistibute clip durations to land cuts on the most energetic beats.
+          </p>
+
+          <button
+            onClick={handleApplySync}
+            className={`w-full py-2 text-[0.65rem] font-bold border-2 transition-colors flex items-center justify-center gap-1.5 ${
+              syncApplied
+                ? 'border-green-500 bg-green-500 text-white'
+                : 'border-[#111] bg-[#111] text-white hover:bg-[#333] hover:border-[#333]'
+            }`}
+            style={{ fontFamily: 'var(--font-manga)' }}
+          >
+            {syncApplied ? (
+              <><Check size={11} /> SYNC APPLIED</>
+            ) : (
+              <><Zap size={11} /> APPLY BEAT SYNC</>
+            )}
+          </button>
+        </div>
+
+        {/* Sections list */}
+        {sections.length > 0 && (
+          <div>
+            <span className="manga-accent-bar text-[0.6rem]">SECTIONS</span>
+            <div className="mt-1.5 space-y-0.5">
+              {sections.map((t, i) => {
+                const nextT = sections[i + 1] ?? a.duration_s;
+                const sectionEnergy = energyCurve.slice(Math.floor(t), Math.ceil(nextT));
+                const avgEnergy = sectionEnergy.length ? sectionEnergy.reduce((s, v) => s + v, 0) / sectionEnergy.length : 0;
+                return (
+                  <div key={i} className="flex items-center gap-2 text-[0.6rem] text-[#666]">
+                    <div
+                      className="w-1.5 h-3 shrink-0"
+                      style={{ background: avgEnergy > 0.6 ? '#a855f7' : avgEnergy > 0.3 ? '#7c3aed' : '#ccc' }}
+                    />
+                    <span className="text-[#111] font-medium">§{i + 1}</span>
+                    <span>{(t as number).toFixed(1)}s – {(nextT as number).toFixed(1)}s</span>
+                    <span className="ml-auto text-[#aaa]">{(avgEnergy * 100).toFixed(0)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Replace audio */}
+        <div className="pt-1 border-t border-[#eee]">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full text-[0.6rem] text-[#aaa] hover:text-[#666] py-1.5 transition-colors flex items-center justify-center gap-1"
+          >
+            <Upload size={10} /> {uploading ? 'Analyzing…' : 'Replace audio track'}
+          </button>
+          <input ref={fileInputRef} type="file" accept="audio/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+        </div>
+      </div>
+    );
+  }
+
+  // No audio yet — show upload UI
+  return (
+    <div className="space-y-3">
+      <span className="manga-accent-bar text-[0.6rem]">AUDIO TRACK</span>
+      <p className="text-[0.65rem] text-[#888] leading-relaxed">
+        Add a music track to beat-sync your trailer cuts and boost energy pacing.
+      </p>
+
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => !uploading && fileInputRef.current?.click()}
+        className={`border-2 border-dashed rounded-none py-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
+          dragOver ? 'border-[#a855f7] bg-[#a855f7]/5' : 'border-[#ccc] hover:border-[#888]'
+        } ${uploading ? 'opacity-60 cursor-not-allowed' : ''}`}
+      >
+        {uploading ? (
+          <>
+            <Loader2 size={20} className="text-[#a855f7] animate-spin" />
+            <span className="text-[0.65rem] text-[#888]">Analyzing audio…</span>
+            <span className="text-[0.55rem] text-[#bbb]">Detecting BPM, beats & energy</span>
+          </>
+        ) : (
+          <>
+            <Music size={20} className="text-[#ccc]" />
+            <span className="text-[0.7rem] font-bold text-[#888]" style={{ fontFamily: 'var(--font-manga)' }}>
+              DROP AUDIO HERE
+            </span>
+            <span className="text-[0.55rem] text-[#bbb]">MP3, WAV, M4A, OGG</span>
+          </>
+        )}
+      </div>
+
+      {uploadError && <p className="text-[0.6rem] text-red-500">{uploadError}</p>}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*"
+        className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
+      />
+
+      <p className="text-[0.55rem] text-[#bbb] leading-relaxed">
+        After upload, BPM and beat data will be used to sync clip durations on re-plan or regeneration.
+      </p>
+    </div>
+  );
+}
+
 function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose: () => void; onFallback: () => void }) {
   const [videoError, setVideoError] = useState(false);
   const [loading, setLoading] = useState(true);
-  // Route through Next.js proxy to avoid CORS / port accessibility issues
-  const proxied = `/api/render-proxy?url=${encodeURIComponent(url)}`;
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const proxied = url; // render service has CORS: * so use directly for proper range/streaming support
+
+  // Clear src on unmount so any pending autoplay promise resolves cleanly
+  useEffect(() => {
+    return () => {
+      const v = videoRef.current;
+      if (!v) return;
+      v.pause();
+      v.src = '';
+      v.load();
+    };
+  }, []);
+
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); setPlaying(true); } else { v.pause(); setPlaying(false); }
+  };
+
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    hideControlsTimer.current = setTimeout(() => setShowControls(false), 2500);
+  };
+
+  const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
+    const v = videoRef.current;
+    if (!v || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    v.currentTime = frac * duration;
+    setProgress(frac * 100);
+  };
+
+  const fullscreen = () => { videoRef.current?.requestFullscreen?.(); };
 
   if (videoError) {
     return (
@@ -38,7 +380,7 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
           <p className="text-[#111] font-bold mb-2" style={{ fontFamily: 'var(--font-manga)' }}>VIDEO UNAVAILABLE</p>
           <p className="text-[#888] text-xs mb-4">The compiled file couldn't be loaded. Try the canvas preview or re-export.</p>
           <div className="flex gap-2">
-            <button onClick={() => { onFallback(); }} className="manga-btn bg-[#a855f7] text-white px-3 py-2 text-xs flex-1">Canvas Preview</button>
+            <button onClick={onFallback} className="manga-btn bg-[#a855f7] text-white px-3 py-2 text-xs flex-1">Canvas Preview</button>
             <a href={url} target="_blank" rel="noreferrer" className="manga-btn bg-white text-[#111] px-3 py-2 text-xs flex-1 text-center border-[#111]">Open Direct</a>
           </div>
           <button onClick={onClose} className="text-[#aaa] text-xs mt-3 hover:text-[#111] transition-colors block mx-auto">Close</button>
@@ -48,31 +390,110 @@ function CompiledVideoModal({ url, onClose, onFallback }: { url: string; onClose
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative w-full max-w-3xl px-4" onClick={e => e.stopPropagation()}>
-        <button className="absolute -top-10 right-4 text-white/70 hover:text-white" onClick={onClose}>
-          <X size={20} />
-        </button>
-        <div className="border-2 border-[#333] bg-black relative" style={{ aspectRatio: '16/9' }}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-md" onClick={onClose}>
+      <div className="relative w-full max-w-4xl px-4 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Film size={14} className="text-[#a855f7]" />
+            <span className="text-white/60 text-xs tracking-widest uppercase" style={{ fontFamily: 'var(--font-manga)' }}>
+              Compiled Trailer
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <a
+              href={proxied}
+              download
+              className="flex items-center gap-1.5 text-white/40 hover:text-white text-xs transition-colors"
+            >
+              <Download size={13} /> Download
+            </a>
+            <button className="text-white/40 hover:text-white transition-colors" onClick={onClose}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Video container */}
+        <div
+          className="relative bg-black overflow-hidden group"
+          style={{ aspectRatio: '16/9', border: '2px solid #222' }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => playing && setShowControls(false)}
+        >
+          {/* Loading spinner */}
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-              <Loader2 size={32} className="text-white/40 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center z-20 bg-black">
+              <Loader2 size={36} className="text-[#a855f7] animate-spin" />
             </div>
           )}
+
           <video
+            ref={videoRef}
             src={proxied}
-            controls
             autoPlay
-            className="w-full h-full"
-            onCanPlay={() => setLoading(false)}
+            muted={muted}
+            className="w-full h-full object-contain"
+            onCanPlay={() => { setLoading(false); setPlaying(true); }}
             onError={() => { setLoading(false); setVideoError(true); }}
+            onTimeUpdate={() => {
+              const v = videoRef.current;
+              if (!v) return;
+              setCurrentTime(v.currentTime);
+              setProgress(v.duration ? (v.currentTime / v.duration) * 100 : 0);
+            }}
+            onLoadedMetadata={() => { if (videoRef.current) setDuration(videoRef.current.duration); }}
+            onEnded={() => setPlaying(false)}
+            onClick={togglePlay}
+            style={{ cursor: 'pointer' }}
           />
-        </div>
-        <div className="flex items-center justify-between mt-2">
-          <p className="text-white/30 text-xs" style={{ fontFamily: 'var(--font-manga)' }}>COMPILED TRAILER</p>
-          <a href={proxied} download className="text-white/30 hover:text-white/70 text-xs flex items-center gap-1 transition-colors">
-            <Download size={12} /> Download
-          </a>
+
+          {/* Big play button overlay when paused */}
+          {!playing && !loading && (
+            <div
+              className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer"
+              onClick={togglePlay}
+            >
+              <div className="w-16 h-16 rounded-full bg-[#a855f7]/90 flex items-center justify-center shadow-2xl border-2 border-white/20 hover:bg-[#9333ea] transition-colors">
+                <Play size={28} className="text-white ml-1" />
+              </div>
+            </div>
+          )}
+
+          {/* Custom controls bar */}
+          <div
+            className={`absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-300 ${showControls || !playing ? 'opacity-100' : 'opacity-0'}`}
+            style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.85))' }}
+          >
+            {/* Progress bar */}
+            <div
+              className="mx-3 mb-1 h-1 bg-white/20 cursor-pointer rounded-full overflow-hidden hover:h-1.5 transition-all"
+              onClick={handleScrub}
+            >
+              <div
+                className="h-full bg-[#a855f7] rounded-full transition-none"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+
+            {/* Controls row */}
+            <div className="flex items-center gap-2 px-3 pb-2.5">
+              <button onClick={togglePlay} className="text-white hover:text-[#a855f7] transition-colors">
+                {playing ? <Pause size={16} /> : <Play size={16} />}
+              </button>
+              <button onClick={() => { setMuted(m => !m); if (videoRef.current) videoRef.current.muted = !muted; }} className="text-white/60 hover:text-white transition-colors">
+                {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+              <span className="text-white/50 text-xs font-mono tabular-nums">
+                {fmt(currentTime)} / {fmt(duration)}
+              </span>
+              <div className="flex-1" />
+              <button onClick={fullscreen} className="text-white/50 hover:text-white transition-colors">
+                <Maximize size={14} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -108,6 +529,7 @@ export default function EditorPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [compiledUrl, setCompiledUrl] = useState<string | null>(null);
   const [showRenderComplete, setShowRenderComplete] = useState(false);
+  const exportStateRef = useRef({ setExportStatus: null as any, setCompiledUrl: null as any, setShowRenderComplete: null as any, setExporting: null as any });
 
   // Character editing state
   const [editingCharId, setEditingCharId] = useState<string | null>(null);
@@ -140,6 +562,8 @@ export default function EditorPage() {
   const removeCharacter = useProjectStore((s) => s.removeCharacter);
   const updateCharacter = useProjectStore((s) => s.updateCharacter);
   const wsRef = useRef<WebSocket | null>(null);
+  // Keep ref in sync so WS handler can call latest setters without re-subscribing
+  exportStateRef.current = { setExportStatus, setCompiledUrl, setShowRenderComplete, setExporting };
 
   const topBarRef = useRef<HTMLElement>(null);
   const onboardingCardRef = useRef<HTMLDivElement>(null);
@@ -149,6 +573,8 @@ export default function EditorPage() {
   const flashOverlayRef = useRef<HTMLDivElement>(null);
   const prevGenStepRef = useRef<GenerationStep>('idle');
   const hadClipsRef = useRef(false);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const rightContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -157,7 +583,11 @@ export default function EditorPage() {
     Promise.all([
       api.getProject(id).catch(() => null),
       api.getTimeline(id).catch(() => ({ clips: [], music_track: null, settings: null })),
-    ]).then(([project, timeline]: [any, any]) => {
+      api.getRenderJobs(id).catch(() => []),
+    ]).then(([project, timeline, renderJobs]: [any, any, any]) => {
+      // Restore compiled video URL from most recent done render job
+      const latestDone = (renderJobs || []).find((j: any) => j.status === 'done' && (j.preview_url || j.output_url));
+      if (latestDone) setCompiledUrl(latestDone.preview_url || latestDone.output_url);
       if (project) {
         const storedBookText = sessionStorage.getItem(`book_text_${id}`);
         if (storedBookText && !project.book_text) project.book_text = storedBookText;
@@ -217,6 +647,18 @@ export default function EditorPage() {
             if (proj && !proj.cover_image_url) {
               updateProject(id, { cover_image_url: msg.thumbnail_url });
             }
+          }
+        } else if (msg.type === 'render_progress') {
+          const { setExportStatus: ses, setCompiledUrl: scu, setShowRenderComplete: ssrc, setExporting: se } = exportStateRef.current;
+          if (msg.progress !== undefined && ses) ses(`Rendering... ${msg.progress}%`);
+          if (msg.status === 'done' && (msg.preview_url || msg.output_url)) {
+            if (ses) ses('Done!');
+            if (scu) scu(msg.preview_url || msg.output_url);
+            if (ssrc) ssrc(true);
+            if (se) se(false);
+          } else if (msg.status === 'error') {
+            if (ses) ses(null);
+            if (se) se(false);
           }
         }
       } catch { /* ignore */ }
@@ -284,6 +726,17 @@ export default function EditorPage() {
     }
   }, [clips.length]);
 
+  useEffect(() => {
+    if (!rightPanelRef.current || !rightContentRef.current) return;
+    if (rightOpen) {
+      gsap.to(rightPanelRef.current, { width: 320, duration: 0.3, ease: 'power3.out' });
+      gsap.fromTo(rightContentRef.current, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.25, delay: 0.1, ease: 'power2.out' });
+    } else {
+      gsap.to(rightContentRef.current, { opacity: 0, x: 20, duration: 0.15, ease: 'power2.in' });
+      gsap.to(rightPanelRef.current, { width: 24, duration: 0.25, delay: 0.1, ease: 'power3.in' });
+    }
+  }, [rightOpen]);
+
   const openLeft = useCallback(() => {
     setLeftOpen(true);
     requestAnimationFrame(() => {
@@ -306,19 +759,52 @@ export default function EditorPage() {
     setExporting(true);
     setExportStatus('Saving timeline...');
     try {
-      // Flush current Zustand state to DB so the render service gets all video URLs
+      // Merge Zustand + Supabase: Zustand has latest UI state; Supabase has async video URLs from fal.ai
       const { clips: currentClips, musicTrack, settings: tlSettings } = useTimelineStore.getState();
-      await api.updateTimeline(id, {
-        clips: currentClips,
+
+      // Fetch latest from DB to pick up fal video URLs that arrived via background callback
+      let mergedClips = currentClips;
+      try {
+        const dbTimeline: any = await api.getTimeline(id);
+        if (dbTimeline?.clips?.length) {
+          mergedClips = currentClips.map((zClip: any) => {
+            const dbClip = dbTimeline.clips.find((c: any) => c.id === zClip.id);
+            if (!dbClip) return zClip;
+            const dbUrl: string = dbClip.generated_media_url || '';
+            const zUrl: string = zClip.generated_media_url || '';
+            // Prefer DB clip if it has a video URL (fal.ai async result) and Zustand doesn't
+            const dbIsVideo = dbUrl.includes('.mp4') || dbClip.type === 'video';
+            const zIsVideo = zUrl.includes('.mp4') || zClip.type === 'video';
+            if (dbIsVideo && !zIsVideo && dbUrl) {
+              return { ...zClip, generated_media_url: dbUrl, thumbnail_url: dbClip.thumbnail_url || zClip.thumbnail_url, type: dbClip.type || zClip.type };
+            }
+            return zClip;
+          });
+        }
+      } catch { /* use Zustand as fallback */ }
+
+      const currentTimeline = {
+        clips: mergedClips,
         music_track: musicTrack || null,
         settings: tlSettings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
-        total_duration_ms: currentClips.reduce((sum, c) => sum + (c.duration_ms || 0), 0),
-      }).catch(() => {});
+        total_duration_ms: mergedClips.reduce((s: number, c: any) => s + (c.duration_ms || 0), 0),
+      };
+      // Persist merged state to DB
+      api.updateTimeline(id, currentTimeline).catch(() => {});
 
       setExportStatus('Starting render...');
-      const result: any = await api.renderTrailer(id);
+      const result: any = await api.renderTrailer(id, currentTimeline);
       const jobId = result.job_id;
-      if (!jobId) { setExportStatus(null); alert('Export submitted.'); return; }
+      if (!jobId) {
+        setExportStatus(null);
+        const msg = result.message || result.status || 'Render service unavailable';
+        if (result.status === 'render_service_unavailable') {
+          alert('Render service is not running. Start it with:\ncd services/render && uvicorn app.main:app --reload --port 8002');
+        } else {
+          alert(`Render failed: ${msg}`);
+        }
+        return;
+      }
       setExportStatus('Rendering...');
       let attempts = 0;
       while (attempts < 120) {
@@ -330,8 +816,8 @@ export default function EditorPage() {
           setExportStatus(`Rendering... ${status.progress || 0}%`);
           if (status.status === 'done') {
             setExportStatus('Done!');
-            const outputUrl = status.output_url || '';
-            setCompiledUrl(outputUrl || null);
+            const playbackUrl = status.preview_url || status.output_url || '';
+            setCompiledUrl(playbackUrl || null);
             setShowRenderComplete(true);
             break;
           } else if (status.status === 'error') {
@@ -402,6 +888,8 @@ export default function EditorPage() {
           music_track: timeline.music_track || null,
           settings: timeline.settings || { resolution: '1080p', aspect_ratio: '16:9', fps: 24 },
           total_duration_ms: timeline.total_duration_ms || 0,
+          effects: timeline.effects || [],
+          beat_map: timeline.beat_map || null,
         });
       } catch { /* non-fatal */ }
     } catch (err: any) {
@@ -888,14 +1376,9 @@ export default function EditorPage() {
           )}
           {clips.length > 0 && (
             <Link
-              href={videosExist ? `/project/${id}/timeline` : '#'}
-              onClick={!videosExist ? (e) => e.preventDefault() : undefined}
-              className={`manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 font-bold transition-all ${
-                videosExist
-                  ? 'bg-[#fbbf24] text-black border-[#fbbf24]'
-                  : 'bg-[#fbbf24]/30 text-black/30 border-[#fbbf24]/30 blur-[0.5px] cursor-not-allowed select-none'
-              }`}
-              title={videosExist ? 'Edit timeline & effects' : 'Generate videos first to unlock editing'}
+              href={`/project/${id}/timeline`}
+              className="manga-btn px-3 py-1.5 text-sm flex items-center gap-1.5 font-bold transition-all bg-[#fbbf24] text-black border-[#fbbf24]"
+              title="Edit timeline & effects"
             >
               <Edit2 size={14} /> Edit
             </Link>
@@ -976,7 +1459,7 @@ export default function EditorPage() {
                   {([
                     { key: 'story', icon: <BarChart2 size={12} />, label: 'STORY' },
                     { key: 'chars', icon: <Users size={12} />, label: 'CHARS' },
-                    ...(currentProject.audio_analysis ? [{ key: 'audio' as const, icon: <Music size={12} />, label: 'AUDIO' }] : []),
+                    { key: 'audio' as const, icon: <Music size={12} />, label: 'AUDIO' },
                   ] as const).map(({ key, icon, label }) => (
                     <button
                       key={key}
@@ -1042,54 +1525,52 @@ export default function EditorPage() {
                   )}
 
                   {/* AUDIO TAB */}
-                  {activeTab === 'audio' && currentProject.audio_analysis && (() => {
-                    const a = currentProject.audio_analysis as any;
-                    const energyCurve: number[] = a.energy_curve || [];
-                    const beats: number[] = a.beat_timestamps || [];
-                    const sections: number[] = a.section_boundaries || [];
-                    return (
-                      <div className="space-y-4">
-                        <div>
-                          <span className="manga-accent-bar text-[0.6rem]">AUDIO</span>
-                          <div className="mt-2 space-y-1 text-xs text-[#666]">
-                            <p><span className="font-medium text-[#111]">BPM:</span> {a.bpm?.toFixed(1)}</p>
-                            <p><span className="font-medium text-[#111]">Duration:</span> {a.duration_s?.toFixed(1)}s</p>
-                            <p><span className="font-medium text-[#111]">Beats:</span> {beats.length}</p>
-                            <p><span className="font-medium text-[#111]">Sections:</span> {sections.length}</p>
-                          </div>
-                        </div>
-
-                        {energyCurve.length > 0 && (
-                          <div>
-                            <span className="manga-accent-bar text-[0.6rem]">ENERGY</span>
-                            <div className="mt-2 flex items-end gap-px h-12 w-full">
-                              {energyCurve.map((v, i) => (
-                                <div
-                                  key={i}
-                                  className="flex-1 bg-[#111] min-w-0"
-                                  style={{ height: `${Math.max(2, v * 100)}%`, opacity: 0.4 + v * 0.6 }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {sections.length > 0 && (
-                          <div>
-                            <span className="manga-accent-bar text-[0.6rem]">SECTIONS</span>
-                            <div className="mt-2 space-y-0.5">
-                              {sections.map((t, i) => (
-                                <div key={i} className="flex items-center gap-2 text-[0.6rem] text-[#666]">
-                                  <div className="w-1.5 h-1.5 bg-[#111] shrink-0" />
-                                  <span>{t.toFixed(1)}s — Section {i + 1}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  {activeTab === 'audio' && <AudioTab
+                    projectId={id}
+                    audioAnalysis={currentProject.audio_analysis as any}
+                    musicTrack={musicTrack}
+                    clips={clips}
+                    onSyncApplied={(updates) => {
+                      const { updateClip } = useTimelineStore.getState();
+                      updates.forEach(({ id: clipId, duration_ms }) => updateClip(clipId, { duration_ms }));
+                      const { clips: updatedClips, musicTrack: mt, settings: tlSettings } = useTimelineStore.getState();
+                      api.updateTimeline(id, { clips: updatedClips, music_track: mt, settings: tlSettings }).catch(() => {});
+                    }}
+                    onAudioUploaded={(result) => {
+                      updateProject(id, { audio_analysis: result.audio_analysis });
+                      const analysis = result.audio_analysis || {};
+                      const durationMs = Math.round((analysis.duration_s || 0) * 1000);
+                      const music_track = {
+                        url: result.file_url || '',
+                        name: result.file_name || 'Music',
+                        duration_ms: durationMs,
+                        volume: 0.8,
+                        bpm: analysis.bpm,
+                      };
+                      // Build beat_map from actual detected beat timestamps (not just BPM grid)
+                      // beat_timestamps are in seconds → convert to ms
+                      const rawBeats: number[] = (analysis.beat_timestamps || []).map((t: number) => Math.round(t * 1000));
+                      const beat_map = rawBeats.length > 0 ? {
+                        bpm: analysis.bpm || 120,
+                        offset_ms: rawBeats[0] || 0,
+                        beats: rawBeats,
+                        downbeats: (analysis.downbeat_timestamps || []).map((t: number) => Math.round(t * 1000)),
+                        onsets: (analysis.onset_times || []).map((t: number) => Math.round(t * 1000)),
+                        energy_peaks: (analysis.energy_peaks || []).map((t: number) => Math.round(t * 1000)),
+                        // Per-instrument hit times (seconds, from HPSS + decay classification)
+                        kick_times: analysis.kick_times || [],
+                        snare_times: analysis.snare_times || [],
+                        hihat_times: analysis.hihat_times || [],
+                        crash_times: analysis.crash_times || [],
+                        horn_times: analysis.horn_times || [],
+                        melodic_times: analysis.melodic_times || [],
+                      } : null;
+                      const { setMusicTrack, setBeatMap, clips: tlClips, settings: tlSettings, effects: tlEffects } = useTimelineStore.getState();
+                      setMusicTrack(music_track);
+                      if (beat_map) setBeatMap(beat_map);
+                      api.updateTimeline(id, { clips: tlClips, music_track, settings: tlSettings, effects: tlEffects, beat_map }).catch(() => {});
+                    }}
+                  />}
 
                   {/* CHARS TAB */}
                   {activeTab === 'chars' && (
@@ -1226,27 +1707,27 @@ export default function EditorPage() {
 
         {/* Right: Clip Detail Panel + Chat */}
         <div
-          className="shrink-0 border-l-2 border-[#ccc] bg-white flex flex-col overflow-hidden transition-all duration-200"
-          style={{ width: rightOpen ? 320 : 24 }}
+          ref={rightPanelRef}
+          className="relative shrink-0 border-l-2 border-[#ccc] bg-white flex flex-col overflow-hidden"
+          style={{ width: 320 }}
         >
-          {!rightOpen && (
-            <button
-              onClick={() => setRightOpen(true)}
-              className="flex-1 flex items-center justify-center text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors"
-              title="Expand panel"
-            >
-              <ChevronLeft size={13} />
-            </button>
-          )}
-          {rightOpen && (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {selectedClipId && clips.length > 0 ? (
-                <ClipDetailPanel clipId={selectedClipId} onClose={() => setSelectedClipId(null)} />
-              ) : (
-                <ChatPanel projectId={id} onCollapse={() => setRightOpen(false)} />
-              )}
-            </div>
-          )}
+          {/* Collapsed toggle — only visible when closed */}
+          <button
+            onClick={() => setRightOpen(true)}
+            className="absolute inset-y-0 left-0 w-6 flex items-center justify-center text-[#888] hover:text-[#111] hover:bg-[#f0f0f0] transition-colors"
+            style={{ display: rightOpen ? 'none' : 'flex' }}
+            title="Expand panel"
+          >
+            <ChevronLeft size={13} />
+          </button>
+          {/* Content */}
+          <div ref={rightContentRef} className="flex-1 flex flex-col overflow-hidden">
+            {selectedClipId && clips.length > 0 ? (
+              <ClipDetailPanel clipId={selectedClipId} onClose={() => setSelectedClipId(null)} />
+            ) : (
+              <ChatPanel projectId={id} onCollapse={() => setRightOpen(false)} />
+            )}
+          </div>
         </div>
 
         {/* Settings modal */}
@@ -1429,14 +1910,30 @@ export default function EditorPage() {
             <CompiledVideoModal
               url={compiledUrl}
               onClose={() => setShowPreview(false)}
-              onFallback={() => { setCompiledUrl(null); }}
+              onFallback={() => { setCompiledUrl(null); setShowPreview(false); }}
             />
           ) : (
-            <TrailerPreview
-              clips={clips}
-              musicTrack={musicTrack}
-              onClose={() => setShowPreview(false)}
-            />
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md" onClick={() => setShowPreview(false)}>
+              <div className="manga-panel p-8 max-w-sm mx-4 text-center" style={{ border: '3px solid #111', boxShadow: '4px 4px 0 #111' }} onClick={e => e.stopPropagation()}>
+                <Film size={28} className="text-[#a855f7] mx-auto mb-3" />
+                <p className="font-bold mb-1" style={{ fontFamily: 'var(--font-manga)' }}>NO COMPILED VIDEO</p>
+                <p className="text-[#888] text-xs mb-5 leading-relaxed">Render the trailer first to get a smooth, scene-continuous video without any playback pauses.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowPreview(false); }}
+                    className="manga-btn bg-white text-[#111] px-3 py-2 text-xs flex-1 border-[#111]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { setShowPreview(false); handleExport(); }}
+                    className="manga-btn bg-[#a855f7] text-white px-3 py-2 text-xs flex-1 border-[#a855f7] flex items-center justify-center gap-1"
+                  >
+                    <Download size={12} /> Render Now
+                  </button>
+                </div>
+              </div>
+            </div>
           )
         )}
 

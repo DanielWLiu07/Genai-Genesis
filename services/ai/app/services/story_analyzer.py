@@ -32,7 +32,7 @@ You MUST return a JSON object with this exact structure:
       "description": "what happens in this scene",
       "quote": "a notable line from the text if available, otherwise null",
       "mood": "emotional tone of this specific scene",
-      "visual_description": "detailed cinematic shot description - include camera angle, lighting, color palette, atmosphere, composition, and character positioning. Example: 'Close-up of a young woman's face illuminated by candlelight, tears reflecting golden light, dark medieval chamber background, chiaroscuro lighting, shallow depth of field'",
+      "visual_description": "detailed cinematic shot description focused on ACTION and MOTION — describe WHAT IS HAPPENING with movement verbs: who is doing what, body at peak of action (mid-leap, arm fully extended at moment of strike, body inverted mid-fall), direction/trajectory of motion, and camera angle amplifying the movement. Include lighting and atmosphere. Example: 'Low-angle shot of a warrior mid-leap, body fully horizontal, sword arm extended at moment of downward slash, speed lines radiating from blade, enemy recoiling below, harsh rim lighting, dust cloud from impact'",
       "scene_type": "one of: introduction, character_reveal, tension_build, conflict, mystery, action, climax, emotional_pause, ending_hook",
       "importance": 8,
       "has_uploaded_image": false,
@@ -44,18 +44,18 @@ You MUST return a JSON object with this exact structure:
 CRITICAL RULES:
 - Extract 8-12 key scenes that would make visually striking trailer moments
 - Order scenes to tell a compelling story arc (not necessarily chronological)
-- Visual descriptions must be CINEMATIC and EXTREMELY DETAILED:
-  * Camera angle (wide shot, close-up, bird's eye, dutch angle, tracking shot)
-  * Lighting (chiaroscuro, golden hour, neon, harsh fluorescent, candlelight)
-  * Color palette (desaturated blues, warm amber tones, high contrast B&W with red accent)
-  * Depth of field (shallow bokeh, deep focus, rack focus)
-  * Atmosphere (misty, dusty particles in light, rain-streaked windows)
-  * Character positioning and expression
-  * Art style if manga/comic (cel-shaded, ink wash, watercolor, bold linework)
-- For manga/comics, describe the art style and panel composition
+- Visual descriptions must be CINEMATIC, ACTION-FOCUSED, and EXTREMELY DETAILED:
+  * ALWAYS start with WHAT IS HAPPENING — use action verbs: "warrior mid-leap", "hand slamming", "body recoiling from impact", "eyes snapping open", "cloak billowing as character spins"
+  * Describe the PEAK MOMENT of motion: body at full extension, apex of jump, instant of impact, arm at maximum reach — this is what the AI must freeze and then animate
+  * Motion trajectory: what direction things are moving, entry/exit vectors (lunging forward, falling backward, spinning clockwise)
+  * Camera angle amplifying the action (extreme low angle on mid-swing hero, crash zoom into impact point, Dutch angle during fall)
+  * Lighting and atmosphere (chiaroscuro, speed lines, shockwave rings, dust clouds, debris mid-air)
+  * Color palette and art style (bold ink lines, high contrast B&W, cel-shading)
+  * AVOID static descriptions like "stands looking at" or "sits by" — every scene must have implied or explicit motion
+- For manga/comics, include: speed lines, impact frames, motion blur streaks, sakuga smear
 - importance is 1-10 (10 = absolutely essential for trailer)
-- Every scene needs a strong visual_description suitable for AI image generation
-- Think like a Hollywood trailer editor selecting the most impactful moments"""
+- Every visual_description must be detailed enough that a video AI can infer what happens next
+- Think like a Hollywood trailer editor — capture the PEAK FRAME of each action beat"""
 
 SCENE_IMAGE_INSTRUCTIONS = """
 IMPORTANT - UPLOADED IMAGES:

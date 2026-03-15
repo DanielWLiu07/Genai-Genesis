@@ -24,7 +24,7 @@ You MUST return a JSON object with this structure:
       "order": 0,
       "type": "image",
       "duration_ms": 1500,
-      "prompt": "Extremely detailed cinematic visual prompt. REQUIRED fields: subject + action, camera angle (extreme close-up/low angle/bird's eye/Dutch angle/tracking), lighting (dramatic chiaroscuro/rim light/lens flare/volumetric), color palette, atmosphere, motion blur or speed lines if action. Each prompt must describe a SINGLE dynamic moment frozen in time — not a static scene. Example: 'Extreme low-angle shot of a cloaked warrior silhouetted against a burning city skyline, camera tilting up dramatically, embers floating, deep crimson and black palette, manga speed lines radiating outward, cel-shaded anime style, cinematic aspect ratio'",
+      "prompt": "Extremely detailed cinematic visual prompt describing a SINGLE peak-action moment. MANDATORY: (1) ACTION VERB FIRST — what is physically happening: 'warrior mid-downward slash', 'body fully inverted mid-flip', 'fist connecting at moment of impact', 'character stumbling backward from shockwave'. (2) MOTION TRAJECTORY — direction, arc, velocity: 'lunging forward left-to-right', 'falling backward arms outstretched', 'spinning clockwise'. (3) PEAK BODY POSITION — where limbs are at frozen moment: 'sword arm fully extended', 'legs at maximum split', 'both hands gripping collar at eye level'. (4) CAMERA ANGLE amplifying motion: extreme low angle / crash zoom / Dutch angle / whip-pan. (5) Environmental reaction: speed lines, shockwave rings, debris, dust cloud, sparks. (6) Lighting + color palette + art style. Example: 'Extreme low-angle crash-zoom — warrior mid-downward slash, sword arm fully extended at moment of impact, body weight fully committed forward, opponent recoiling mid-air from force, speed lines radiating from blade tip, debris cloud erupting, deep crimson and black palette, bold manga ink lines, cel-shaded'",
       "text": "Short impactful overlay text or null",
       "text_style": {"font_size": 48, "color": "#ffffff", "position": "center", "animation": "fade_in"},
       "transition_type": "cut",
@@ -53,10 +53,12 @@ RULES:
     * Opening hook text: 1000–1500ms
 - BIAS: 70%+ of clips should be action cuts (800–1800ms). Only slow down for earned emotional/climax moments.
 - Use "cut" transition for 90%+ of clips — hard cuts ARE the energy. "dissolve" only at the very end.
-- Every visual prompt MUST describe dynamic ACTION or intense EMOTION — no static landscapes, no "stands looking at"
-- Characters must be doing something: running, fighting, reaching out, falling, screaming, embracing
+- Every visual prompt MUST describe dynamic ACTION or intense EMOTION — NEVER "stands looking at", "walks toward", "sits by"
+- ALWAYS describe the PEAK MOMENT of motion: body at full extension, apex of leap, instant of impact — so video AI knows what to animate from and toward
+- Characters must have explicit movement: mid-swing, mid-leap, mid-fall, reaching out at arm's length, stumbling backward, spinning in place
+- Describe MOTION TRAJECTORY: left-to-right lunge, downward slash, backward recoil, upward burst — gives video AI direction to animate
 - Camera angles must be dramatic: Dutch angle, extreme close-up, low angle hero shot, crash zoom, tracking shot
-- For manga/anime: MANDATORY speed lines, impact frames, cel-shading, heavy black ink outlines, sakuga motion smear on every action clip
+- For manga/anime: MANDATORY speed lines radiating from impact, motion blur streaks on limbs, sakuga smear frames, shockwave distortion rings, debris/dust from force
 - text_style.animation: fade_in for titles, typewriter for taglines, slide_up for action text
 - The trailer must build RELENTLESSLY — each section more intense than the last
 

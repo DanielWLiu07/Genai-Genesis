@@ -52,7 +52,32 @@ async def plan(data: PlanRequest):
 
     clip_count = len(result.get("clips", []))
     total_s = result.get("total_duration_ms", 0) / 1000
-    logger.info(f"Trailer plan complete: {clip_count} clips, {total_s:.1f}s total")
+
+    # Auto-generate AMV effects from the plan + analysis
+    # Pass music beat data (including instrument hits) if a track was uploaded
+    music_beat_map = None
+    if data.music_track:
+        audio = data.music_track.get("audio_analysis") or data.music_track
+        music_beat_map = {
+            "bpm": audio.get("bpm"),
+            "beats": [t * 1000 for t in (audio.get("beat_timestamps") or [])],
+            "kick_times": audio.get("kick_times") or [],
+            "snare_times": audio.get("snare_times") or [],
+            "hihat_times": audio.get("hihat_times") or [],
+            "crash_times": audio.get("crash_times") or [],
+            "horn_times": audio.get("horn_times") or [],
+            "melodic_times": audio.get("melodic_times") or [],
+        }
+    try:
+        from app.agents.pipeline import _rt_amv_suggest_fallback
+        amv_effects, beat_map = _rt_amv_suggest_fallback(data.analysis or {}, result, music_beat_map=music_beat_map)
+        result["effects"] = amv_effects
+        result["beat_map"] = beat_map
+        logger.info(f"Trailer plan complete: {clip_count} clips, {total_s:.1f}s, {len(amv_effects)} AMV effects")
+    except Exception as amv_err:
+        logger.warning(f"AMV suggest fallback failed: {amv_err}")
+        logger.info(f"Trailer plan complete: {clip_count} clips, {total_s:.1f}s total")
+
     return result
 
 
@@ -88,7 +113,8 @@ async def pipeline(data: PipelineRequest):
                 logger.info(
                     f"[pipeline] Railtracks complete: "
                     f"{len(result['plan'].get('clips', []))} clips, "
-                    f"score={result.get('quality', {}).get('score', 'N/A')}"
+                    f"score={result.get('quality', {}).get('score', 'N/A')}, "
+                    f"amv_effects={len(result.get('amv_effects', []))}"
                 )
                 return {**result, "powered_by": "railtracks"}
         except Exception as rt_err:
@@ -113,9 +139,18 @@ async def pipeline(data: PipelineRequest):
 
     quality = await get_suggestions({"clips": plan_result.get("clips", [])}, analysis)
 
+    # Fallback AMV effects using the same logic as amv_suggest_node
+    try:
+        from app.agents.pipeline import _rt_amv_suggest_fallback
+        amv_effects, beat_map = _rt_amv_suggest_fallback(analysis, plan_result)
+    except Exception:
+        amv_effects, beat_map = [], None
+
     return {
         "analysis": analysis,
         "plan": plan_result,
         "quality": quality,
+        "amv_effects": amv_effects,
+        "beat_map": beat_map,
         "powered_by": "fallback",
     }

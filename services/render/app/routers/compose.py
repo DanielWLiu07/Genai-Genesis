@@ -9,7 +9,6 @@ import uuid
 import httpx
 
 from app.services.ffmpeg import compose_trailer, generate_preview
-from app.services.media import generate_title_card, generate_end_card
 from app.services.music import suggest_music
 from app.services.kling import download_media
 from app.config import get_settings
@@ -24,8 +23,6 @@ _render_jobs: dict[str, dict] = {}
 class ComposeRequest(BaseModel):
     project_id: str
     timeline: Optional[dict] = None
-    include_title_card: bool = True
-    include_end_card: bool = True
     title: str = ""
     author: str = ""
     effects: Optional[list] = None
@@ -74,25 +71,38 @@ async def _report_progress(job_id: str, project_id: str, progress: int, message:
 
 async def _download_clip_media(clips: list[dict], tmpdir: str) -> list[dict]:
     """Download remote media for all clips to local temp files."""
+    import base64 as _b64
     updated_clips = []
     for i, clip in enumerate(clips):
-        media_url = clip.get("generated_media_url", "")
-        if media_url and media_url.startswith("http"):
-            try:
+        media_url = clip.get("generated_media_url") or ""
+        if not media_url:
+            updated_clips.append(clip)
+            continue
+        try:
+            if media_url.startswith("data:"):
+                header, b64data = media_url.split(",", 1)
+                mime = header.split(";")[0].split(":")[1] if ":" in header else "image/png"
+                ext = ".jpg" if ("jpeg" in mime or "jpg" in mime) else ".png"
+                local_path = os.path.join(tmpdir, f"media_{i:03d}{ext}")
+                with open(local_path, "wb") as f:
+                    f.write(_b64.b64decode(b64data))
+                clip = {**clip, "local_media_path": local_path}
+            elif media_url.startswith("http"):
                 media_bytes = await download_media(media_url)
-                ext = ".mp4" if clip.get("type") == "video" else ".png"
+                url_lower = media_url.split("?")[0].lower()
+                ext = ".mp4" if (clip.get("type") == "video" or url_lower.endswith(".mp4") or "fal_" in url_lower) else ".png"
                 local_path = os.path.join(tmpdir, f"media_{i:03d}{ext}")
                 with open(local_path, "wb") as f:
                     f.write(media_bytes)
                 clip = {**clip, "local_media_path": local_path}
-            except Exception as e:
-                logger.warning("Failed to download media for clip %d: %s", i, e)
+        except Exception as e:
+            logger.warning("Failed to download media for clip %d: %s", i, e)
         updated_clips.append(clip)
     return updated_clips
 
 
 async def _compose_background(data: ComposeRequest, job_id: str):
-    """Background task: download media, generate cards, compose trailer."""
+    """Background task: download media, compose trailer."""
     settings = get_settings()
     output_dir = os.path.join(settings.render_output_dir, data.project_id)
     os.makedirs(output_dir, exist_ok=True)
@@ -103,70 +113,24 @@ async def _compose_background(data: ComposeRequest, job_id: str):
     try:
         _render_jobs[job_id]["status"] = "generating_media"
         timeline = data.timeline or {}
-        clips = timeline.get("clips", [])
+        all_clips = sorted(timeline.get("clips", []), key=lambda c: c.get("order", 0))
+
+        # Only include clips with actual AI-generated media; skip text overlays and any placeholder clips
+        clips = [
+            c for c in all_clips
+            if c.get("type") != "text_overlay"
+            and c.get("generated_media_url")
+        ]
+        logger.info("Compose job %s: %d total clips, %d with generated media", job_id, len(all_clips), len(clips))
+
         timeline_settings = timeline.get("settings", {})
         music_track = timeline.get("music_track")
 
-        width = 1920
-        height = 1080
-        aspect = timeline_settings.get("aspect_ratio", "16:9")
-        if aspect == "9:16":
-            width, height = 1080, 1920
-        elif aspect == "1:1":
-            width = height = 1080
-
-        # Download remote media
         async def progress_cb(pct, msg):
             await _report_progress(job_id, data.project_id, pct, msg)
 
         await progress_cb(5, "Downloading clip media...")
         clips = await _download_clip_media(clips, tmpdir)
-
-        # Generate title card
-        if data.include_title_card and data.title:
-            await progress_cb(8, "Generating title card...")
-            title_path = os.path.join(tmpdir, "title_card.png")
-            await generate_title_card(
-                title=data.title,
-                subtitle=f"by {data.author}" if data.author else "",
-                width=width,
-                height=height,
-                output_path=title_path,
-            )
-            title_clip = {
-                "id": "title_card",
-                "order": -1,
-                "type": "image",
-                "duration_ms": 4000,
-                "prompt": "",
-                "local_media_path": title_path,
-                "gen_status": "done",
-                "transition_type": "dissolve",
-                "position": {"x": 0, "y": 0},
-            }
-            clips = [title_clip] + clips
-
-        # Generate end card
-        if data.include_end_card:
-            await progress_cb(9, "Generating end card...")
-            end_path = os.path.join(tmpdir, "end_card.png")
-            await generate_end_card(
-                width=width,
-                height=height,
-                output_path=end_path,
-            )
-            end_clip = {
-                "id": "end_card",
-                "order": 999,
-                "type": "image",
-                "duration_ms": 3000,
-                "prompt": "",
-                "local_media_path": end_path,
-                "gen_status": "done",
-                "transition_type": "fade",
-                "position": {"x": 0, "y": 0},
-            }
-            clips.append(end_clip)
 
         # Download music if URL provided
         if music_track and music_track.get("url", "").startswith("http"):
@@ -193,11 +157,9 @@ async def _compose_background(data: ComposeRequest, job_id: str):
         )
 
         if result.get("status") == "done":
-            # Generate preview
             preview_path = os.path.join(output_dir, f"{job_id}_preview.mp4")
             await generate_preview(output_path, preview_path)
 
-            # Convert local paths to public URLs served by /outputs static mount
             render_base = settings.render_service_url
             output_dir_base = settings.render_output_dir.rstrip("/")
             def to_public_url(path: str) -> str:
@@ -235,10 +197,7 @@ async def _compose_background(data: ComposeRequest, job_id: str):
 
 @router.post("/compose", response_model=ComposeResponse)
 async def compose(data: ComposeRequest, background_tasks: BackgroundTasks):
-    """Start composing a trailer from timeline clips.
-
-    Runs in the background and reports progress via callback.
-    """
+    """Start composing a trailer from timeline clips."""
     job_id = str(uuid.uuid4())
 
     _render_jobs[job_id] = {

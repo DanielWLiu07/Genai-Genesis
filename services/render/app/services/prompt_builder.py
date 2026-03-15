@@ -14,6 +14,15 @@ from typing import Optional
 
 # ── AMV / Manga motion style layers ─────────────────────────────────────────
 
+# Image-specific action style — captures peak-motion frame so video AI (Kling) can animate it
+_IMAGE_ACTION_STYLE = (
+    "peak-action freeze frame — body at maximum extension, limbs fully committed at moment of impact or apex of leap, "
+    "motion implied by: speed lines radiating from impact point, motion blur streaks on arms and legs, "
+    "shockwave distortion rings, airborne debris and dust mid-cloud, cloth/hair fully mid-whip, "
+    "manga sakuga smear on fast-moving limbs, thick bold ink outlines, heavy black shadows, "
+    "high contrast ink wash — drawn to show WHERE THE BODY CAME FROM and WHERE IT IS GOING"
+)
+
 _AMV_STYLE = (
     "manga AMV style, sakuga-quality extreme motion, "
     "MASSIVE full-body action in frame — heavy sword swings, explosive power releases, dramatic leaps, "
@@ -267,5 +276,8 @@ def build_image_prompt(
     # Mood
     if mood:
         parts.append(f"{mood} mood")
+
+    # Action motion layer — ensures generated image conveys movement for video AI
+    parts.append(_IMAGE_ACTION_STYLE)
 
     return ". ".join(p.rstrip(". ") for p in parts if p)

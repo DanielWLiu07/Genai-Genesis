@@ -76,8 +76,7 @@ def test_compose(client: httpx.Client):
     try:
         r = client.post(
             f"{BASE_URL}/render/compose",
-            json={"project_id": "smoke-test", "timeline": timeline,
-                  "include_title_card": False, "include_end_card": False},
+            json={"project_id": "smoke-test", "timeline": timeline},
             timeout=30,
         )
         data = r.json()

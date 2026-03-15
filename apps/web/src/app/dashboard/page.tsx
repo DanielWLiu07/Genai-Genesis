@@ -102,7 +102,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!loading && projects.length > 0) {
-      gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 0.6, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
+      gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 0.9, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
       gsap.fromTo('.shelf-line', { opacity: 0, scaleX: 0, transformOrigin: 'left' }, { opacity: 1, scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.65, ease: 'power2.out' });
 
       const controller = new AbortController();
@@ -120,7 +120,7 @@ export default function Dashboard() {
           gsap.to(bookEl, { boxShadow: '6px 12px 0px rgba(0,0,0,0.3)', duration: 0.25 });
         }, { signal });
         el.addEventListener('mouseleave', () => {
-          gsap.to(el, { opacity: 0.6, duration: 0.25 });
+          gsap.to(el, { opacity: 0.9, duration: 0.25 });
           gsap.to(tiltEl, { y: 0, rotation: 0, duration: 0.25, ease: 'power2.out' });
           gsap.to(bookEl, { boxShadow: '3px 3px 0px #000', duration: 0.25 });
         }, { signal });

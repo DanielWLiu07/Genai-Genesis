@@ -134,6 +134,20 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
       if (el) { gsap.killTweensOf(el); gsap.set(el, { opacity: 1, y: 0, x: 0, rotation: 0, scale: 1, scaleX: 1, scaleY: 1 }); }
     });
 
+    const forceHide = () => {
+      gsap.killTweensOf(overlay);
+      gsap.set(overlay, { pointerEvents: 'none', opacity: 0, clipPath: HIDDEN_LEFT });
+      if (logoRef.current) gsap.set(logoRef.current, { opacity: 0, scale: 0.2, rotation: -25, y: 20, x: 0 });
+      if (glowRef.current) gsap.set(glowRef.current, { opacity: 0, scale: 0.5 });
+      letterRefs.current.forEach((el) => {
+        if (el) gsap.set(el, { opacity: 0, y: -60, x: 0, rotation: 0, scale: 1, scaleX: 1, scaleY: 1 });
+      });
+      isAnimating.current = false;
+    };
+
+    // Safety fallback: if GSAP onComplete never fires, force-hide after 2s
+    const safetyTimer = setTimeout(forceHide, 2000);
+
     // Animate content out, then sweep panel right
     animateOut();
     gsap.to(overlay, {
@@ -142,16 +156,12 @@ export function PageTransitionProvider({ children }: { children: ReactNode }) {
       delay: 0.55,
       ease: 'power3.out',
       onComplete: () => {
-        gsap.set(overlay, { pointerEvents: 'none', opacity: 0, clipPath: HIDDEN_LEFT });
-        // Reset logo + letters for next transition
-        if (logoRef.current) gsap.set(logoRef.current, { opacity: 0, scale: 0.2, rotation: -25, y: 20, x: 0 });
-        if (glowRef.current) gsap.set(glowRef.current, { opacity: 0, scale: 0.5 });
-        letterRefs.current.forEach((el) => {
-          if (el) gsap.set(el, { opacity: 0, y: -60, x: 0, rotation: 0, scale: 1, scaleX: 1, scaleY: 1 });
-        });
-        isAnimating.current = false;
+        clearTimeout(safetyTimer);
+        forceHide();
       },
     });
+
+    return () => clearTimeout(safetyTimer);
   }, [pathname, animateOut]);
 
   // ── Cover: sweep in from left, animate content in ───────────────

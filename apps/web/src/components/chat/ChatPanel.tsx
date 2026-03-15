@@ -7,6 +7,14 @@ import { api } from '@/lib/api';
 import { Send, Bot, User, ChevronRight, Zap } from 'lucide-react';
 import gsap from 'gsap';
 
+// Module-level registry so the timeline page can cancel in-flight clip generation
+const _clipAbortControllers = new Map<string, AbortController>();
+
+export function cancelClipGeneration(clipId: string) {
+  const ctrl = _clipAbortControllers.get(clipId);
+  if (ctrl) { ctrl.abort(); _clipAbortControllers.delete(clipId); }
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -135,13 +143,16 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
           timestamp_ms: args.timestamp_ms,
           duration_ms: args.duration_ms || 200,
           intensity: args.intensity ?? 0.8,
+          ...(args.params && Object.keys(args.params).length > 0 ? { params: args.params } : {}),
         });
         break;
       case 'update_amv_effect': {
-        const { effect_id, type, ...updates } = args;
+        const { effect_id, type, params: newParams, ...updates } = args;
+        const existing = useTimelineStore.getState().effects.find((e) => e.id === effect_id);
         updateEffect(effect_id, {
           ...updates,
           ...(type ? { type: normalizeEffectType(type) } : {}),
+          ...(newParams ? { params: { ...(existing?.params || {}), ...newParams } } : {}),
         });
         break;
       }
@@ -195,6 +206,7 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
             timestamp_ms: timestampMs,
             duration_ms: args.duration_ms || 200,
             intensity: args.intensity ?? 0.8,
+            ...(args.params && Object.keys(args.params).length > 0 ? { params: args.params } : {}),
           })),
         ]);
         break;
@@ -224,6 +236,7 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
             timestamp_ms: timestampMs,
             duration_ms: args.duration_ms || 200,
             intensity: args.intensity ?? 0.8,
+            ...(args.params && Object.keys(args.params).length > 0 ? { params: args.params } : {}),
           })),
         ]);
         break;
@@ -237,21 +250,25 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
         for (let t = 0; t <= totalMs; t += interval) beats.push(Math.round(t));
         const style = args.style || 'aggressive';
         const step = style === 'aggressive' ? 1 : style === 'smooth' ? 2 : 4;
-        const baseTypes: EffectType[] = ['flash_white', 'zoom_burst', 'shake'];
+        const beatTypes: EffectType[] = ['flash_white', 'zoom_burst', 'shake', 'chromatic', 'flicker', 'red_flash', 'contrast_punch'];
+        const strongTypes: EffectType[] = ['zoom_burst', 'panel_split', 'heavy_shake', 'neon', 'manga_ink', 'overexpose', 'vignette'];
+        const eighthTypes: EffectType[] = ['echo', 'time_echo', 'freeze', 'blur_out', 'zoom_out', 'glitch', 'letterbox', 'reverse'];
         const newEffects: Effect[] = [];
         beats.forEach((ms, idx) => {
           if (ms > totalMs || idx % step !== 0 || idx === 0) return;
           const intensity = 0.4 + Math.random() * 0.6;
           if (idx % (step * 8) === 0) {
-            newEffects.push({ id: crypto.randomUUID(), type: 'echo', timestamp_ms: ms, duration_ms: 400, intensity });
+            const t = eighthTypes[Math.floor(Math.random() * eighthTypes.length)];
+            newEffects.push({ id: crypto.randomUUID(), type: t, timestamp_ms: ms, duration_ms: 400, intensity });
           } else if (idx % (step * 4) === 0) {
-            newEffects.push({ id: crypto.randomUUID(), type: 'zoom_burst', timestamp_ms: ms, duration_ms: 300, intensity: Math.min(1, intensity + 0.2) });
+            const t = strongTypes[Math.floor(Math.random() * strongTypes.length)];
+            newEffects.push({ id: crypto.randomUUID(), type: t, timestamp_ms: ms, duration_ms: 300, intensity: Math.min(1, intensity + 0.2) });
           } else {
-            const t = baseTypes[Math.floor(Math.random() * baseTypes.length)];
+            const t = beatTypes[Math.floor(Math.random() * beatTypes.length)];
             newEffects.push({ id: crypto.randomUUID(), type: t, timestamp_ms: ms, duration_ms: 150, intensity });
             const halfMs = ms + interval / 2;
             if (halfMs < totalMs && Math.random() > 0.4) {
-              const t2 = baseTypes[Math.floor(Math.random() * baseTypes.length)];
+              const t2 = beatTypes[Math.floor(Math.random() * beatTypes.length)];
               newEffects.push({ id: crypto.randomUUID(), type: t2, timestamp_ms: Math.round(halfMs), duration_ms: 100, intensity: intensity * 0.7 });
             }
           }
@@ -278,7 +295,15 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
         const prevClip = clipOrder > 0 ? sorted[clipOrder - 1] : null;
         const nextClip = clipOrder < sorted.length - 1 ? sorted[clipOrder + 1] : null;
         const genType: 'image' | 'video' = args.media_type === 'video' ? 'video' : (clip.type === 'video' ? 'video' : 'image');
+        const abortCtrl = new AbortController();
+        _clipAbortControllers.set(args.clip_id, abortCtrl);
         updateClip(args.clip_id, { gen_status: 'generating' });
+        const { beatMap, musicTrack } = useTimelineStore.getState();
+        const clipStartMs = sorted.slice(0, clipOrder).reduce((s, c) => s + (c.duration_ms || 2000), 0);
+        const musicEnergy = beatMap ? (() => {
+          const beats = beatMap.beats.filter((b) => b >= clipStartMs && b < clipStartMs + (clip.duration_ms || 2000));
+          return beats.length > 0 ? Math.min(1, beats.length / 4) : undefined;
+        })() : undefined;
         api.generateClip(projectId, args.clip_id, prompt, genType, {
           clip_order: clipOrder,
           clip_total: sorted.length,
@@ -289,9 +314,22 @@ export function ChatPanel({ projectId, onCollapse, dark = false, mode = 'general
           prev_scene_prompt: prevClip?.prompt || undefined,
           next_scene_prompt: nextClip?.prompt || undefined,
           start_frame_url: genType === 'video' ? (clip.thumbnail_url || undefined) : undefined,
+          scene_image_url: genType === 'image' ? (prevClip?.generated_media_url || prevClip?.thumbnail_url || undefined) : undefined,
+          music_timestamp_ms: clipStartMs,
+          music_energy: musicEnergy,
+          signal: abortCtrl.signal,
         }).then((result: any) => {
-          updateClip(args.clip_id, { gen_status: 'done', generated_media_url: result.media_url, thumbnail_url: result.thumbnail_url });
-        }).catch(() => updateClip(args.clip_id, { gen_status: 'error' }));
+          _clipAbortControllers.delete(args.clip_id);
+          const url = result.generated_media_url || result.media_url || result.output_url;
+          updateClip(args.clip_id, { gen_status: 'done', generated_media_url: url, thumbnail_url: result.thumbnail_url || url });
+        }).catch((err: any) => {
+          _clipAbortControllers.delete(args.clip_id);
+          if (err?.name === 'AbortError') {
+            updateClip(args.clip_id, { gen_status: 'pending' });
+          } else {
+            updateClip(args.clip_id, { gen_status: 'error' });
+          }
+        });
         break;
       }
       case 'bulk_update_clips':

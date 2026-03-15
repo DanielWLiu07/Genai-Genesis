@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import logging
 from functools import partial
 from typing import List
 from fastapi import APIRouter, UploadFile, File, HTTPException
@@ -8,6 +9,8 @@ from app.config import get_settings
 from app.db import get_supabase
 from app.state import store_book_text, update_project_mem
 from app.services.audio_analyzer import analyze_audio
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["upload"])
 
@@ -185,7 +188,8 @@ async def upload_audio(project_id: str, file: UploadFile = File(...)):
     ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
     content_type = (file.content_type or "").lower()
 
-    if ext not in AUDIO_EXTENSIONS and content_type not in AUDIO_CONTENT_TYPES:
+    # Accept application/octet-stream too (some browsers send this for MP3s)
+    if ext not in AUDIO_EXTENSIONS and content_type not in AUDIO_CONTENT_TYPES and content_type != "application/octet-stream":
         raise HTTPException(
             status_code=415,
             detail=f"Unsupported audio format. Accepted: {', '.join(sorted(AUDIO_EXTENSIONS))}",
@@ -194,13 +198,15 @@ async def upload_audio(project_id: str, file: UploadFile = File(...)):
     content = await file.read()
 
     # Run analysis in thread pool — CPU-bound, would block event loop otherwise
+    # Non-fatal: if librosa fails, return a stub analysis so the track still loads
     try:
         loop = asyncio.get_event_loop()
         analysis = await loop.run_in_executor(
             None, partial(analyze_audio, content, file.filename or "audio.mp3")
         )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.warning(f"Audio analysis failed (non-fatal): {exc}")
+        analysis = {"bpm": 120, "beat_timestamps": [], "energy_curve": [], "section_boundaries": [], "duration_s": 0, "sample_rate": 22050}
 
     db = get_supabase()
 

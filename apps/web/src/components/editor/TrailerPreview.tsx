@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { X, Play, Pause, RotateCcw } from 'lucide-react';
 
 interface Clip {
@@ -22,7 +22,7 @@ interface TrailerPreviewProps {
   onClose: () => void;
 }
 
-const TRANSITION_MS = 400; // dissolve duration
+const TRANSITION_MS = 400;
 
 export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,27 +30,32 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
   const rafRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const pausedAtRef = useRef<number>(0);
+  const playingRef = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [currentMs, setCurrentMs] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
-  // Pre-load all images
   const imagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
-  const sortedClips = [...clips].sort((a, b) => a.order - b.order);
-  const totalMs = sortedClips.reduce((s, c) => s + c.duration_ms, 0);
 
-  // Build clip timeline: [{clip, startMs, endMs}]
-  const clipTimeline = (() => {
+  const sortedClips = useMemo(() => [...clips].sort((a, b) => a.order - b.order), [clips]);
+  const totalMs = useMemo(() => sortedClips.reduce((s, c) => s + c.duration_ms, 0), [sortedClips]);
+  const clipTimeline = useMemo(() => {
     let t = 0;
     return sortedClips.map(c => {
       const start = t;
       t += c.duration_ms;
       return { clip: c, startMs: start, endMs: t };
     });
-  })();
+  }, [sortedClips]);
 
-  // Preload images
+  // Keep refs in sync so the RAF loop always reads latest values
+  const clipTimelineRef = useRef(clipTimeline);
+  const totalMsRef = useRef(totalMs);
+  useEffect(() => { clipTimelineRef.current = clipTimeline; }, [clipTimeline]);
+  useEffect(() => { totalMsRef.current = totalMs; }, [totalMs]);
+
+  // Preload images (runs once on mount)
   useEffect(() => {
     const urls = sortedClips
       .filter(c => c.generated_media_url || c.thumbnail_url)
@@ -60,7 +65,11 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
 
     let done = 0;
     urls.forEach(url => {
-      if (imagesRef.current.has(url)) { done++; if (done === urls.length) setLoaded(true); return; }
+      if (imagesRef.current.has(url)) {
+        done++;
+        if (done === urls.length) setLoaded(true);
+        return;
+      }
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = img.onerror = () => {
@@ -73,51 +82,67 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const drawFrame = useCallback((ms: number) => {
+  // Stable draw function stored in a ref — always uses latest clipTimeline via ref
+  const drawFrameRef = useRef((ms: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const W = canvas.width, H = canvas.height;
+    const ct = clipTimelineRef.current;
+    const total = totalMsRef.current;
 
-    // Find current and next clip
-    const idx = clipTimeline.findIndex(e => ms < e.endMs);
+    const idx = ct.findIndex(e => ms < e.endMs);
     if (idx < 0) return;
-    const { clip, startMs, endMs } = clipTimeline[idx];
-    const nextEntry = clipTimeline[idx + 1];
+    const { clip, endMs } = ct[idx];
+    const nextEntry = ct[idx + 1];
 
-    // How far into transition to next clip
+    // Nearest scene clip for text_overlay bg
+    const findNearestScene = (fromIdx: number): Clip | null => {
+      for (let i = fromIdx - 1; i >= 0; i--) {
+        const c = ct[i].clip;
+        if (c.type !== 'text_overlay' && (c.generated_media_url || c.thumbnail_url)) return c;
+      }
+      for (let i = fromIdx + 1; i < ct.length; i++) {
+        const c = ct[i].clip;
+        if (c.type !== 'text_overlay' && (c.generated_media_url || c.thumbnail_url)) return c;
+      }
+      return null;
+    };
+
     const timeToEnd = endMs - ms;
     const transAlpha = clip.transition_type !== 'cut' && timeToEnd < TRANSITION_MS
-      ? 1 - timeToEnd / TRANSITION_MS  // 0→1 as we approach end
+      ? 1 - timeToEnd / TRANSITION_MS
       : 0;
 
     const drawClip = (c: Clip, alpha: number) => {
       ctx.globalAlpha = alpha;
-      const url = c.generated_media_url || c.thumbnail_url;
+      const effectiveClip = (c.type === 'text_overlay' && !c.generated_media_url && !c.thumbnail_url)
+        ? (findNearestScene(idx) ?? c)
+        : c;
+      const url = effectiveClip.generated_media_url || effectiveClip.thumbnail_url;
       if (url && imagesRef.current.has(url)) {
         const img = imagesRef.current.get(url)!;
         if (img.complete && img.naturalWidth > 0) {
-          // Cover-fit
           const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
           const sw = img.naturalWidth * scale, sh = img.naturalHeight * scale;
           ctx.drawImage(img, (W - sw) / 2, (H - sh) / 2, sw, sh);
+          if (c.type === 'text_overlay') {
+            ctx.globalAlpha = alpha * 0.5;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, W, H);
+            ctx.globalAlpha = alpha;
+          }
           return;
         }
       }
-      // Fallback: dark scene bg
-      ctx.fillStyle = c.type === 'text_overlay' ? '#0a0a0a' : '#1a1a2e';
+      ctx.fillStyle = '#1a1a2e';
       ctx.fillRect(0, 0, W, H);
     };
 
     ctx.clearRect(0, 0, W, H);
     drawClip(clip, 1);
-
-    // Dissolve overlay with next clip
-    if (transAlpha > 0 && nextEntry) {
-      drawClip(nextEntry.clip, transAlpha);
-    }
-
+    if (transAlpha > 0 && nextEntry) drawClip(nextEntry.clip, transAlpha);
     ctx.globalAlpha = 1;
 
     // Text overlay
@@ -129,24 +154,18 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
         const fontSize = Math.round((style.font_size || 36) * (W / 1080));
         const color = style.color || '#ffffff';
         const pos = style.position || 'center';
-
         ctx.font = `bold ${fontSize}px 'Bangers', sans-serif`;
         ctx.textAlign = 'center';
-
-        // Measure for background
         const lines = txt.split('\n');
         const lineH = fontSize * 1.3;
         const totalTextH = lines.length * lineH;
         const y = pos === 'top' ? fontSize + 20
           : pos === 'bottom' ? H - totalTextH - 20
           : (H - totalTextH) / 2;
-
-        // Shadow + stroke for readability
         ctx.shadowColor = 'rgba(0,0,0,0.9)';
         ctx.shadowBlur = 12;
         ctx.strokeStyle = '#000';
         ctx.lineWidth = fontSize * 0.08;
-
         lines.forEach((line, i) => {
           const ly = y + i * lineH;
           ctx.strokeText(line, W / 2, ly);
@@ -158,73 +177,89 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
     }
 
     // Progress bar
-    const progress = Math.min(ms / totalMs, 1);
+    const progress = Math.min(ms / total, 1);
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.fillRect(0, H - 3, W, 3);
     ctx.fillStyle = '#a855f7';
     ctx.fillRect(0, H - 3, W * progress, 3);
-  }, [clipTimeline, totalMs]);
+  });
 
-  // Animation loop
-  const tick = useCallback(() => {
+  // Stable tick stored in a ref — no stale closures, no recreations
+  const tickRef = useRef(() => {
     const elapsed = performance.now() - startTimeRef.current + pausedAtRef.current;
-    const ms = Math.min(elapsed, totalMs);
+    const ms = Math.min(elapsed, totalMsRef.current);
     setCurrentMs(ms);
-    drawFrame(ms);
-    if (ms < totalMs) {
-      rafRef.current = requestAnimationFrame(tick);
+    drawFrameRef.current(ms);
+    if (ms < totalMsRef.current) {
+      rafRef.current = requestAnimationFrame(tickRef.current);
     } else {
+      playingRef.current = false;
       setPlaying(false);
-      pausedAtRef.current = totalMs;
+      pausedAtRef.current = totalMsRef.current;
     }
-  }, [drawFrame, totalMs]);
+  });
 
-  const play = useCallback(() => {
-    if (pausedAtRef.current >= totalMs) pausedAtRef.current = 0;
+  const play = (fromMs?: number) => {
+    cancelAnimationFrame(rafRef.current);
+    if (fromMs !== undefined) pausedAtRef.current = fromMs;
+    else if (pausedAtRef.current >= totalMsRef.current) pausedAtRef.current = 0;
     startTimeRef.current = performance.now();
+    playingRef.current = true;
     setPlaying(true);
-    rafRef.current = requestAnimationFrame(tick);
+    rafRef.current = requestAnimationFrame(tickRef.current);
     if (audioRef.current) {
       audioRef.current.currentTime = pausedAtRef.current / 1000;
       audioRef.current.play().catch(() => {});
     }
-  }, [tick, totalMs]);
+  };
 
-  const pause = useCallback(() => {
+  const pause = () => {
     cancelAnimationFrame(rafRef.current);
     pausedAtRef.current = currentMs;
+    playingRef.current = false;
     setPlaying(false);
     audioRef.current?.pause();
-  }, [currentMs]);
+  };
 
-  const restart = useCallback(() => {
+  const restart = () => {
     cancelAnimationFrame(rafRef.current);
     pausedAtRef.current = 0;
-    setCurrentMs(0);
-    drawFrame(0);
-    if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.pause(); }
+    playingRef.current = false;
     setPlaying(false);
-  }, [drawFrame]);
+    setCurrentMs(0);
+    drawFrameRef.current(0);
+    if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.pause(); }
+  };
 
-  // Draw first frame on load
+  // Draw first frame once loaded
   useEffect(() => {
-    if (loaded) drawFrame(0);
-  }, [loaded, drawFrame]);
+    if (loaded) drawFrameRef.current(0);
+  }, [loaded]);
 
-  // Cleanup
-  useEffect(() => () => { cancelAnimationFrame(rafRef.current); }, []);
+  // Cleanup on unmount — cancel RAF and clear audio src so pending play() resolves cleanly
+  useEffect(() => () => {
+    cancelAnimationFrame(rafRef.current);
+    const a = audioRef.current;
+    if (a) { a.pause(); a.src = ''; a.load(); }
+  }, []);
 
-  // Scrub
+  // Scrub — seek and keep playing if already playing
   const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const frac = (e.clientX - rect.left) / rect.width;
-    const ms = Math.round(frac * totalMs);
-    cancelAnimationFrame(rafRef.current);
-    pausedAtRef.current = ms;
-    setCurrentMs(ms);
-    drawFrame(ms);
-    setPlaying(false);
-    if (audioRef.current) { audioRef.current.currentTime = ms / 1000; audioRef.current.pause(); }
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const ms = Math.round(frac * totalMsRef.current);
+    if (playingRef.current) {
+      // Seek without stopping
+      pausedAtRef.current = ms;
+      startTimeRef.current = performance.now();
+      if (audioRef.current) audioRef.current.currentTime = ms / 1000;
+    } else {
+      cancelAnimationFrame(rafRef.current);
+      pausedAtRef.current = ms;
+      setCurrentMs(ms);
+      drawFrameRef.current(ms);
+      if (audioRef.current) { audioRef.current.currentTime = ms / 1000; }
+    }
   };
 
   const fmt = (ms: number) => {
@@ -235,12 +270,10 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div className="relative flex flex-col gap-3 w-full max-w-3xl px-4" onClick={e => e.stopPropagation()}>
-        {/* Close */}
         <button className="absolute -top-10 right-4 text-white/70 hover:text-white" onClick={onClose}>
           <X size={20} />
         </button>
 
-        {/* Canvas */}
         <div className="relative bg-black border-2 border-[#333]" style={{ aspectRatio: '16/9' }}>
           {!loaded && (
             <div className="absolute inset-0 flex items-center justify-center text-white/50 text-sm">
@@ -256,9 +289,7 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
           />
         </div>
 
-        {/* Controls */}
         <div className="flex flex-col gap-2">
-          {/* Scrubber */}
           <div
             className="w-full h-2 bg-white/10 cursor-pointer rounded-full overflow-hidden"
             onClick={handleScrub}
@@ -288,7 +319,6 @@ export function TrailerPreview({ clips, musicTrack, onClose }: TrailerPreviewPro
           </div>
         </div>
 
-        {/* Hidden audio */}
         {musicTrack?.url && (
           <audio
             ref={audioRef}

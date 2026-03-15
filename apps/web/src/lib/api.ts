@@ -147,14 +147,21 @@ export const api = {
       next_scene_prompt?: string;
       feedback?: string;
       start_frame_url?: string;
+      reference_image_url?: string;
+      music_timestamp_ms?: number;
+      music_energy?: number;
+      signal?: AbortSignal;
     }
-  ) =>
-    fetchAPI(`/projects/${projectId}/generate-clip`, {
+  ) => {
+    const { signal, ...rest } = opts || {};
+    return fetchAPI(`/projects/${projectId}/generate-clip`, {
       method: 'POST',
-      body: JSON.stringify({ clip_id: clipId, prompt, type, ...opts }),
-    }),
-  renderTrailer: (projectId: string) =>
-    fetchAPI(`/projects/${projectId}/render`, { method: 'POST' }),
+      body: JSON.stringify({ clip_id: clipId, prompt, type, ...rest }),
+      signal,
+    });
+  },
+  renderTrailer: (projectId: string, timeline?: any) =>
+    fetchAPI(`/projects/${projectId}/render`, { method: 'POST', body: JSON.stringify({ timeline: timeline ?? null }) }),
   renderWithEffects: (projectId: string, effects: any[], beatMap: any) =>
     fetchAPI(`/projects/${projectId}/render`, {
       method: 'POST',
@@ -162,4 +169,6 @@ export const api = {
     }),
   getRenderStatus: (projectId: string, jobId: string) =>
     fetchAPI(`/projects/${projectId}/render/${jobId}`),
+  getRenderJobs: (projectId: string) =>
+    fetchAPI(`/projects/${projectId}/render-jobs`),
 };

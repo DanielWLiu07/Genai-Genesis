@@ -101,8 +101,11 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         return result
 
     # Synchronous generation (images) — persist result now
+    gen_ok = result.get("status") == "done"
     generated_url = result.get("output_url") or result.get("media_url")
     thumbnail_url = result.get("thumbnail_url") or result.get("thumbnail")
+    gen_status = "done" if gen_ok else "error"
+    gen_error = result.get("message", "") if not gen_ok else ""
 
     db = get_supabase()
     if db is not None:
@@ -112,11 +115,13 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
                 clips = tl_row.data[0].get("clips", [])
                 for clip in clips:
                     if clip.get("id") == data.clip_id:
-                        clip["gen_status"] = "done"
+                        clip["gen_status"] = gen_status
                         if generated_url:
                             clip["generated_media_url"] = generated_url
                         if thumbnail_url:
                             clip["thumbnail_url"] = thumbnail_url
+                        if gen_error:
+                            clip["gen_error"] = gen_error
                         break
                 clips = _strip_title_cards(clips)
                 db.table("timelines").update({"clips": clips}).eq("project_id", project_id).execute()
@@ -134,9 +139,10 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
     await manager.broadcast(project_id, {
         "type": "clip_updated",
         "clip_id": data.clip_id,
-        "gen_status": "done",
+        "gen_status": gen_status,
         "generated_media_url": generated_url,
         "thumbnail_url": thumbnail_url,
+        "gen_error": gen_error,
     })
 
     # Return normalized fields so all frontends (project page + ChatPanel) work consistently
@@ -145,7 +151,7 @@ async def generate_clip(project_id: str, data: GenerateClipRequest):
         "media_url": generated_url,
         "generated_media_url": generated_url,
         "thumbnail_url": thumbnail_url,
-        "gen_status": "done",
+        "gen_status": gen_status,
     }
 
 
@@ -358,7 +364,7 @@ async def get_render_status(project_id: str, job_id: str):
             result = db.table("render_jobs").select("*").eq("id", job_id).execute()
             if result.data:
                 db_data = result.data[0]
-                # If render service had status/progress but no URL, merge with DB URLs
+                # If render service had live status/progress (no error), layer it on top
                 if render_data and not render_data.get("error"):
                     db_data["status"] = render_data.get("status", db_data.get("status"))
                     db_data["progress"] = render_data.get("progress", db_data.get("progress"))
@@ -366,6 +372,10 @@ async def get_render_status(project_id: str, job_id: str):
                         db_data["output_url"] = render_data["output_url"]
                     if not db_data.get("preview_url") and render_data.get("preview_url"):
                         db_data["preview_url"] = render_data["preview_url"]
+                # Never report "done" without a URL — the URL arrives slightly after status
+                if db_data.get("status") == "done" and not db_data.get("output_url"):
+                    db_data["status"] = "composing"
+                    db_data["progress"] = 99
                 return db_data
         except Exception:
             pass

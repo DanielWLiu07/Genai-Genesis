@@ -119,7 +119,7 @@ async def generate_image_gemini(
                             return part.inline_data.data
                     return None
 
-                raw = await asyncio.to_thread(_gen_with_ref)
+                raw = await asyncio.wait_for(asyncio.to_thread(_gen_with_ref), timeout=90)
                 if raw:
                     return await _save_and_return(raw, cache_key, settings)
                 logger.warning("Gemini image-to-image returned no image, falling back")
@@ -143,27 +143,14 @@ async def generate_image_gemini(
                     return part.inline_data.data
             return None
 
-        raw = await asyncio.to_thread(_gen_text_only)
+        raw = await asyncio.wait_for(asyncio.to_thread(_gen_text_only), timeout=90)
         if raw:
             return await _save_and_return(raw, cache_key, settings)
 
-        # ── Fallback: Imagen 4 Fast ─────────────────────────────────────────────
-        logger.warning("Gemini text-to-image returned no image, falling back to Imagen 4 Fast")
-        enhanced = (
-            f"{prompt}. Peak-action freeze frame — body at maximum extension, mid-motion at moment of impact or apex. "
-            "Speed lines radiating from impact, motion blur on limbs, shockwave rings, debris mid-air. "
-            "Manga illustration style, bold ink lines, dramatic chiaroscuro shading, high contrast, professional quality."
-        )
-        response = await asyncio.to_thread(
-            client.models.generate_images,
-            model="imagen-4.0-fast-generate-001",
-            prompt=enhanced,
-            config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio=ar),
-        )
-        raw = response.generated_images[0].image.image_bytes
-        if not raw:
-            return {"status": "error", "message": "No image bytes returned"}
-        return await _save_and_return(raw, cache_key, settings)
+        # Imagen 4 fallback removed — it has a 70 RPD free-tier limit that is easily exhausted.
+        # gemini-2.5-flash-image is the only generation path.
+        logger.warning("Gemini text-to-image returned no image (content filtered or API issue)")
+        return {"status": "error", "message": "Image generation returned no output — try regenerating"}
 
     except Exception as e:
         logger.error("Image generation failed: %s", e)

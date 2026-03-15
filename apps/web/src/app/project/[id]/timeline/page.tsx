@@ -632,6 +632,7 @@ export default function TimelinePage() {
   const clips        = useTimelineStore((s) => s.clips);
   const effects      = useTimelineStore((s) => s.effects);
   const beatMap      = useTimelineStore((s) => s.beatMap);
+  const musicTrack   = useTimelineStore((s) => s.musicTrack);
   const addEffect    = useTimelineStore((s) => s.addEffect);
   const removeEffect = useTimelineStore((s) => s.removeEffect);
   const updateEffect = useTimelineStore((s) => s.updateEffect);
@@ -771,10 +772,10 @@ export default function TimelinePage() {
     if (!id || isDemoMode) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      const { clips: c, musicTrack, settings } = useTimelineStore.getState();
+      const { settings } = useTimelineStore.getState();
       import('@/lib/api').then(({ api }) => {
         api.updateTimeline(id, {
-          clips: c,
+          clips,
           music_track: musicTrack,
           settings,
           effects,
@@ -784,7 +785,7 @@ export default function TimelinePage() {
       });
     }, 1500);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [effects, beatMap, id, isDemoMode, totalMs]);
+  }, [clips, musicTrack, effects, beatMap, id, isDemoMode, totalMs]);
 
   // ── Beat map generation ─────────────────────────────────────────────────
 

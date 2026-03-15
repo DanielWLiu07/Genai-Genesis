@@ -306,7 +306,7 @@ function SceneNodeInner({ data }: NodeProps) {
 
         {/* Done — hover action overlay */}
         {clip.gen_status === 'done' && !(clip as any).manga_panel && (
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-end justify-center pb-3 gap-2">
+          <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-end justify-center pb-3 gap-2">
             <button
               onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
               className="flex flex-col items-center gap-1 px-3 py-1.5 bg-white/15 hover:bg-white/30 border border-white/25 backdrop-blur-sm transition-all"

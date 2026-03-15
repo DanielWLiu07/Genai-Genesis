@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS projects (
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS audio_file_url TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS audio_analysis JSONB;
 
+-- Migration: add preview_url to render_jobs
+ALTER TABLE render_jobs ADD COLUMN IF NOT EXISTS preview_url TEXT;
+
 -- Timelines table (one per project)
 CREATE TABLE IF NOT EXISTS timelines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

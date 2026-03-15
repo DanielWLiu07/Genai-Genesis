@@ -129,7 +129,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!authReady) return;
     if (!loading && projects.length > 0) {
-      gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 0.9, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
+      gsap.fromTo('.project-card', { opacity: 0, y: 24 }, { opacity: 0.8, y: 0, duration: 0.35, stagger: 0.07, delay: 0.55, ease: 'power2.out' });
       gsap.fromTo('.shelf-line', { opacity: 0, scaleX: 0, transformOrigin: 'left' }, { opacity: 1, scaleX: 1, duration: 0.5, stagger: 0.15, delay: 0.65, ease: 'power2.out' });
 
       const controller = new AbortController();
@@ -147,7 +147,7 @@ export default function Dashboard() {
           gsap.to(bookEl, { boxShadow: '6px 12px 0px rgba(0,0,0,0.3)', duration: 0.25 });
         }, { signal });
         el.addEventListener('mouseleave', () => {
-          gsap.to(el, { opacity: 0.9, duration: 0.25 });
+          gsap.to(el, { opacity: 0.8, duration: 0.25 });
           gsap.to(tiltEl, { y: 0, rotation: 0, duration: 0.25, ease: 'power2.out' });
           gsap.to(bookEl, { boxShadow: '3px 3px 0px #000', duration: 0.25 });
         }, { signal });
@@ -199,7 +199,6 @@ export default function Dashboard() {
       <Image src="/stylized_imgs/leaf7.png" alt="" width={150} height={134} className="decor-item fixed top-8 -left-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-10deg)' }} />
       <Image src="/stylized_imgs/flowers.png" alt="" width={160} height={160} className="decor-item fixed -bottom-6 -left-6 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(1px 2px 3px rgba(0,0,0,0.15))', transform: 'rotate(-15deg)' }} />
       <Image src="/stylized_imgs/stone1.png" alt="" width={180} height={250} className="decor-item fixed -bottom-16 -right-10 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(2px 3px 4px rgba(0,0,0,0.2))', transform: 'rotate(8deg)' }} />
-      <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun fixed top-28 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none z-[5]" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
       <img src="/stylized_imgs/oni.png" alt="" className="decor-oni fixed bottom-0 left-[53%] -translate-x-1/2 w-[1100px] pointer-events-none select-none z-[3]" style={{ opacity: 0.22 }} />
 
       {/* Top bar */}
@@ -208,7 +207,7 @@ export default function Dashboard() {
         <div className="relative z-10 px-6 py-3 flex items-center max-w-6xl mx-auto w-full">
           <div className="hero-title flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <Image src="/logo.png" alt="" width={40} height={40} className="drop-shadow-[0_0_8px_rgba(0,0,0,0.15)]" />
+              <Image src="/logo.png" alt="" width={40} height={40} className="drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]" />
               <h1
                 className="manga-title text-2xl"
                 style={{ color: '#fff', WebkitTextStroke: '2px #111', paintOrder: 'stroke fill', textShadow: '3px 3px 0px #ff3fa4, 5px 5px 0px #c0005e' }}
@@ -236,6 +235,8 @@ export default function Dashboard() {
 
       {/* Scrollable shelf area */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden relative" style={{ backgroundImage: 'url(/bg.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        {/* Sun — absolute inside scroll area so books (z-[1]) paint over it */}
+        <Image src="/stylized_imgs/sun.png" alt="" width={200} height={190} className="decor-sun absolute top-16 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none select-none" style={{ filter: 'drop-shadow(0 0 25px rgba(255,200,50,0.5)) drop-shadow(0 0 50px rgba(255,180,30,0.2))' }} />
         <div className="max-w-6xl mx-auto px-6 pt-8 pb-12 relative z-[1]">
           {loading ? (
             <div className="flex items-center justify-center h-64">

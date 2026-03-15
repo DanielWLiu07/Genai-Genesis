@@ -14,6 +14,21 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Resolve ffmpeg binary — prefer PATH, fall back to known WinGet install location
+def _find_ffmpeg() -> str:
+    if shutil.which("ffmpeg"):
+        return "ffmpeg"
+    winget_path = os.path.expandvars(
+        r"%LOCALAPPDATA%\Microsoft\WinGet\Packages"
+        r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        r"\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe"
+    )
+    if os.path.isfile(winget_path):
+        return winget_path
+    return "ffmpeg"  # let it fail with a clear message
+
+FFMPEG = _find_ffmpeg()
+
 RESOLUTION_MAP = {
     "720p": (1280, 720),
     "1080p": (1920, 1080),
@@ -72,7 +87,7 @@ def _create_clip_video(
     )
     if is_video:
         cmd = [
-            "ffmpeg", "-y",
+            FFMPEG, "-y",
             "-i", media_path,
             "-t", str(duration_sec),
             "-vf", scale_filter,
@@ -86,7 +101,7 @@ def _create_clip_video(
         # Use the loop video filter instead: loop=-1 loops forever, size=1 reads 1 frame.
         loop_scale_filter = f"loop=loop=-1:size=1:start=0,{scale_filter}"
         cmd = [
-            "ffmpeg", "-y",
+            FFMPEG, "-y",
             "-i", media_path,
             "-t", str(duration_sec),
             "-vf", loop_scale_filter,
@@ -203,7 +218,7 @@ def _concatenate_with_transitions(
     filter_complex = ";".join(filter_parts)
 
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         *inputs,
         "-filter_complex", filter_complex,
         "-map", "[vout]",
@@ -224,7 +239,7 @@ def _add_music(
     """Mix background music into the video (source clips are silent so no merge needed)."""
     # Primary: loop music, apply volume, pad to video length, copy video stream unchanged.
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", video_path,
         "-stream_loop", "-1", "-i", music_path,
         "-filter_complex", f"[1:a]volume={volume},apad[a]",
@@ -290,7 +305,7 @@ def _add_text_overlays(
 
     filter_str = ",".join(filters)
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", video_path,
         "-filter_complex", f"[0:v]{filter_str}[vout]",
         "-map", "[vout]",
@@ -448,7 +463,7 @@ async def compose_trailer(
                 for p in clip_video_paths:
                     f.write(f"file '{p}'\n")
             cmd = [
-                "ffmpeg", "-y",
+                FFMPEG, "-y",
                 "-f", "concat", "-safe", "0",
                 "-i", concat_list,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
@@ -467,7 +482,7 @@ async def compose_trailer(
                     for p in clip_video_paths:
                         f.write(f"file '{p}'\n")
                 cmd = [
-                    "ffmpeg", "-y",
+                    FFMPEG, "-y",
                     "-f", "concat", "-safe", "0",
                     "-i", concat_list,
                     "-c:v", "libx264", "-preset", "fast", "-crf", "23",
@@ -521,7 +536,7 @@ async def compose_trailer(
             await progress_callback(97, "Final encoding...")
 
         faststart_cmd = [
-            "ffmpeg", "-y",
+            FFMPEG, "-y",
             "-i", final_input,
             "-c", "copy",
             "-movflags", "+faststart",
@@ -959,7 +974,7 @@ async def apply_amv_effects(
     # This ensures the music audio stream (from the previous step) is preserved
     # unchanged while only video filters are applied.
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", input_path,
         "-filter_complex", f"[0:v]{vf}[vout]",
         "-map", "[vout]",
@@ -976,7 +991,7 @@ async def generate_preview(input_path: str, output_path: str, max_width: int = 6
     """Generate a lower-quality preview version of a video."""
     _ensure_dir(output_path)
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", input_path,
         "-vf", f"scale={max_width}:-2",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
@@ -992,7 +1007,7 @@ async def extract_thumbnail(input_path: str, output_path: str, timestamp_sec: fl
     """Extract a thumbnail frame from a video."""
     _ensure_dir(output_path)
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", input_path,
         "-ss", str(timestamp_sec),
         "-vframes", "1",

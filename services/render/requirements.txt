@@ -6,7 +6,6 @@ pydantic==2.9.0
 pydantic-settings>=2.0.0
 Pillow==10.4.0
 PyJWT>=2.10.1
-google-generativeai>=0.8.0
 pytest==8.3.0
 pytest-asyncio==0.24.0
 fal-client>=0.13.0

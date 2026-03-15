@@ -242,6 +242,7 @@ User: ${message}`;
       model: modelId,
       systemInstruction: SYSTEM,
       tools: [{ functionDeclarations: TOOLS as any }],
+      toolConfig: { functionCallingConfig: { mode: 'ANY' as any } },
     });
 
     // Convert history to Gemini format, preserving tool calls as proper function call/response pairs

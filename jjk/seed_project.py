@@ -8,8 +8,8 @@ Seed a JJK project in Supabase from local clips.
 import os, subprocess, tempfile, uuid, mimetypes
 import requests
 
-SUPABASE_URL = "https://wcyjvftpeckvyxlahgta.supabase.co"
-SERVICE_KEY  = "<REDACTED>"
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SERVICE_KEY  = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 HEADERS = {
     "apikey": SERVICE_KEY,
